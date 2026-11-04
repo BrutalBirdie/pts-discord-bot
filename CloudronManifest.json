@@ -1,0 +1,14 @@
+{
+  "id": "io.github.brutalbirdie.ptsdiscordvoicebot",
+  "version": "0.2.0",
+  "title": "PTS Discord Voicebot",
+  "author": "BrutalBirdie",
+  "tagline": "Plays sound files in a Discord voice channel on HTTP request",
+  "healthCheckPath": "/healthz",
+  "httpPort": 8000,
+  "minBoxVersion": "8.1.0",
+  "addons": {
+    "localstorage": {}
+  },
+  "manifestVersion": 2
+}
