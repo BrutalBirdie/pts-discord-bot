@@ -1,0 +1,166 @@
+package store
+
+import (
+	"context"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
+)
+
+const taskCols = `id, name, guild_id, enabled, busy, trigger, steps, paused_reason, created_by, updated_by, updated_at`
+
+func scanTask(r pgx.Row) (tasks.Task, error) {
+	var t tasks.Task
+	err := r.Scan(&t.ID, &t.Name, &t.GuildID, &t.Enabled, &t.Busy, &t.Trigger, &t.Steps, &t.PausedReason, &t.CreatedBy, &t.UpdatedBy, &t.UpdatedAt)
+	return t, err
+}
+
+func (s *Store) Task(ctx context.Context, id int64) (tasks.Task, error) {
+	t, err := scanTask(s.pool.QueryRow(ctx, `SELECT `+taskCols+` FROM tasks WHERE id = $1`, id))
+	return t, noRows(err)
+}
+
+func (s *Store) ListTasks(ctx context.Context) ([]tasks.Task, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+taskCols+` FROM tasks ORDER BY lower(name), id`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (tasks.Task, error) { return scanTask(r) })
+}
+
+func (s *Store) CreateTask(ctx context.Context, t tasks.Task, by string) (int64, error) {
+	var id int64
+	err := s.pool.QueryRow(ctx, `INSERT INTO tasks (name, guild_id, enabled, busy, trigger, steps, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING id`, t.Name, t.GuildID, t.Enabled, t.Busy, t.Trigger, steps(t.Steps), by).Scan(&id)
+	return id, err
+}
+
+// UpdateTask saves the editor's state and clears a pause reason.
+func (s *Store) UpdateTask(ctx context.Context, t tasks.Task, by string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE tasks SET name = $2, guild_id = $3, enabled = $4, busy = $5, trigger = $6, steps = $7, paused_reason = '', updated_by = $8, updated_at = now() WHERE id = $1`,
+		t.ID, t.Name, t.GuildID, t.Enabled, t.Busy, t.Trigger, steps(t.Steps), by)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
+// SetTaskEnabled pauses or resumes a task. reason is shown on paused tasks.
+func (s *Store) SetTaskEnabled(ctx context.Context, id int64, enabled bool, reason, by string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE tasks SET enabled = $2, paused_reason = $3, updated_by = $4, updated_at = now() WHERE id = $1`, id, enabled, reason, by)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
+func (s *Store) DeleteTask(ctx context.Context, id int64) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM tasks WHERE id = $1`, id)
+	return err
+}
+
+func steps(s []tasks.Step) []tasks.Step {
+	if s == nil {
+		return []tasks.Step{}
+	}
+	return s
+}
+
+const (
+	RunRunning = "running"
+	RunDone    = "done"
+	RunFailed  = "failed"
+	RunSkipped = "skipped"
+
+	SourceSchedule = "schedule"
+	SourceManual   = "manual"
+)
+
+type Run struct {
+	ID         int64
+	TaskID     *int64
+	Title      string
+	GuildID    string
+	Source     string
+	Actor      string
+	Status     string
+	FailedStep *int // 1-based
+	Error      string
+	Detail     string
+	StartedAt  time.Time
+	FinishedAt *time.Time
+}
+
+func (r Run) Duration() time.Duration {
+	if r.FinishedAt == nil {
+		return time.Since(r.StartedAt)
+	}
+	return r.FinishedAt.Sub(r.StartedAt)
+}
+
+const runCols = `id, task_id, title, guild_id, source, actor, status, failed_step, error, detail, started_at, finished_at`
+
+func scanRun(r pgx.Row) (Run, error) {
+	var run Run
+	err := r.Scan(&run.ID, &run.TaskID, &run.Title, &run.GuildID, &run.Source, &run.Actor, &run.Status, &run.FailedStep, &run.Error, &run.Detail, &run.StartedAt, &run.FinishedAt)
+	return run, err
+}
+
+func (s *Store) StartRun(ctx context.Context, r Run) (int64, error) {
+	var id int64
+	err := s.pool.QueryRow(ctx, `INSERT INTO runs (task_id, title, guild_id, source, actor, detail) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		r.TaskID, r.Title, r.GuildID, r.Source, r.Actor, r.Detail).Scan(&id)
+	return id, err
+}
+
+func (s *Store) FinishRun(ctx context.Context, id int64, status string, failedStep *int, errText string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE runs SET status = $2, failed_step = $3, error = $4, finished_at = now() WHERE id = $1`, id, status, failedStep, errText)
+	return err
+}
+
+// FailInterruptedRuns marks runs that were still running when the app stopped.
+func (s *Store) FailInterruptedRuns(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `UPDATE runs SET status = 'failed', error = 'The app restarted during the run.', finished_at = now() WHERE status = 'running'`)
+	return err
+}
+
+// RunQuery filters runs. TaskID 0 means all tasks.
+type RunQuery struct {
+	TaskID        int64
+	Since         time.Time
+	Status        string
+	Limit, Offset int
+}
+
+func (s *Store) ListRuns(ctx context.Context, q RunQuery) ([]Run, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+runCols+` FROM runs
+WHERE ($1 = 0 OR task_id = $1) AND started_at >= $2 AND ($3 = '' OR status = $3)
+ORDER BY id DESC LIMIT $4 OFFSET $5`, q.TaskID, q.Since, q.Status, q.Limit, q.Offset)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Run, error) { return scanRun(r) })
+}
+
+func (s *Store) CountRuns(ctx context.Context, q RunQuery) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM runs WHERE ($1 = 0 OR task_id = $1) AND started_at >= $2 AND ($3 = '' OR status = $3)`,
+		q.TaskID, q.Since, q.Status).Scan(&n)
+	return n, err
+}
+
+// LastRuns returns the newest run of every task.
+func (s *Store) LastRuns(ctx context.Context) (map[int64]Run, error) {
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT ON (task_id) `+runCols+` FROM runs WHERE task_id IS NOT NULL ORDER BY task_id, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	list, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Run, error) { return scanRun(r) })
+	out := make(map[int64]Run, len(list))
+	for _, r := range list {
+		out[*r.TaskID] = r
+	}
+	return out, err
+}

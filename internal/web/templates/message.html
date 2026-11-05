@@ -1,0 +1,138 @@
+{{define "content"}}
+{{$e := .Data}}{{$m := $e.Message}}{{$csrf := .Session.CSRFToken}}
+<a class="back" href="/messages">{{icon "arrow-left"}}Messages</a>
+<div class="page-head">
+  <div><span class="eyebrow">{{if $e.New}}New message{{else}}Saved message{{end}}</span><h1>{{if $m.Name}}{{$m.Name}}{{else}}Untitled message{{end}}</h1></div>
+  {{if not $e.New}}
+  <div class="btns">
+    <form method="post" action="/messages/{{$m.ID}}/duplicate"><input type="hidden" name="csrf" value="{{$csrf}}">
+      <button type="submit" class="ib" aria-label="Duplicate" data-tip="Duplicate">{{icon "copy"}}<span class="lbl">Duplicate</span></button></form>
+  </div>
+  {{end}}
+</div>
+{{if not $e.New}}<div class="meta">{{range $e.UsedBy}}<span class="chip accent">{{icon "calendar"}}used by {{.}}</span>{{end}}<span class="chip">changed by {{$m.UpdatedBy}}, {{when $m.UpdatedAt}}</span></div>{{end}}
+{{with $e.SendError}}<div class="callout danger">{{icon "circle-x"}}<span>{{.}}</span></div>{{end}}
+{{if $e.Problems}}<div class="callout danger">{{icon "triangle-alert"}}<div><strong>Not saved.</strong><ul class="problems">{{range $e.Problems}}<li>{{.}}</li>{{end}}</ul></div></div>
+{{else if $e.Unsaved}}<div class="callout info">{{icon "info"}}<span>Changes are not saved yet.</span></div>{{end}}
+
+<div class="cols2">
+<form method="post" action="{{if $e.New}}/messages/new{{else}}/messages/{{$m.ID}}{{end}}" class="stack" data-preview-form>
+  <input type="hidden" name="csrf" value="{{$csrf}}">
+  <input type="hidden" name="embeds" value="{{len $m.Embeds}}">
+  <button type="submit" name="op" value="save" class="default-submit" tabindex="-1" aria-hidden="true">Save</button>
+
+  <section class="card form">
+    <label class="field"><span>Name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="100" required><span class="help">Only shown here and in task steps.</span></label>
+    <label class="field"><span>Text <span class="counter" data-count="content" data-max="{{index $e.Limits "content"}}">{{$m.ContentChars}} / {{index $e.Limits "content"}}</span></span>
+      <textarea name="content" rows="5" class="prose" data-preview="content">{{$m.Content}}</textarea>
+      <span class="help">Discord markdown works. Placeholders: <span class="mono">{date} {time} {server} {channel}</span>. A member mention is written as <span class="mono">&lt;@id&gt;</span>.</span>
+    </label>
+    <div class="field js-only"><span>Mention a member</span>
+      <span class="picker"><input type="text" placeholder="Name or @username, inserts a mention into the text" aria-label="Mention a member" autocomplete="off" spellcheck="false" data-members="" data-insert="content"></span>
+    </div>
+  </section>
+
+  <section class="card form">
+    <div class="sec-head"><h2>Embeds</h2><span class="counter">{{len $m.Embeds}} of {{index $e.Limits "embeds"}} · {{$m.EmbedChars}} / {{index $e.Limits "embedTotal"}} characters</span></div>
+    {{range $i, $em := $m.Embeds}}{{$p := print "e" $i "."}}
+    <div class="embed-ed">
+      <input type="hidden" name="{{$p}}fields" value="{{len $em.Fields}}">
+      <div class="sec-head"><span class="eyebrow">Embed {{add $i 1}}</span>
+        <button type="submit" name="op" value="del-embed:{{$i}}" class="ib sm quiet danger" aria-label="Remove embed {{add $i 1}}" data-tip="Remove embed">{{icon "trash-2"}}</button></div>
+      <div class="inline nowrap">
+        <label class="field"><span>Color</span><input type="color" name="{{$p}}color" value="{{if $em.Color}}{{$em.Color}}{{else}}#4752c4{{end}}" data-preview="color-{{$i}}"></label>
+        <label class="field grow"><span>Title</span><input type="text" name="{{$p}}title" value="{{$em.Title}}" maxlength="256" data-preview="title-{{$i}}"></label>
+      </div>
+      <label class="field"><span>Title link</span><input type="url" name="{{$p}}url" value="{{$em.URL}}" placeholder="https://"></label>
+      <label class="field"><span>Description</span><textarea name="{{$p}}desc" rows="3" class="prose" maxlength="4096" data-preview="desc-{{$i}}">{{$em.Description}}</textarea></label>
+      {{range $j, $f := $em.Fields}}{{$q := print $p "f" $j "."}}
+      <div class="field-row">
+        <input type="text" name="{{$q}}name" value="{{$f.Name}}" placeholder="Field name" maxlength="256" aria-label="Field {{add $j 1}} name">
+        <input type="text" name="{{$q}}value" value="{{$f.Value}}" placeholder="Value" maxlength="1024" aria-label="Field {{add $j 1}} value">
+        <label class="inline small"><input type="checkbox" name="{{$q}}inline"{{if $f.Inline}} checked{{end}}>inline</label>
+        <button type="submit" name="op" value="del-field:{{$i}}.{{$j}}" class="ib sm quiet danger" aria-label="Remove field {{add $j 1}}" data-tip="Remove field">{{icon "x"}}</button>
+      </div>
+      {{end}}
+      <button type="submit" name="op" value="add-field:{{$i}}" class="ib sm with-label start">{{icon "plus"}}<span class="lbl">Field</span></button>
+      <div class="grid2">
+        <label class="field"><span>Image</span><select name="{{$p}}image"><option value="0">none</option>{{range $e.Media}}{{if index $e.Embeddable .ID}}<option value="{{.ID}}"{{if eq .ID $em.ImageMediaID}} selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select></label>
+        <label class="field"><span>Thumbnail</span><select name="{{$p}}thumb"><option value="0">none</option>{{range $e.Media}}{{if index $e.Embeddable .ID}}<option value="{{.ID}}"{{if eq .ID $em.ThumbMediaID}} selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select></label>
+      </div>
+      <label class="field"><span>Footer</span><input type="text" name="{{$p}}footer" value="{{$em.Footer}}" maxlength="2048"></label>
+    </div>
+    {{end}}
+    {{if lt (len $m.Embeds) 10}}<button type="submit" name="op" value="add-embed" class="ib with-label start">{{icon "plus"}}<span class="lbl">Add embed</span></button>{{end}}
+  </section>
+
+  <section class="card form">
+    <div class="sec-head"><h2>Files</h2><span class="counter{{if gt $e.FileBytes 26214400}} over{{end}}">{{bytes $e.FileBytes}} of 25 MB per message</span></div>
+    <ul class="list">
+      {{range $i, $id := $m.Files}}{{$md := index $e.ByID $id}}
+      <li><input type="hidden" name="file" value="{{$id}}">
+        <div class="person"><span class="thumb">{{if eq $md.Kind "image"}}<img src="/media/{{$id}}/file" alt="">{{else if eq $md.Kind "video"}}{{icon "film"}}{{else if eq $md.Kind "sound"}}{{icon "music"}}{{else}}{{icon "file"}}{{end}}</span>
+          <div class="row-main"><span class="row-title mono">{{if $md.Name}}{{$md.Name}}{{else}}deleted file {{$id}}{{end}}</span><span class="row-sub">{{bytes $md.SizeBytes}}{{if gt $md.SizeBytes 20971520}} · over 20 MB, Discord may reject it{{end}}</span></div></div>
+        <div class="btns"><button type="submit" name="op" value="del-file:{{$i}}" class="ib quiet" aria-label="Remove {{$md.Name}}" data-tip="Remove">{{icon "x"}}</button></div>
+      </li>
+      {{else}}<li><span class="muted small">No files attached. Embed images are attached by themselves.</span></li>{{end}}
+    </ul>
+    {{if $e.Media}}
+    <div class="inline">
+      <select name="file_add" aria-label="File from the media library" class="grow">{{range $e.Media}}{{if not (hasID $m.Files .ID)}}<option value="{{.ID}}">{{.Name}} · {{bytes .SizeBytes}}</option>{{end}}{{end}}</select>
+      <button type="submit" name="op" value="add-file" class="ib with-label">{{icon "paperclip"}}<span class="lbl">Attach</span></button>
+    </div>
+    {{else}}<p class="small muted"><a href="/media">Upload files</a> to attach them.</p>{{end}}
+  </section>
+
+  <div class="btns">
+    <button type="submit" name="op" value="save" class="ib primary with-label">{{icon "save"}}<span class="lbl">{{if $e.New}}Create message{{else}}Save{{end}}</span></button>
+    {{if not $e.New}}<a class="ib with-label" href="/messages/{{$m.ID}}">{{icon "x"}}<span class="lbl">Discard changes</span></a>{{end}}
+  </div>
+</form>
+
+<aside class="stack sticky">
+  <div class="sec-head"><span class="eyebrow">Preview</span><span class="hint">Placeholders filled with sample values</span></div>
+  <div class="dpv">
+    <div class="dmsg">
+      <span class="dava">{{icon "bot"}}</span>
+      <div class="minw0">
+        <div class="dhead"><strong>{{if .Bot.User}}{{.Bot.User}}{{else}}PTS Bot{{end}}</strong><span class="dtag">APP</span><span class="dtime">{{when nowTime}}</span></div>
+        <div class="dtext" data-preview-target="content">{{mentions (expand $m.Content) $e.Names}}</div>
+        {{range $i, $em := $m.Embeds}}
+        <div class="dembed"><svg class="dbar" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"><rect width="1" height="1" fill="{{if $em.Color}}{{$em.Color}}{{else}}#4752c4{{end}}" data-preview-target="color-{{$i}}"/></svg>
+          <div class="dembed-body"><div>
+            <div class="dt" data-preview-target="title-{{$i}}">{{if $em.URL}}<a href="{{$em.URL}}" rel="noopener" target="_blank">{{expand $em.Title}}</a>{{else}}{{expand $em.Title}}{{end}}</div>
+            <div class="dtext" data-preview-target="desc-{{$i}}">{{expand $em.Description}}</div>
+            {{with $em.Fields}}<div class="dfields">{{range .}}<div{{if .Inline}} class="inline"{{end}}><b>{{expand .Name}}</b>{{expand .Value}}</div>{{end}}</div>{{end}}
+          </div>{{with $em.ThumbMediaID}}<img class="dthumb" src="/media/{{.}}/file" alt="">{{end}}</div>
+          {{with $em.ImageMediaID}}<img class="dimg" src="/media/{{.}}/file" alt="">{{end}}
+          {{with $em.Footer}}<div class="dfoot">{{expand .}}</div>{{end}}
+        </div>
+        {{end}}
+        {{range $m.Files}}{{$md := index $e.ByID .}}
+        {{if eq $md.Kind "image"}}<img class="dimg mt" src="/media/{{.}}/file" alt="{{$md.Name}}">
+        {{else}}<div class="dfile">{{icon "file"}}<div><span>{{$md.Name}}</span><div class="dfoot">{{bytes $md.SizeBytes}}</div></div></div>{{end}}
+        {{end}}
+      </div>
+    </div>
+  </div>
+  {{if not $e.New}}
+  <form method="post" action="/messages/{{$m.ID}}/send" class="card form">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <span class="eyebrow">Send the saved version now</span>
+    <label class="field"><span>Channel</span>
+      <select name="channel">{{range $e.Channels}}<optgroup label="{{.Guild.Name}}">{{range .Text}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}</optgroup>{{end}}</select>
+    </label>
+    <div class="btns"><button type="submit" class="ib primary with-label">{{icon "send"}}<span class="lbl">Send</span></button></div>
+  </form>
+  <form method="post" action="/messages/{{$m.ID}}/delete" class="danger-box">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <h3>{{icon "trash-2"}}Delete message</h3>
+    {{if $e.UsedBy}}<p class="small">Used by {{join $e.UsedBy ", "}}. Remove it from their steps first.</p>
+    {{else}}<p class="small">The files stay in the media library.</p>
+    {{template "confirmfield" $m.Name}}
+    <div class="btns"><button type="submit" class="ib danger solid with-label needs-confirm">{{icon "trash-2"}}<span class="lbl">Delete message</span></button></div>{{end}}
+  </form>
+  {{end}}
+</aside>
+</div>
+{{end}}

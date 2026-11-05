@@ -1,0 +1,81 @@
+{{define "content"}}
+{{$d := .Data}}{{$st := $d.Settings}}
+<div class="page-head"><div><span class="eyebrow">Administration</span><h1>Admin</h1></div></div>
+<nav class="tabs" aria-label="Admin">
+  <a class="tab" href="/admin"{{if eq $d.Tab "overview"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}Overview</a>
+  <a class="tab" href="/admin/settings"{{if eq $d.Tab "settings"}} aria-current="page"{{end}}>{{icon "settings"}}Settings</a>
+  <a class="tab" href="/admin/audit"{{if eq $d.Tab "audit"}} aria-current="page"{{end}}>{{icon "list"}}Audit log</a>
+</nav>
+
+{{if eq $d.Tab "overview"}}
+<div class="tiles">
+  <div class="tile"><span class="k">{{icon "bot"}}Bot user</span><span class="v">{{if .Bot.User}}{{.Bot.User}}{{else}}unknown{{end}}</span><span class="s mono">{{if .Bot.ApplicationID}}{{.Bot.ApplicationID}}{{else}}not connected{{end}}</span></div>
+  <div class="tile"><span class="k">{{icon "activity"}}Gateway</span><span class="v">{{if .Bot.Ready}}Connected{{else if .Bot.Connected}}Connecting{{else}}Offline{{end}}</span><span class="s">{{if .Bot.Ready}}{{.Bot.Latency.Milliseconds}} ms · since {{when .Bot.Since}}{{else}}{{.Bot.Error}}{{end}}</span></div>
+  <div class="tile"><span class="k">{{icon "hard-drive"}}Media</span><span class="v">{{bytes $d.MediaBytes}}</span><span class="s">{{plural $d.MediaCount "file" "files"}}</span></div>
+</div>
+<div class="cols2">
+  <section class="card">
+    <div class="sec-head"><h2 class="with-icon">{{icon "key-round"}}Discord connection</h2></div>
+    <ul class="list">
+      <li><div class="row-main"><span class="row-title">Bot token</span><span class="row-sub">DISCORD_TOKEN in /app/data/env.sh</span></div>{{if .Bot.Connected}}<span class="chip ok">{{icon "check"}}accepted</span>{{else}}<span class="chip danger">{{icon "x"}}not connected</span>{{end}}</li>
+      <li><div class="row-main"><span class="row-title">Server members intent</span><span class="row-sub">Privileged. Switch it on under Bot in the Discord Developer Portal to list members.</span></div>{{if .Bot.MembersIntent}}<span class="chip ok">{{icon "check"}}on</span>{{else}}<span class="chip warn">off</span>{{end}}</li>
+      <li><div class="row-main"><span class="row-title">Guilds and voice states intents</span><span class="row-sub">Servers, channels and who is in voice</span></div><span class="chip ok">{{icon "check"}}on</span></li>
+      <li><div class="row-main"><span class="row-title">Voice encryption (DAVE)</span><span class="row-sub">Required by Discord for voice channels</span></div><span class="chip ok">{{icon "check"}}built in</span></li>
+    </ul>
+  </section>
+  <section class="card">
+    <div class="sec-head"><h2 class="with-icon">{{icon "shield"}}Who is admin</h2></div>
+    <ul class="list">
+      <li><div class="row-main"><span class="row-title mono">BOT_ADMINS</span><span class="row-sub">{{with $d.Admins}}{{join . ", "}}{{else}}nobody{{end}}</span></div></li>
+      <li><div class="row-main"><span class="row-title mono">BOT_ADMIN_GROUP</span><span class="row-sub">{{with $d.Groups}}{{join . ", "}}{{else}}no group{{end}}</span></div></li>
+    </ul>
+    <div class="callout info mt">{{icon "info"}}<span>Change both in /app/data/env.sh and restart the app. Every Cloudron user with access to this app can use tasks, messages and media; only admins see this page.</span></div>
+  </section>
+</div>
+{{end}}
+
+{{if eq $d.Tab "settings"}}
+<form method="post" action="/admin/settings" class="card">
+  {{template "csrf" .}}
+  <div class="param"><div><div class="name">Default timezone</div><div class="row-sub">For new tasks and all times on these pages.</div></div>
+    <div><input type="text" name="timezone" value="{{$st.Timezone}}" list="timezones" spellcheck="false" aria-label="Default timezone"><datalist id="timezones">{{range $d.Timezones}}<option value="{{.}}">{{end}}</datalist></div></div>
+  <div class="param"><div><div class="name">Longest playback, minutes</div><div class="row-sub">A sound is stopped after this time.</div></div>
+    <input type="number" name="max_play_minutes" value="{{$st.MaxPlayMinutes}}" min="1" max="600" aria-label="Longest playback in minutes"></div>
+  <div class="param"><div><div class="name">Largest upload, MB</div><div class="row-sub">Per file in the media library.</div></div>
+    <input type="number" name="max_upload_mb" value="{{$st.MaxUploadMB}}" min="1" max="2000" aria-label="Largest upload in MB"></div>
+  <div class="param"><div><div class="name">Failure channel</div><div class="row-sub">The bot posts failed runs here.</div></div>
+    <select name="failure_channel" aria-label="Failure channel"><option value="">none</option>{{range $d.Text}}<optgroup label="{{.Guild.Name}}">{{range .Text}}<option value="{{.ID}}"{{if eq .ID $st.FailureChannelID}} selected{{end}}>#{{.Name}}</option>{{end}}</optgroup>{{end}}</select></div>
+  <div class="param"><div><div class="name">Run history, days</div><div class="row-sub">Older runs are deleted.</div></div>
+    <input type="number" name="run_retention_days" value="{{$st.RunRetentionDays}}" min="1" max="3650" aria-label="Run history in days"></div>
+  <div class="btns mt"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>
+</form>
+{{end}}
+
+{{if eq $d.Tab "audit"}}
+<form class="search" method="get" action="/admin/audit">
+  {{with $d.Category}}<input type="hidden" name="category" value="{{.}}">{{end}}
+  <input type="search" name="q" value="{{$d.Search}}" placeholder="User, action or target" aria-label="Search the audit log">
+  <button type="submit" class="ib" aria-label="Search" data-tip="Search">{{icon "search"}}</button>
+</form>
+<div class="pills">
+  <a href="/admin/audit?q={{$d.Search}}"{{if not $d.Category}} aria-current="page"{{end}}>All</a>
+  <a href="/admin/audit?category=task&amp;q={{$d.Search}}"{{if eq $d.Category "task"}} aria-current="page"{{end}}>Tasks</a>
+  <a href="/admin/audit?category=message&amp;q={{$d.Search}}"{{if eq $d.Category "message"}} aria-current="page"{{end}}>Messages</a>
+  <a href="/admin/audit?category=media&amp;q={{$d.Search}}"{{if eq $d.Category "media"}} aria-current="page"{{end}}>Media</a>
+  <a href="/admin/audit?category=voice&amp;q={{$d.Search}}"{{if eq $d.Category "voice"}} aria-current="page"{{end}}>Voice</a>
+  <a href="/admin/audit?category=settings&amp;q={{$d.Search}}"{{if eq $d.Category "settings"}} aria-current="page"{{end}}>Settings</a>
+</div>
+<section class="card">
+  <ul class="list">
+    {{range $d.Audit}}
+    <li><div class="row-main"><div class="row-title"><span class="when">{{when .At}}</span>{{.Actor}} · {{.Target}}</div>{{with .Detail}}<div class="row-sub">{{.}}</div>{{end}}</div><span class="chip{{if eq .Action "task.pause"}} danger{{end}}">{{.Action}}</span></li>
+    {{else}}<li><span class="muted">No entries.</span></li>{{end}}
+  </ul>
+  <div class="pager mt">
+    {{if gt $d.Page 1}}<a class="ib with-label" href="/admin/audit?page={{add $d.Page -1}}&amp;category={{$d.Category}}&amp;q={{$d.Search}}"><span class="lbl">Newer</span></a>{{else}}<span></span>{{end}}
+    <span class="hint">Page {{$d.Page}}</span>
+    {{if $d.More}}<a class="ib with-label" href="/admin/audit?page={{add $d.Page 1}}&amp;category={{$d.Category}}&amp;q={{$d.Search}}"><span class="lbl">Older</span></a>{{else}}<span></span>{{end}}
+  </div>
+</section>
+{{end}}
+{{end}}

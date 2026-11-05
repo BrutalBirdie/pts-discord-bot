@@ -1,5 +1,5 @@
 # renovate: datasource=docker depName=golang
-ARG GO_IMAGE=golang:1.27.3-trixie
+ARG GO_IMAGE=golang:1.27.3-trixie@sha256:2336eda24930976591abea806d9b7d99eeae38238f19755c5deec02facdc1594
 
 FROM ${GO_IMAGE} AS build
 
@@ -21,12 +21,18 @@ RUN case "${TARGETARCH:-amd64}" in amd64) arch=X64 ;; arm64) arch=ARM64 ;; *) ec
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY *.go ./
+COPY main.go ./
+COPY internal ./internal
 RUN go test ./... && CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o /out/voicebot .
 
 FROM cloudron/base:6.0.1@sha256:7b1e729960c3ca312d26e886917ba89483241bba0219ff292858e10d9d5768ee
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/cache/apt /var/lib/apt/lists
+# renovate: datasource=deb depName=ffmpeg
+ARG FFMPEG_VERSION=7:8.0.1-3ubuntu2
+
+LABEL org.opencontainers.image.source=https://github.com/BrutalBirdie/pts-discord-bot
+
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg=${FFMPEG_VERSION} && rm -rf /var/cache/apt /var/lib/apt/lists
 
 RUN mkdir -p /app/code /app/pkg
 WORKDIR /app/code

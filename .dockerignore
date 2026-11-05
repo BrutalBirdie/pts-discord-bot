@@ -1,5 +1,12 @@
-.git
-n8n
-README.md
-*.ogg
+*.md
 *.mp3
+*.ogg
+.git
+.github
+CHANGELOG
+CloudronVersions.json
+README.md
+n8n
+renovate.json5
+screenshots
+test

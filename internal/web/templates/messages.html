@@ -1,0 +1,29 @@
+{{define "content"}}
+<div class="page-head">
+  <div><span class="eyebrow">Content</span><h1>Messages</h1></div>
+  <div class="btns"><a class="ib primary with-label" href="/messages/new">{{icon "plus"}}<span class="lbl">New message</span></a></div>
+</div>
+<section class="card">
+  <ul class="list">
+    {{range .Data}}{{$m := .Message}}
+    <li class="link-row">
+      <a class="rowlink with-lead" href="/messages/{{$m.ID}}">
+        {{icon "message-square"}}
+        <span class="row-main">
+          <span class="row-title">{{$m.Name}}</span>
+          <span class="row-sub">{{with $m.Content}}{{printf "%.80s" .}}{{else}}no text{{end}}</span>
+          <span class="meta">
+            {{with $m.Embeds}}<span class="chip">{{plural (len .) "embed" "embeds"}}</span>{{end}}
+            {{with $m.Files}}<span class="chip">{{icon "paperclip"}}{{plural (len .) "file" "files"}}</span>{{end}}
+            {{range .UsedBy}}<span class="chip accent">{{icon "calendar"}}{{.}}</span>{{end}}
+          </span>
+        </span>
+        <span class="go" aria-hidden="true">{{icon "chevron-right"}}</span>
+      </a>
+    </li>
+    {{else}}
+    <li><span class="muted">No saved messages yet. A saved message has text, embeds and files, and can be sent by tasks or right away.</span></li>
+    {{end}}
+  </ul>
+</section>
+{{end}}

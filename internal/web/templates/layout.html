@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"{{if .Prefs.ShowLabels}} class="labels"{{end}}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{.Title}}</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/logo.png">
+</head>
+<body>
+{{template "icons"}}
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/static/logo.png" alt="" width="32" height="32"> PTS Discord Bot</a>
+    {{with .Session}}
+    <nav class="nav" aria-label="Main">{{template "navlinks" $}}</nav>
+    <button type="button" class="avatar" popovertarget="sheet-account" aria-label="Account of {{.DisplayName}}" data-tip="Account">{{initials .DisplayName}}</button>
+    {{end}}
+  </div>
+</header>
+<main class="wrap" id="main">
+{{if .Session}}{{if not .Bot.Connected}}
+<div class="callout warn">{{icon "triangle-alert"}}<span>The bot is not connected to Discord.{{with .Bot.Error}} {{.}}{{end}}</span></div>
+{{end}}{{end}}
+{{with .Notice}}<div class="notice" role="status">{{icon "circle-check"}}<span>{{.}}</span></div>{{end}}
+{{template "content" .}}
+</main>
+{{with .Session}}
+<nav class="tabbar" aria-label="Main">
+  <a href="/"{{if eq $.Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Home</span></a>
+  <a href="/servers"{{if eq $.Nav "servers"}} aria-current="page"{{end}}>{{icon "server"}}<span>Servers</span></a>
+  <a href="/tasks"{{if eq $.Nav "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span>Tasks</span></a>
+  <a href="/media"{{if eq $.Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>
+  <button type="button" popovertarget="sheet-account">{{icon "more"}}<span>More</span></button>
+</nav>
+<div popover id="sheet-account" class="sheet" aria-labelledby="sheet-account-title">
+  {{template "sheethead" (dict "ID" "sheet-account" "Icon" "user" "Title" "Account")}}
+  <div class="sheet-body">
+    <section>
+      <div class="profile"><span class="avatar">{{initials .DisplayName}}</span><span><strong>{{.DisplayName}}</strong><span class="small muted">{{.Username}}{{if .IsAdmin}} · administrator{{end}}</span></span></div>
+    </section>
+    <section>
+      <span class="eyebrow">Pages</span>
+      <a class="choice" href="/messages">{{icon "message-square"}}<span><strong>Messages</strong><small>Saved messages for tasks</small></span></a>
+      {{if .IsAdmin}}<a class="choice" href="/admin">{{icon "shield"}}<span><strong>Admin</strong><small>Discord connection, settings, audit log</small></span></a>{{end}}
+    </section>
+    <form method="post" action="/account" class="form" data-autosave>
+      <input type="hidden" name="csrf" value="{{.CSRFToken}}">
+      <input type="hidden" name="next" value="{{$.Path}}">
+      <section>
+        <span class="eyebrow">Display</span>
+        <label class="switch-row"><span>Show labels on buttons<small>Text next to every icon.</small></span><input type="checkbox" class="switch" name="show_labels"{{if $.Prefs.ShowLabels}} checked{{end}}></label>
+        <div class="btns no-js"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>
+      </section>
+    </form>
+    <section>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf" value="{{.CSRFToken}}">
+        <button type="submit" class="ib with-label">{{icon "log-out"}}<span class="lbl">Log out</span></button>
+      </form>
+    </section>
+  </div>
+</div>
+{{end}}
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -2,3 +2,4 @@
 sounds/
 *.mp3
 *.ogg
+node_modules/

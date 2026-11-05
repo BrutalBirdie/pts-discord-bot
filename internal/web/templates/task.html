@@ -1,0 +1,187 @@
+{{define "content"}}
+{{$e := .Data}}{{$t := $e.Task}}{{$csrf := .Session.CSRFToken}}
+<a class="back" href="/tasks">{{icon "arrow-left"}}Tasks</a>
+<div class="page-head">
+  <div><span class="eyebrow">{{if $e.New}}New task{{else}}Task{{end}}</span><h1>{{if $t.Name}}{{$t.Name}}{{else}}Untitled task{{end}}</h1></div>
+  {{if not $e.New}}
+  <div class="btns">
+    <form method="post" action="/tasks/{{$t.ID}}/run"><input type="hidden" name="csrf" value="{{$csrf}}">
+      <button type="submit" class="ib" aria-label="Run now" data-tip="Run the saved version now">{{icon "play"}}<span class="lbl">Run now</span></button></form>
+    <form method="post" action="/tasks/{{$t.ID}}/duplicate"><input type="hidden" name="csrf" value="{{$csrf}}">
+      <button type="submit" class="ib" aria-label="Duplicate" data-tip="Duplicate">{{icon "copy"}}<span class="lbl">Duplicate</span></button></form>
+  </div>
+  {{end}}
+</div>
+
+{{with $t.PausedReason}}<div class="callout danger">{{icon "circle-x"}}<span>Paused after an error. {{.}} Saving the task resumes it.</span></div>{{end}}
+{{if $e.Problems}}<div class="callout danger">{{icon "triangle-alert"}}<div><strong>Not saved.</strong><ul class="problems">{{range $e.Problems}}<li>{{.}}</li>{{end}}</ul></div></div>
+{{else if $e.Unsaved}}<div class="callout info">{{icon "info"}}<span>Changes are not saved yet.</span></div>{{end}}
+
+<div class="split">
+<form method="post" action="{{if $e.New}}/tasks/new{{else}}/tasks/{{$t.ID}}{{end}}" class="stack" id="task-form">
+  <input type="hidden" name="csrf" value="{{$csrf}}">
+  <input type="hidden" name="steps" value="{{len $t.Steps}}">
+  <button type="submit" name="op" value="save" class="default-submit" tabindex="-1" aria-hidden="true">Save</button>
+
+  <section class="card form">
+    <div class="grid2">
+      <label class="field"><span>Name</span><input type="text" name="name" value="{{$t.Name}}" maxlength="100" required></label>
+      <div class="field"><span>Server</span>
+        <div class="inline">
+          <select name="guild" data-reload aria-label="Server" class="grow">
+            {{range $e.Guilds}}<option value="{{.ID}}"{{if eq .ID $t.GuildID}} selected{{end}}>{{.Name}}</option>{{end}}
+            {{if and $t.GuildID (not $e.Guilds)}}<option value="{{$t.GuildID}}" selected>{{$t.GuildID}}</option>{{end}}
+          </select>
+          <button type="submit" name="op" value="reload" class="ib no-js" aria-label="Load the channels of this server" data-tip="Load channels">{{icon "refresh-cw"}}</button>
+        </div>
+      </div>
+    </div>
+    <label class="switch-row"><span>Active<small>Off keeps the task but stops its schedule. Run now still works.</small></span><input type="checkbox" class="switch" name="enabled"{{if $t.Enabled}} checked{{end}}></label>
+  </section>
+
+  <section class="card form sched">
+    <div class="sec-head"><h2 class="with-icon">{{icon "clock"}}When</h2></div>
+    <div class="presets" role="radiogroup" aria-label="Schedule type">
+      {{range $e.Kinds}}<label><input type="radio" name="kind" value="{{.}}"{{if eq . $t.Trigger.Kind}} checked{{end}}>{{if eq . "daily"}}Daily{{else if eq . "weekly"}}Weekly{{else if eq . "once"}}Once{{else if eq . "cron"}}Cron{{else}}Manual only{{end}}</label>{{end}}
+    </div>
+    <div class="field k-weekly"><span>Days</span>
+      <div class="presets">{{range $i, $n := $e.Weekdays}}<label><input type="checkbox" name="weekday" value="{{$i}}"{{if hasInt $t.Trigger.Weekdays $i}} checked{{end}}>{{$n}}</label>{{end}}</div>
+    </div>
+    <label class="field k-times"><span>Times</span>
+      <input type="text" name="times" value="{{$e.TimesText}}" class="mono" placeholder="05:00 11:50 14:00" spellcheck="false">
+      <span class="help">24 hour times, separated by spaces or commas.</span>
+    </label>
+    <label class="field k-once"><span>Date and time</span><input type="datetime-local" name="once_at" value="{{$t.Trigger.OnceAt}}"></label>
+    <label class="field k-cron"><span>Cron expressions, one per line</span>
+      <textarea name="cron" rows="4" spellcheck="false">{{$e.CronText}}</textarea>
+      <span class="help">minute hour day-of-month month day-of-week, for example <span class="mono">*/15 9-17 * * 1-5</span>.</span>
+    </label>
+    <p class="small muted k-manual">Runs only with Run now.</p>
+    <div class="grid2">
+      <label class="field k-timed"><span>Timezone</span>
+        <input type="text" name="timezone" value="{{$t.Trigger.Timezone}}" list="timezones" spellcheck="false" autocomplete="off">
+        <datalist id="timezones">{{range $e.Timezones}}<option value="{{.}}">{{end}}</datalist>
+        <span class="help">Follows daylight saving time.</span>
+      </label>
+      <label class="field"><span>If the bot is busy with voice in this server</span>
+        <select name="busy"><option value="wait"{{if eq $t.Busy "wait"}} selected{{end}}>Wait until it is free</option><option value="skip"{{if eq $t.Busy "skip"}} selected{{end}}>Skip this run</option></select>
+      </label>
+    </div>
+  </section>
+
+  <section class="card form">
+    <div class="sec-head"><h2 class="with-icon">{{icon "list"}}Steps</h2><span class="hint">One after the other. A failing step stops the run.</span></div>
+    <ol class="steps">
+      {{range $i, $s := $t.Steps}}{{$p := print "s" $i "."}}
+      <li class="step">
+        <span class="num">{{add $i 1}}</span>
+        <div class="row-main">
+          <input type="hidden" name="{{$p}}type" value="{{$s.Type}}">
+          <div class="row-title">{{icon $s.Type.Icon}}{{$s.Type.Label}}</div>
+          <div class="fields">
+          {{if eq $s.Type "join"}}
+            <select name="{{$p}}target" aria-label="Voice channel">
+              {{if not (or $s.ChannelID $s.FollowUserID)}}<option value="" selected>Pick a channel</option>{{end}}
+              {{if and $s.ChannelID (not (hasChannel $e.Voice $s.ChannelID))}}<option value="{{$s.ChannelID}}" selected>Unknown channel {{$s.ChannelID}}</option>{{end}}
+              <optgroup label="Voice channels">{{range $e.Voice}}<option value="{{.ID}}"{{if eq .ID $s.ChannelID}} selected{{end}}>{{.Name}}{{with .Category}} · {{.}}{{end}}</option>{{end}}</optgroup>
+              <option value="member"{{if $s.FollowUserID}} selected{{end}}>The channel a member is in</option>
+            </select>
+            {{template "memberpick" (dict "Name" (print $p "follow") "Value" (index $e.Labels $s.FollowUserID) "Guild" $e.Task.GuildID "Class" "follow" "Label" "Member to follow")}}
+          {{else if eq $s.Type "play"}}
+            <select name="{{$p}}media" aria-label="Sound">
+              {{if not $s.MediaID}}<option value="" selected>Pick a sound</option>{{end}}
+              {{range $e.Sounds}}<option value="{{.ID}}"{{if eq .ID $s.MediaID}} selected{{end}}>{{.Name}}{{if .DurationMS}} · {{clock .DurationMS}}{{end}}</option>{{end}}
+            </select>
+            <label class="inline small"><span>Volume</span><input type="number" name="{{$p}}volume" value="{{$s.Volume}}" min="1" max="200" aria-label="Volume in percent"><span>%</span></label>
+          {{else if eq $s.Type "message"}}
+            <select name="{{$p}}channel" aria-label="Text channel">
+              {{if not $s.ChannelID}}<option value="" selected>Pick a channel</option>{{end}}
+              {{if and $s.ChannelID (not (hasChannel $e.Text $s.ChannelID))}}<option value="{{$s.ChannelID}}" selected>Unknown channel {{$s.ChannelID}}</option>{{end}}
+              {{range $e.Text}}<option value="{{.ID}}"{{if eq .ID $s.ChannelID}} selected{{end}}>#{{.Name}}{{with .Category}} · {{.}}{{end}}</option>{{end}}
+            </select>
+            {{template "msgpick" (dict "P" $p "S" $s "E" $e)}}
+          {{else if eq $s.Type "dm"}}
+            {{template "memberpick" (dict "Name" (print $p "user") "Value" (index $e.Labels $s.UserID) "Guild" $e.Task.GuildID "Class" "" "Label" "Member")}}
+            {{template "msgpick" (dict "P" $p "S" $s "E" $e)}}
+          {{else if eq $s.Type "wait"}}
+            <label class="inline small"><input type="number" name="{{$p}}seconds" value="{{$s.Seconds}}" min="1" max="3600" aria-label="Seconds"><span>seconds</span></label>
+          {{else if eq $s.Type "leave"}}
+            <span class="small muted">Stops playback and disconnects the bot from voice in this server.</span>
+          {{end}}
+          </div>
+          {{if or (eq $s.Type "message") (eq $s.Type "dm")}}
+          <input type="text" name="{{$p}}text" value="{{$s.Text}}" maxlength="2000" placeholder="Text, used when no saved message is picked. {date} {time} {server} {channel} work." aria-label="Message text" class="mt">
+          {{end}}
+        </div>
+        <div class="btns">
+          <button type="submit" name="op" value="up:{{$i}}" class="ib sm quiet" aria-label="Move step {{add $i 1}} up" data-tip="Move up"{{if eq $i 0}} disabled{{end}}>{{icon "arrow-up"}}</button>
+          <button type="submit" name="op" value="down:{{$i}}" class="ib sm quiet" aria-label="Move step {{add $i 1}} down" data-tip="Move down"{{if eq (add $i 1) (len $t.Steps)}} disabled{{end}}>{{icon "arrow-down"}}</button>
+          <button type="submit" name="op" value="del:{{$i}}" class="ib sm quiet danger" aria-label="Remove step {{add $i 1}}" data-tip="Remove">{{icon "trash-2"}}</button>
+        </div>
+      </li>
+      {{else}}
+      <li class="muted small">No steps yet. Add the first one below.</li>
+      {{end}}
+    </ol>
+    <span class="eyebrow">Add a step</span>
+    <div class="addsteps">
+      {{range $e.StepTypes}}<button type="submit" name="op" value="add:{{.}}" class="choice">{{icon .Icon}}<span><strong>{{.Label}}</strong><small>{{.Hint}}</small></span></button>{{end}}
+    </div>
+  </section>
+
+  <div class="btns">
+    <button type="submit" name="op" value="save" class="ib primary with-label">{{icon "save"}}<span class="lbl">{{if $e.New}}Create task{{else}}Save{{end}}</span></button>
+    {{if not $e.New}}<a class="ib with-label" href="/tasks/{{$t.ID}}">{{icon "x"}}<span class="lbl">Discard changes</span></a>{{end}}
+  </div>
+</form>
+
+<aside class="stack sticky">
+  <section class="card">
+    <div class="sec-head"><h2>Next runs</h2><span class="chip">{{if $t.Trigger.Timezone}}{{$t.Trigger.Timezone}}{{else}}UTC{{end}}</span></div>
+    <ul class="list">
+      {{range $e.Next}}<li><span class="when">{{when .}}</span><span class="small muted">{{until .}}</span></li>
+      {{else}}<li><span class="muted small">{{if eq $t.Trigger.Kind "manual"}}Manual only.{{else}}None. Check the schedule.{{end}}</span></li>{{end}}
+    </ul>
+    {{if not $t.Enabled}}<p class="small muted">The task is paused, these runs only happen when it is active.</p>{{end}}
+    {{with $t.Trigger.CronLines}}<p class="hint mt">As cron: <span class="mono">{{join . " · "}}</span></p>{{end}}
+  </section>
+  {{if not $e.New}}
+  <section class="card" data-live="runs">
+    <div class="sec-head"><h2>Run history</h2><span class="hint">{{$e.RunCount}} runs</span></div>
+    <ul class="list">
+      {{range $e.Runs}}{{template "runrow" (dict "R" . "ShowTitle" false)}}{{else}}<li><span class="muted small">No runs yet.</span></li>{{end}}
+    </ul>
+    {{if gt $e.Pages 1}}
+    <div class="pager mt">
+      {{if gt $e.Page 1}}<a class="ib with-label" href="/tasks/{{$t.ID}}?page={{add $e.Page -1}}"><span class="lbl">Newer</span></a>{{else}}<span></span>{{end}}
+      <span class="hint">Page {{$e.Page}} of {{$e.Pages}}</span>
+      {{if lt $e.Page $e.Pages}}<a class="ib with-label" href="/tasks/{{$t.ID}}?page={{add $e.Page 1}}"><span class="lbl">Older</span></a>{{else}}<span></span>{{end}}
+    </div>
+    {{end}}
+  </section>
+  {{if $t.Enabled}}
+  <form method="post" action="/tasks/{{$t.ID}}/pause" class="btns"><input type="hidden" name="csrf" value="{{$csrf}}">
+    <button type="submit" class="ib with-label">{{icon "pause"}}<span class="lbl">Pause</span></button></form>
+  {{else}}
+  <form method="post" action="/tasks/{{$t.ID}}/resume" class="btns"><input type="hidden" name="csrf" value="{{$csrf}}">
+    <button type="submit" class="ib with-label">{{icon "clock"}}<span class="lbl">Resume</span></button></form>
+  {{end}}
+  <div class="callout info">{{icon "info"}}<span>Discord errors that retrying cannot fix, such as a deleted channel or a missing permission, pause the task.</span></div>
+  <form method="post" action="/tasks/{{$t.ID}}/delete" class="danger-box">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <h3>{{icon "trash-2"}}Delete task</h3>
+    <p class="small">Removes the task and its run history. Sounds and messages it uses stay.</p>
+    {{template "confirmfield" $t.Name}}
+    <div class="btns"><button type="submit" class="ib danger solid with-label needs-confirm">{{icon "trash-2"}}<span class="lbl">Delete task</span></button></div>
+  </form>
+  {{end}}
+</aside>
+</div>
+{{end}}
+
+{{define "msgpick"}}
+<select name="{{.P}}message" aria-label="Saved message">
+  <option value="0"{{if not .S.MessageID}} selected{{end}}>Text below</option>
+  {{range .E.Messages}}<option value="{{.ID}}"{{if eq .ID $.S.MessageID}} selected{{end}}>Saved: {{.Name}}</option>{{end}}
+</select>
+{{end}}

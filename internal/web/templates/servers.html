@@ -1,0 +1,50 @@
+{{define "content"}}
+{{$d := .Data}}
+<div class="page-head">
+  <div><span class="eyebrow">Discord</span><h1>Servers</h1></div>
+  <div class="btns">
+    <form method="post" action="/servers/refresh">{{template "csrf" .}}
+      <button type="submit" class="ib" aria-label="Reload members from Discord" data-tip="Reload members from Discord">{{icon "refresh-cw"}}<span class="lbl">Reload members</span></button>
+    </form>
+  </div>
+</div>
+
+{{if and .Bot.Connected (not .Bot.MembersIntent)}}
+<div class="callout warn">{{icon "triangle-alert"}}<span>Discord refused the Server Members intent, so member lists stay empty and tasks cannot follow members. Switch on <strong>Server Members Intent</strong> under Bot in the Discord Developer Portal, then restart the app.</span></div>
+{{end}}
+
+<section class="card">
+  <ul class="list">
+    {{range $d.Guilds}}
+    <li class="link-row">
+      <a class="rowlink with-lead" href="/servers/{{.ID}}">
+        <span class="guild">{{.Initials}}</span>
+        <span class="row-main">
+          <span class="row-title">{{.Name}}
+            {{if .Playing}}<span class="chip accent">{{icon "music"}}playing in {{.Playing.Channel}}</span>{{else if .BotVoice}}<span class="chip accent">{{icon "volume-2"}}in {{.BotVoice}}</span>{{end}}
+            {{if .Problems}}<span class="chip warn">{{icon "triangle-alert"}}{{plural .Problems "channel" "channels"}} without access</span>{{end}}
+          </span>
+          <span class="meta">
+            <span class="chip">{{icon "users"}}{{.MemberCount}} members</span>
+            <span class="chip">{{icon "volume-2"}}{{.Voice}} voice</span>
+            <span class="chip">{{icon "hash"}}{{.Text}} text</span>
+          </span>
+        </span>
+        <span class="go" aria-hidden="true">{{icon "chevron-right"}}</span>
+      </a>
+    </li>
+    {{else}}
+    <li><span class="muted">{{if .Bot.Ready}}The bot is in no server yet. Add it with the invite link below.{{else}}The server list appears when the bot is connected.{{end}}</span></li>
+    {{end}}
+  </ul>
+</section>
+
+<section class="card stack">
+  <div><span class="eyebrow">Add the bot</span><h2>Invite link</h2></div>
+  <p class="small muted">Opens Discord with the permissions the bot needs: View Channel, Send Messages, Embed Links, Attach Files, Connect and Speak. Only members with Manage Server can add it.</p>
+  {{with $d.InviteURL}}{{template "copybox" (dict "Text" . "Label" "Copy invite link")}}
+  <div class="btns"><a class="ib with-label" href="{{.}}" rel="noopener" target="_blank">{{icon "external-link"}}<span class="lbl">Open in Discord</span></a></div>
+  {{else}}<p class="muted">Shown when the bot is connected.</p>{{end}}
+</section>
+<p class="hint">Servers, channels and members update live from Discord.</p>
+{{end}}

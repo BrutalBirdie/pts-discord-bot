@@ -1,0 +1,73 @@
+{{define "content"}}
+{{$d := .Data}}{{$csrf := .Session.CSRFToken}}
+<div class="page-head">
+  <div><span class="eyebrow">Library</span><h1>Media</h1></div>
+  <div class="btns"><span class="chip">{{icon "hard-drive"}}{{bytes $d.TotalBytes}} in {{plural (index $d.Counts "") "file" "files"}}</span></div>
+</div>
+
+<form method="post" action="/media" enctype="multipart/form-data" class="drop" data-upload>
+  <input type="hidden" name="csrf" value="{{$csrf}}">
+  {{icon "upload"}}
+  <strong>Upload files</strong>
+  <span class="small muted">Sounds in any format ffmpeg reads, images, videos and other files, up to {{$d.MaxUploadMB}} MB each. Discord accepts 20 MB per file in messages, more with server boosts.</span>
+  <input type="file" name="file" multiple required aria-label="Files">
+  <button type="submit" class="ib primary with-label">{{icon "upload"}}<span class="lbl">Upload</span></button>
+</form>
+
+<div class="pills">
+  <a href="/media"{{if not $d.Kind}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
+  <a href="/media?kind=sound"{{if eq $d.Kind "sound"}} aria-current="page"{{end}}>Sounds {{index $d.Counts "sound"}}</a>
+  <a href="/media?kind=image"{{if eq $d.Kind "image"}} aria-current="page"{{end}}>Images {{index $d.Counts "image"}}</a>
+  <a href="/media?kind=video"{{if eq $d.Kind "video"}} aria-current="page"{{end}}>Videos {{index $d.Counts "video"}}</a>
+  <a href="/media?kind=file"{{if eq $d.Kind "file"}} aria-current="page"{{end}}>Files {{index $d.Counts "file"}}</a>
+</div>
+
+<section class="card">
+  <ul class="list">
+    {{range $d.Items}}
+    <li>
+      <div class="person">
+        <span class="thumb">{{if eq .Kind "image"}}<img src="/media/{{.ID}}/file" alt="" loading="lazy">{{else if eq .Kind "sound"}}{{icon "music"}}{{else if eq .Kind "video"}}{{icon "film"}}{{else}}{{icon "file"}}{{end}}</span>
+        <div class="row-main">
+          <span class="row-title mono">{{.Name}}{{if gt .SizeBytes 20971520}} <span class="chip warn">{{icon "triangle-alert"}}over 20 MB for Discord messages</span>{{end}}</span>
+          <span class="row-sub">{{if .DurationMS}}{{clock .DurationMS}} · {{end}}{{if .Width}}{{.Width}} × {{.Height}} · {{end}}{{bytes .SizeBytes}} · {{with .UsedBy}}used by {{join . ", "}}{{else}}not used{{end}}</span>
+          {{if eq .Kind "sound"}}<audio controls preload="none" src="/media/{{.ID}}/file"></audio>{{end}}
+        </div>
+      </div>
+      <div class="btns">
+        {{if or (eq .Kind "sound") (eq .Kind "video")}}
+        <button type="button" class="ib" popovertarget="sheet-play-{{.ID}}" aria-label="Play {{.Name}} in a voice channel" data-tip="Play in a voice channel">{{icon "volume-2"}}<span class="lbl">Play</span></button>
+        {{end}}
+        <a class="ib" href="/media/{{.ID}}/file?download=1" aria-label="Download {{.Name}}" data-tip="Download">{{icon "download"}}<span class="lbl">Download</span></a>
+        <form method="post" action="/media/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$csrf}}">
+          <button type="submit" class="ib danger" aria-label="Delete {{.Name}}" data-tip="Delete"{{if .UsedBy}} disabled{{end}} data-confirm-click="Delete {{.Name}}?">{{icon "trash-2"}}<span class="lbl">Delete</span></button></form>
+      </div>
+    </li>
+    {{else}}
+    <li><span class="muted">{{if $d.Kind}}Nothing of this kind.{{else}}No files yet. Upload sounds to play them in voice channels and images or files to send them in messages.{{end}}</span></li>
+    {{end}}
+  </ul>
+</section>
+<p class="hint">Files in use by a task or message can only be deleted after they are removed there.</p>
+
+{{range $d.Items}}{{if or (eq .Kind "sound") (eq .Kind "video")}}
+<div popover id="sheet-play-{{.ID}}" class="sheet" aria-labelledby="sheet-play-{{.ID}}-title">
+  {{template "sheethead" (dict "ID" (print "sheet-play-" .ID) "Icon" "volume-2" "Title" "Play" "Name" .Name)}}
+  <div class="sheet-body">
+    <form method="post" action="/media/{{.ID}}/play" class="form">
+      <input type="hidden" name="csrf" value="{{$csrf}}">
+      <input type="hidden" name="next" value="/media">
+      {{if $d.Voice}}
+      <label class="field"><span>Voice channel</span>
+        <select name="channel">{{range $d.Voice}}<optgroup label="{{.Guild.Name}}">{{range .Voice}}<option value="{{.ID}}">{{.Name}}{{with .InVoice}} · {{len .}} connected{{end}}</option>{{end}}</optgroup>{{end}}</select>
+      </label>
+      <label class="switch-row"><span>Leave when finished<small>Off keeps the bot in the channel.</small></span><input type="checkbox" class="switch" name="leave" checked></label>
+      <div class="btns"><button type="submit" class="ib primary with-label">{{icon "play"}}<span class="lbl">Play now</span></button></div>
+      {{else}}
+      <p>No voice channel the bot can use. Check the <a href="/servers">servers</a>.</p>
+      {{end}}
+    </form>
+  </div>
+</div>
+{{end}}{{end}}
+{{end}}

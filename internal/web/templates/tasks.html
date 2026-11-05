@@ -1,0 +1,54 @@
+{{define "content"}}
+{{$d := .Data}}{{$csrf := .Session.CSRFToken}}
+<div class="page-head">
+  <div><span class="eyebrow">Automation</span><h1>Tasks</h1></div>
+  <div class="btns"><a class="ib primary with-label" href="/tasks/new">{{icon "plus"}}<span class="lbl">New task</span></a></div>
+</div>
+
+<form class="search" method="get" action="/tasks">
+  {{with $d.Filter}}<input type="hidden" name="filter" value="{{.}}">{{end}}
+  <input type="search" name="q" value="{{$d.Query}}" placeholder="Search tasks" aria-label="Search tasks">
+  <button type="submit" class="ib" aria-label="Search" data-tip="Search">{{icon "search"}}</button>
+</form>
+<div class="pills">
+  <a href="/tasks?q={{$d.Query}}"{{if not $d.Filter}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
+  <a href="/tasks?filter=active&amp;q={{$d.Query}}"{{if eq $d.Filter "active"}} aria-current="page"{{end}}>Active {{index $d.Counts "active"}}</a>
+  <a href="/tasks?filter=paused&amp;q={{$d.Query}}"{{if eq $d.Filter "paused"}} aria-current="page"{{end}}>Paused {{index $d.Counts "paused"}}</a>
+  <a href="/tasks?filter=manual&amp;q={{$d.Query}}"{{if eq $d.Filter "manual"}} aria-current="page"{{end}}>Manual only {{index $d.Counts "manual"}}</a>
+</div>
+
+<section class="card">
+  <ul class="list">
+    {{range $d.Rows}}{{$t := .Task}}
+    <li>
+      <div class="row-main">
+        <div class="row-title"><a href="/tasks/{{$t.ID}}">{{$t.Name}}</a>
+          {{if $t.Enabled}}{{if eq $t.Trigger.Kind "manual"}}<span class="chip">manual only</span>{{else}}<span class="chip ok">active</span>{{end}}{{else if $t.PausedReason}}<span class="chip danger">{{icon "circle-x"}}paused after error</span>{{else}}<span class="chip">paused</span>{{end}}</div>
+        <div class="meta">
+          {{if ne $t.Trigger.Kind "manual"}}<span class="chip">{{icon "clock"}}{{$t.Trigger.Summary}}</span>{{end}}
+          <span class="chip">{{if $t.UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}{{.Guild}}</span>
+        </div>
+        <div class="row-sub">{{.What}}{{with .Next}} · next {{when .}}{{end}}{{with .Last}} · last run {{when .StartedAt}} {{template "runchip" .}}{{else}} · never ran{{end}}</div>
+        {{with $t.PausedReason}}<div class="callout danger">{{icon "circle-x"}}<span>{{.}} Fix it and save the task, or resume it.</span></div>{{end}}
+      </div>
+      <div class="btns">
+        <form method="post" action="/tasks/{{$t.ID}}/run"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
+          <button type="submit" class="ib" aria-label="Run {{$t.Name}} now" data-tip="Run now">{{icon "play"}}<span class="lbl">Run now</span></button></form>
+        {{if ne $t.Trigger.Kind "manual"}}
+        {{if $t.Enabled}}
+        <form method="post" action="/tasks/{{$t.ID}}/pause"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
+          <button type="submit" class="ib" aria-label="Pause {{$t.Name}}" data-tip="Pause">{{icon "pause"}}<span class="lbl">Pause</span></button></form>
+        {{else}}
+        <form method="post" action="/tasks/{{$t.ID}}/resume"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
+          <button type="submit" class="ib" aria-label="Resume {{$t.Name}}" data-tip="Resume">{{icon "clock"}}<span class="lbl">Resume</span></button></form>
+        {{end}}{{end}}
+        <a class="ib" href="/tasks/{{$t.ID}}" aria-label="Edit {{$t.Name}}" data-tip="Edit">{{icon "pencil"}}<span class="lbl">Edit</span></a>
+      </div>
+    </li>
+    {{else}}
+    <li><span class="muted">{{if or $d.Filter $d.Query}}No tasks match.{{else}}No tasks yet. A task joins a voice channel, plays sounds or sends messages, on a schedule or when you start it.{{end}}</span></li>
+    {{end}}
+  </ul>
+</section>
+<p class="hint">Times are in each task's timezone. Runs that fall into a restart of the app are not repeated.</p>
+{{end}}

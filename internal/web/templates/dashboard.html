@@ -1,0 +1,44 @@
+{{define "content"}}
+{{$d := .Data}}
+<div class="page-head">
+  <div><span class="eyebrow">Overview</span><h1>Dashboard</h1></div>
+  <div class="btns"><a class="ib with-label" href="/tasks/new">{{icon "plus"}}<span class="lbl">New task</span></a></div>
+</div>
+
+<div class="tiles" data-live="tiles">
+  <div class="tile"><span class="k">{{icon "activity"}}Gateway</span>
+    {{if .Bot.Ready}}<span class="v">Connected</span><span class="s">{{.Bot.Latency.Milliseconds}} ms latency · up {{dur (.Bot.Since | since)}}</span>
+    {{else if .Bot.Connected}}<span class="v">Connecting</span><span class="s">Waiting for Discord</span>
+    {{else}}<span class="v">Offline</span><span class="s">See the notice above</span>{{end}}
+  </div>
+  <a class="tile" href="/servers"><span class="k">{{icon "server"}}Servers</span><span class="v">{{$d.Servers}}</span><span class="s">{{$d.Members}} members cached</span><span class="go" aria-hidden="true">{{icon "chevron-right"}}</span></a>
+  <a class="tile" href="/tasks"><span class="k">{{icon "calendar"}}Tasks</span><span class="v">{{$d.Active}} active</span><span class="s">{{$d.Paused}} paused</span><span class="go" aria-hidden="true">{{icon "chevron-right"}}</span></a>
+  <div class="tile"><span class="k">{{icon "clock"}}Next run</span>
+    {{with $d.Next}}<span class="v">{{when .At}}</span><span class="s">{{.Task.Name}} · {{until .At}}</span>{{else}}<span class="v">none</span><span class="s">in the next 24 hours</span>{{end}}
+  </div>
+  <div class="tile"><span class="k">{{icon "triangle-alert"}}Failed, 24 h</span><span class="v">{{$d.Failed24h}}</span><span class="s">of {{plural $d.Runs24h "run" "runs"}}</span></div>
+</div>
+
+<div class="stack" data-live="playing">
+{{range $d.Playing}}{{template "playing" .}}{{end}}
+</div>
+
+<div class="cols2">
+  <section class="card">
+    <div class="sec-head"><h2>Next 24 hours</h2><span class="chip">{{tz}}</span></div>
+    <ul class="list">
+      {{range $d.Upcoming}}
+      <li><div class="row-main"><div class="row-title"><span class="when">{{when .At}}</span><a href="/tasks/{{.Task.ID}}">{{.Task.Name}}</a></div><div class="row-sub">{{.What}}</div></div><span class="chip">{{if .Task.UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}{{.Guild}}</span></li>
+      {{else}}
+      <li><span class="muted">Nothing scheduled. <a href="/tasks/new">Create a task</a>.</span></li>
+      {{end}}
+    </ul>
+  </section>
+  <section class="card" data-live="runs">
+    <div class="sec-head"><h2>Recent runs</h2>{{if .Session.IsAdmin}}<a class="small" href="/admin/audit">Audit log</a>{{end}}</div>
+    <ul class="list">
+      {{range $d.Runs}}{{template "runrow" (dict "R" . "ShowTitle" true)}}{{else}}<li><span class="muted">No runs yet.</span></li>{{end}}
+    </ul>
+  </section>
+</div>
+{{end}}

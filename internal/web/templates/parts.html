@@ -1,0 +1,64 @@
+{{define "navlinks"}}
+<a href="/"{{if eq .Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Dashboard</span></a>
+<a href="/servers"{{if eq .Nav "servers"}} aria-current="page"{{end}}>{{icon "server"}}<span>Servers</span></a>
+<a href="/tasks"{{if eq .Nav "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span>Tasks</span></a>
+<a href="/messages"{{if eq .Nav "messages"}} aria-current="page"{{end}}>{{icon "message-square"}}<span>Messages</span></a>
+<a href="/media"{{if eq .Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>
+{{if .Session.IsAdmin}}<a href="/admin"{{if eq .Nav "admin"}} aria-current="page"{{end}}>{{icon "shield"}}<span>Admin</span></a>{{end}}
+{{end}}
+
+{{define "sheethead"}}
+<div class="sheet-head">
+  {{icon .Icon}}
+  <h2 id="{{.ID}}-title">{{.Title}}{{with .Name}} <span class="mono">{{.}}</span>{{end}}</h2>
+  <button type="button" class="ib quiet" popovertarget="{{.ID}}" popovertargetaction="hide" aria-label="Close" data-tip="Close">{{icon "x"}}<span class="lbl">Close</span></button>
+</div>
+{{end}}
+
+{{define "copybox"}}
+<div class="url"><code>{{.Text}}</code><button type="button" class="ib quiet copy" data-copy="{{.Text}}" aria-label="{{.Label}}" data-tip="{{.Label}}" hidden>{{icon "copy"}}<span class="lbl">Copy</span></button></div>
+{{end}}
+
+{{define "confirmfield"}}
+<label class="field"><span class="small">Type <span class="mono">{{.}}</span> to confirm</span>
+  <input type="text" name="confirm" class="mono" required data-confirm="{{.}}" autocomplete="off" spellcheck="false">
+</label>
+{{end}}
+
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.Session.CSRFToken}}">{{end}}
+
+{{define "runchip"}}{{if eq .Status "done"}}<span class="chip ok">{{icon "circle-check"}}done</span>{{else if eq .Status "failed"}}<span class="chip danger">{{icon "circle-x"}}failed</span>{{else if eq .Status "skipped"}}<span class="chip warn">skipped</span>{{else}}<span class="chip accent">running</span>{{end}}{{end}}
+
+{{define "runrow"}}
+<li><div class="row-main">
+    <div class="row-title"><span class="when">{{when .R.StartedAt}}</span>{{if .ShowTitle}}{{if .R.TaskID}}<a href="/tasks/{{.R.TaskID}}">{{.R.Title}}</a>{{else}}{{.R.Title}}{{end}}{{end}}</div>
+    <div class="row-sub">{{if .R.Error}}{{with .R.FailedStep}}Step {{.}}: {{end}}{{.R.Error}}{{else}}{{if eq .R.Status "running"}}running for {{dur .R.Duration}}{{else}}{{dur .R.Duration}}{{end}} · {{if eq .R.Source "schedule"}}schedule{{else}}run by {{.R.Actor}}{{end}}{{end}}</div>
+  </div>
+  {{template "runchip" .R}}
+</li>
+{{end}}
+
+{{define "playing"}}
+{{$p := .P}}
+<div class="job">
+  <div class="job-top">
+    <strong class="with-icon">{{icon "music"}}<span>Playing <span class="mono">{{$p.Name}}</span></span></strong>
+    <span class="live">Live</span>
+  </div>
+  {{if $p.Duration}}<progress max="{{ms $p.Duration}}" value="{{ms $p.Elapsed}}" aria-label="Playback position"></progress>{{end}}
+  <div class="job-top">
+    <span class="small">{{clock (ms $p.Elapsed)}}{{if $p.Duration}} of {{clock (ms $p.Duration)}}{{end}} · <span class="ch">{{icon "volume-2"}}{{$p.Channel}}</span>{{with .Guild}} in {{.}}{{end}}{{with $p.By}} · {{.}}{{end}}</span>
+    <form method="post" action="/servers/{{$p.GuildID}}/stop">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="next" value="{{.Next}}">
+      <button type="submit" class="ib danger with-label">{{icon "square"}}<span class="lbl">Stop</span></button>
+    </form>
+  </div>
+</div>
+{{end}}
+
+{{define "memberpick"}}
+<span class="picker {{.Class}}">
+  <input type="text" name="{{.Name}}" value="{{.Value}}" placeholder="Name or @username" aria-label="{{.Label}}" autocomplete="off" spellcheck="false" data-members="{{.Guild}}">
+</span>
+{{end}}
