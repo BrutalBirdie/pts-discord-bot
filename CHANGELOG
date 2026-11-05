@@ -1,0 +1,9 @@
+[0.3.0]
+* Web UI with Cloudron login, n8n is no longer needed
+* Tasks on a schedule or started by hand: join voice, play sounds, send messages and direct messages, wait, leave
+* Saved messages with embeds and files, media library, run history and audit log
+* Sound files from /app/data/sounds move into the media library
+* The HTTP API (POST /play) is removed
+
+[0.2.0]
+* Play sound files in a Discord voice channel over an HTTP API

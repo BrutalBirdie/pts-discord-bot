@@ -1,55 +1,34 @@
 # pts-discord-bot
 
-Cloudron app with a Discord bot that joins a voice channel and plays a sound file when n8n calls its HTTP API.
+[![release](https://github.com/BrutalBirdie/pts-discord-bot/actions/workflows/release.yml/badge.svg)](https://github.com/BrutalBirdie/pts-discord-bot/actions/workflows/release.yml)
+
+Cloudron app with a Discord bot and a web UI to control it. Sign in with your Cloudron account.
+
+* Tasks on a schedule (daily, weekly, once, cron) or on demand: join a voice channel, play sounds, send messages and direct messages, wait, leave
+* Saved messages with embeds, images and files, with a preview
+* Media library for sounds, images, videos and files
+* Servers and channels the bot sees, with the bot's missing permissions
+* Member search when picking who gets a direct message, whose voice channel to join, or whom to mention
+* Run history, failure posts to a channel, audit log
+
+![Dashboard](screenshots/dashboard.png)
 
 ## Install
 
-```sh
-cloudron install --location voicebot
-cloudron env set --app voicebot DISCORD_TOKEN=<bot token>
-cloudron exec --app voicebot -- grep API_TOKEN /app/data/env.sh
-```
+In Cloudron, open 'Add custom app' and enter `https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/CloudronVersions.json`.
 
-Other settings live in `/app/data/env.sh` (File Manager in the dashboard). Restart the app after editing it.
+1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications). Under **Bot**, copy the token and switch on **Server Members Intent**.
+2. Open `/app/data/env.sh` in the File Manager of the app. Set `DISCORD_TOKEN`, and `BOT_ADMINS` or `BOT_ADMIN_GROUP`. Restart the app.
+3. Sign in, open **Servers** and add the bot to your server with the invite link.
 
-Any format ffmpeg can read works (`.ogg`, `.mp3`, `.wav`, ...).
+Every Cloudron user with access to the app can use it. Only admins see the Admin page.
 
-## API
+Changes per version are in the [releases](https://github.com/BrutalBirdie/pts-discord-bot/releases).
 
-All endpoints except `/healthz` need `Authorization: Bearer <API_TOKEN>`.
+## Upgrading from 0.2
 
-| Method | Path | |
-|---|---|---|
-| `POST` | `/play` | Play a sound, see below |
-| `GET` | `/sounds` | List files in `/app/data/sounds` |
-| `GET` | `/healthz` | |
+Sound files in `/app/data/sounds` move into the media library on the first start. The HTTP API (`POST /play`) and the n8n workflow are gone: recreate the schedule as a task. The old Adhan workflow is a daily task with the times `05:00 11:50 14:00 16:35 18:15`, timezone `Europe/Berlin`, and the steps Join voice channel, Play sound, Leave voice channel.
 
-`/play` accepts the sound in three ways, picked by `Content-Type`:
+## Discord permissions
 
-| Content-Type | Sound | IDs |
-|---|---|---|
-| any audio or `application/octet-stream` | request body | query `?channel_id=...&guild_id=...` |
-| `multipart/form-data` | file field `file` | form fields `channel_id`, `guild_id` |
-| `application/json` | `"file"`: name in `/app/data/sounds` | `"channel_id"`, `"guild_id"` as strings |
-
-`channel_id` falls back to `DEFAULT_CHANNEL_ID`; the guild is looked up from the channel. Uploads are limited to `MAX_UPLOAD_MB` (default 50). `/play` returns after playback has finished, `409` if the bot is already playing in that guild.
-
-```sh
-curl -X POST "https://voicebot.example.com/play?channel_id=475645920659243008" \
-  -H "Authorization: Bearer $API_TOKEN" \
-  -H "Content-Type: audio/ogg" \
-  --data-binary @allah_short.ogg
-```
-
-## n8n
-
-1. Import `n8n/adhan-voice.workflow.json` and point the `Read sound file` node at the file on the n8n side.
-2. Create a **Header Auth** credential: name `Authorization`, value `Bearer <API_TOKEN>`, and select it in the HTTP Request node.
-3. Set the node URL to `https://voicebot.<your domain>/play`.
-4. Click **Execute workflow** to test via the `Test now` trigger, then activate the workflow.
-
-The schedule runs in `Europe/Berlin` (workflow setting) at 05:00, 11:50, 14:00, 16:35 and 18:15.
-
-## Discord bot permissions
-
-The bot needs **View Channel**, **Connect** and **Speak** on the voice channel.
+The bot needs View Channel, Send Messages, Embed Links and Attach Files in text channels, and View Channel, Connect and Speak in voice channels. The invite link asks for all of them.
