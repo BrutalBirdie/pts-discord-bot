@@ -5,7 +5,7 @@ import "testing"
 func TestCheckToken(t *testing.T) {
 	for token, ok := range map[string]bool{
 		"first.second.third": true,
-		"4fc9a0d1e2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d":     false,
+		"4fc9a0d1e2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d": false,
 		"Bot MTIz.Ga.abc": false,
 	} {
 		if got := checkToken(token) == ""; got != ok {
