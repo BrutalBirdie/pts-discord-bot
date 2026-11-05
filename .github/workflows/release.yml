@@ -1,0 +1,121 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/brutalbirdie/pts-discord-bot
+  TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+
+jobs:
+  release:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TAG || github.ref }}
+
+      - name: Check tag matches manifest version
+        if: env.TAG != ''
+        run: |
+          version="${TAG}"
+          manifest_version=$(yq -p json -oy .version CloudronManifest.json)
+          if [[ "${version}" != "${manifest_version}" ]]; then
+              echo "tag ${version} does not match CloudronManifest version ${manifest_version}"
+              exit 1
+          fi
+          if [[ "$(yq -p json -oy ".versions | has(\"${version}\")" CloudronVersions.json)" == "true" ]]; then
+              echo "${version} is already in CloudronVersions.json"
+              exit 1
+          fi
+
+      - name: Extract changelog entry
+        if: env.TAG != ''
+        run: |
+          version="${TAG}"
+          awk -v entry="[${version}]" '$0 == entry { found=1; next } /^\[/ { found=0 } found && NF' CHANGELOG > changelog.md
+          if [[ ! -s changelog.md ]]; then
+              echo "no CHANGELOG entry for ${version}"
+              exit 1
+          fi
+          cat changelog.md
+
+      - name: End-to-end test
+        env:
+          ARTIFACTS: ${{ runner.temp }}/e2e
+        run: test/e2e/run.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: e2e
+          path: ${{ runner.temp }}/e2e
+          if-no-files-found: ignore
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        if: env.TAG != ''
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Push image
+        if: env.TAG != ''
+        run: |
+          docker tag ptsbot:e2e "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:${TAG}"
+          docker logout ghcr.io
+          # Cloudron servers pull anonymously, a private package would break installs
+          if ! docker manifest inspect "${IMAGE}:${TAG}" >/dev/null; then
+              echo "${IMAGE} is not public, change its visibility in the package settings and re-run this job"
+              exit 1
+          fi
+
+      - name: Add version to CloudronVersions.json
+        if: env.TAG != ''
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          npm i -g cloudron@9.0.3
+          cloudron versions add --state published --image "${IMAGE}:${TAG}"
+          cloudron versions verify
+          cp CloudronVersions.json "${RUNNER_TEMP}/"
+          git checkout CloudronVersions.json
+          git switch "${DEFAULT_BRANCH}"
+          if ! git diff --quiet "${TAG}" "${DEFAULT_BRANCH}" -- CloudronVersions.json; then
+              echo "CloudronVersions.json on ${DEFAULT_BRANCH} changed since ${TAG}"
+              exit 1
+          fi
+          cp "${RUNNER_TEMP}/CloudronVersions.json" .
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CloudronVersions.json
+          git commit -m "Publish ${TAG}" --trailer "Co-authored-by: BrutalBirdie <20840012+BrutalBirdie@users.noreply.github.com>"
+          # pushes with GITHUB_TOKEN do not start workflows - https://docs.github.com/en/actions/using-workflows/triggering-a-workflow#triggering-a-workflow-from-a-workflow
+          git push origin "${DEFAULT_BRANCH}"
+
+      - name: Create release
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+              cat changelog.md
+              echo
+              echo "Docker image: \`${IMAGE}:${TAG}\`"
+          } > release-notes.md
+          gh release create "${TAG}" --verify-tag --title "${TAG}" --notes-file release-notes.md
