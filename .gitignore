@@ -1,4 +1,4 @@
 .env
 sounds/
-allah_short.mp3
-allah_short.ogg
+*.mp3
+*.ogg
