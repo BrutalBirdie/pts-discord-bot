@@ -165,6 +165,26 @@ func (s *Server) leaveVoice(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, safeNext(r.PostForm.Get("next"), "/servers/"+id), "left")
 }
 
+func (s *Server) joinVoice(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.guildID(w, r)
+	if !ok {
+		return
+	}
+	channelID := r.PostForm.Get("channel")
+	ch, chGuild, ok := s.bot.Channel(channelID)
+	if !ok || !ch.Voice || chGuild != id {
+		s.fail(w, r, http.StatusBadRequest, "Pick a voice channel.")
+		return
+	}
+	if !ch.Usable {
+		s.fail(w, r, http.StatusBadRequest, ch.Problem)
+		return
+	}
+	s.run.JoinNow(id, channelID, sessionFrom(r).Username)
+	s.audit(r, "voice.join", s.bot.GuildName(id), ch.Name)
+	redirect(w, r, "/servers/"+id, "joining")
+}
+
 // playInChannel plays a file from the media library in a voice channel.
 func (s *Server) playInChannel(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.guildID(w, r)

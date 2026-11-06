@@ -1,3 +1,13 @@
+[0.4.0]
+* Tasks can start on Discord events: a member joins or leaves a voice channel, a new member joins, a message contains a keyword
+* Event tasks can be limited to specific members
+* Steps can use the member who started the run: join their voice channel, send them a direct message, {member} in texts
+* Slash commands /play, /task, /stop and /leave
+* Tags for sounds, Play steps and /play can pick a random sound with a tag
+* Add media from a link
+* Join button for voice channels on the server page
+* Runs missed while the app was down show up as skipped in the run history
+
 [0.3.0]
 * Web UI with Cloudron login, n8n is no longer needed
 * Tasks on a schedule or started by hand: join voice, play sounds, send messages and direct messages, wait, leave

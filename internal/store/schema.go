@@ -85,4 +85,8 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 CREATE INDEX IF NOT EXISTS runs_task ON runs (task_id, id DESC);
 CREATE INDEX IF NOT EXISTS runs_started ON runs (started_at DESC);
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS groups text[] NOT NULL DEFAULT '{}';`
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS groups text[] NOT NULL DEFAULT '{}';
+ALTER TABLE media ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slash boolean NOT NULL DEFAULT false;
+ALTER TABLE runs DROP CONSTRAINT IF EXISTS runs_source_check;
+ALTER TABLE runs ADD CONSTRAINT runs_source_check CHECK (source IN ('schedule', 'manual', 'event', 'discord'));`

@@ -18,6 +18,7 @@ import (
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/access"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
+	"github.com/BrutalBirdie/pts-discord-bot/internal/commands"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/media"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/runner"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/store"
@@ -83,19 +84,20 @@ func run(log *slog.Logger) error {
 	b := bot.New(bot.Config{
 		Token:         os.Getenv("DISCORD_TOKEN"),
 		MembersIntent: os.Getenv("BOT_MEMBERS_INTENT") != "false",
+		MessageIntent: os.Getenv("BOT_MESSAGE_CONTENT_INTENT") != "false",
 		Voice:         []voice.ManagerConfigOpt{voice.WithDaveSessionCreateFunc(golibdave.NewSession)},
 		Logger:        log,
 	})
+	rn := runner.New(st, b, dir, log)
+	if err := rn.Start(ctx); err != nil {
+		return err
+	}
+	b.SetHandler(commands.New(st, b, rn, log))
 	botDone := make(chan struct{})
 	go func() {
 		b.Run(ctx)
 		close(botDone)
 	}()
-
-	rn := runner.New(st, b, dir, log)
-	if err := rn.Start(ctx); err != nil {
-		return err
-	}
 
 	srv, err := web.New(web.Config{
 		Origin:       os.Getenv("CLOUDRON_APP_ORIGIN"),

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,10 @@ type Runner struct {
 	mu      sync.Mutex
 	cron    *cron.Cron
 	entries map[int64]cron.EntryID
+	events  map[int64]tasks.Task // active tasks with an event trigger
+
+	coolMu   sync.Mutex
+	cooldown map[string]time.Time // task and member to the time the task may start again
 
 	locksMu sync.Mutex
 	locks   map[string]chan struct{}
@@ -43,6 +48,7 @@ type Runner struct {
 
 func New(st *store.Store, b *bot.Bot, dir media.Dir, log *slog.Logger) *Runner {
 	return &Runner{st: st, bot: b, media: dir, log: log, entries: map[int64]cron.EntryID{}, locks: map[string]chan struct{}{},
+		events: map[int64]tasks.Task{}, cooldown: map[string]time.Time{},
 		cron: cron.New(cron.WithLocation(time.UTC))}
 }
 
@@ -56,9 +62,11 @@ func (r *Runner) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	r.recordMissed(ctx, list)
 	for _, t := range list {
 		r.Schedule(t)
 	}
+	go r.heartbeat(ctx)
 	r.cron.Start()
 	go func() {
 		<-ctx.Done()
@@ -78,7 +86,12 @@ func (r *Runner) Schedule(t tasks.Task) {
 		r.cron.Remove(id)
 		delete(r.entries, t.ID)
 	}
+	delete(r.events, t.ID)
 	if !t.Enabled {
+		return
+	}
+	if t.Trigger.Kind == tasks.Event {
+		r.events[t.ID] = t
 		return
 	}
 	sched, err := t.Trigger.Schedule()
@@ -106,7 +119,83 @@ func (r *Runner) fire(taskID int64) {
 	}
 	r.wg.Add(1)
 	defer r.wg.Done()
-	r.execute(t, store.SourceSchedule, "")
+	r.execute(t, store.SourceSchedule, "", nil)
+}
+
+// heartbeat lets the next start find the runs missed while the app was down.
+func (r *Runner) heartbeat(ctx context.Context) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		if err := r.st.SetHeartbeat(ctx, time.Now()); err != nil && ctx.Err() == nil {
+			r.log.Error("writing heartbeat", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// recordMissed lists the scheduled runs between the last heartbeat and now as skipped.
+func (r *Runner) recordMissed(ctx context.Context, list []tasks.Task) {
+	last, err := r.st.Heartbeat(ctx)
+	if err != nil || last.IsZero() {
+		return
+	}
+	now := time.Now()
+	for _, t := range list {
+		if !t.Enabled {
+			continue
+		}
+		for _, at := range t.Trigger.Next(last, 50) {
+			if !at.Before(now) {
+				break
+			}
+			if err := r.st.AddMissedRun(ctx, t.ID, t.Name, t.GuildID, at); err != nil {
+				r.log.Error("recording missed run", "task", t.ID, "err", err)
+				return
+			}
+			r.log.Warn("run missed while the app was down", "task", t.Name, "at", at)
+		}
+	}
+}
+
+// OnEvent starts the active tasks whose event trigger matches. A task starts
+// once per member within its cooldown.
+func (r *Runner) OnEvent(ev bot.Event) {
+	r.mu.Lock()
+	var match []tasks.Task
+	for _, t := range r.events {
+		if t.GuildID == ev.GuildID && t.Trigger.Matches(ev.Type, ev.ChannelID, ev.UserID, ev.Content) {
+			match = append(match, t)
+		}
+	}
+	r.mu.Unlock()
+	now := time.Now()
+	for _, t := range match {
+		key := strconv.FormatInt(t.ID, 10) + ":" + ev.UserID
+		r.coolMu.Lock()
+		if until, ok := r.cooldown[key]; ok && now.Before(until) {
+			r.coolMu.Unlock()
+			continue
+		}
+		if len(r.cooldown) > 10000 {
+			for k, until := range r.cooldown {
+				if now.After(until) {
+					delete(r.cooldown, k)
+				}
+			}
+		}
+		r.cooldown[key] = now.Add(time.Duration(t.Trigger.Cooldown) * time.Second)
+		r.coolMu.Unlock()
+		r.wg.Add(1)
+		go func() {
+			defer r.wg.Done()
+			r.execute(t, store.SourceEvent, ev.UserName, &ev)
+		}()
+	}
 }
 
 // RunNow starts a task in the background.
@@ -114,23 +203,46 @@ func (r *Runner) RunNow(t tasks.Task, actor string) {
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
-		r.execute(t, store.SourceManual, actor)
+		r.execute(t, store.SourceManual, actor, nil)
+	}()
+}
+
+// RunFromDiscord starts a task from a slash command, ev is the member who used it.
+func (r *Runner) RunFromDiscord(t tasks.Task, ev bot.Event) {
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		r.execute(t, store.SourceDiscord, ev.UserName, &ev)
 	}()
 }
 
 // PlayNow joins a voice channel and plays a file in the background.
-func (r *Runner) PlayNow(guildID, channelID string, m store.Media, leave bool, actor string) {
-	steps := []tasks.Step{{Type: tasks.Join, ChannelID: channelID}, {Type: tasks.Play, MediaID: m.ID, Volume: 100}}
+// PlayTask is a task that plays a sound for a sound, or for a random sound with the tag.
+func PlayTask(guildID, channelID, title string, play tasks.Step, leave bool) tasks.Task {
+	play.Type = tasks.Play
+	if play.Volume == 0 {
+		play.Volume = 100
+	}
+	steps := []tasks.Step{{Type: tasks.Join, ChannelID: channelID}, play}
 	if leave {
 		steps = append(steps, tasks.Step{Type: tasks.Leave})
 	}
-	r.RunNow(tasks.Task{Name: "Play " + m.Name, GuildID: guildID, Busy: tasks.BusySkip, Steps: steps}, actor)
+	return tasks.Task{Name: title, GuildID: guildID, Busy: tasks.BusySkip, Steps: steps}
+}
+
+func (r *Runner) PlayNow(guildID, channelID string, m store.Media, leave bool, actor string) {
+	r.RunNow(PlayTask(guildID, channelID, "Play "+m.Name, tasks.Step{MediaID: m.ID}, leave), actor)
+}
+
+// JoinNow connects the bot to a voice channel in the background.
+func (r *Runner) JoinNow(guildID, channelID, actor string) {
+	r.RunNow(tasks.Task{Name: "Join voice channel", GuildID: guildID, Busy: tasks.BusySkip, Steps: []tasks.Step{{Type: tasks.Join, ChannelID: channelID}}}, actor)
 }
 
 // SendNow sends a saved message and waits for the result.
 func (r *Runner) SendNow(guildID, channelID string, messageID int64, actor string, title string) error {
 	t := tasks.Task{Name: title, GuildID: guildID, Steps: []tasks.Step{{Type: tasks.Message, ChannelID: channelID, MessageID: messageID}}}
-	return r.execute(t, store.SourceManual, actor)
+	return r.execute(t, store.SourceManual, actor, nil)
 }
 
 func (r *Runner) lock(guildID string) chan struct{} {
@@ -144,7 +256,7 @@ func (r *Runner) lock(guildID string) chan struct{} {
 	return l
 }
 
-func (r *Runner) execute(t tasks.Task, source, actor string) error {
+func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) error {
 	ctx := r.ctx
 	run := store.Run{Title: t.Name, GuildID: t.GuildID, Source: source, Actor: actor}
 	if t.ID != 0 {
@@ -185,7 +297,7 @@ func (r *Runner) execute(t tasks.Task, source, actor string) error {
 		settings = store.DefaultSettings
 	}
 	for i, s := range t.Steps {
-		if err := r.step(ctx, t, s, settings); err != nil {
+		if err := r.step(ctx, t, s, settings, ev); err != nil {
 			n := i + 1
 			msg := bot.Describe(err)
 			r.finish(log, runID, store.RunFailed, &n, msg)
@@ -239,7 +351,13 @@ func truncate(s string, n int) string {
 	return s
 }
 
-func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings store.Settings) error {
+func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings store.Settings, ev *bot.Event) error {
+	if s.ToTrigger {
+		if ev == nil || ev.UserID == "" {
+			return &bot.PermanentError{Msg: "The step uses the member who started the run, but this run was not started by a member."}
+		}
+		s.FollowUserID, s.UserID = ev.UserID, ev.UserID
+	}
 	guildID, ok := bot.ParseID(t.GuildID)
 	if !ok {
 		return &bot.PermanentError{Msg: "The task has no server."}
@@ -259,8 +377,13 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 		return r.bot.Join(ctx, guildID, channelID)
 
 	case tasks.Play:
-		m, err := r.st.Media(ctx, s.MediaID)
-		if errors.Is(err, store.ErrNotFound) {
+		var m store.Media
+		var err error
+		if s.Tag != "" {
+			if m, err = r.st.RandomSound(ctx, s.Tag); errors.Is(err, store.ErrNotFound) {
+				return &bot.PermanentError{Msg: "No sound has the tag " + s.Tag + "."}
+			}
+		} else if m, err = r.st.Media(ctx, s.MediaID); errors.Is(err, store.ErrNotFound) {
 			return &bot.PermanentError{Msg: "The sound was deleted from the media library."}
 		}
 		if err != nil {
@@ -300,6 +423,9 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 			loc = time.UTC
 		}
 		vars := messages.Vars{Now: time.Now().In(loc), Server: r.bot.GuildName(t.GuildID)}
+		if ev != nil {
+			vars.MemberID, vars.MemberName = ev.UserID, ev.UserName
+		}
 		if s.Type == tasks.Message {
 			vars.Channel = "#" + r.bot.ChannelName(s.ChannelID)
 		}

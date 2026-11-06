@@ -32,6 +32,8 @@ type Step struct {
 	ChannelID    string   `json:"channel_id,omitempty"`     // join, message
 	FollowUserID string   `json:"follow_user_id,omitempty"` // join: the voice channel this member is in
 	MediaID      int64    `json:"media_id,omitempty"`       // play
+	Tag          string   `json:"tag,omitempty"`            // play: a random sound with this tag instead of MediaID
+	ToTrigger    bool     `json:"to_trigger,omitempty"`     // join, dm: the member who started the run
 	Volume       int      `json:"volume,omitempty"`         // play, percent
 	UserID       string   `json:"user_id,omitempty"`        // dm
 	MessageID    int64    `json:"message_id,omitempty"`     // message, dm: a saved message
@@ -42,11 +44,11 @@ type Step struct {
 func (s Step) Validate() error {
 	switch s.Type {
 	case Join:
-		if s.ChannelID == "" && s.FollowUserID == "" {
+		if s.ChannelID == "" && s.FollowUserID == "" && !s.ToTrigger {
 			return errors.New("pick a voice channel")
 		}
 	case Play:
-		if s.MediaID == 0 {
+		if s.MediaID == 0 && s.Tag == "" {
 			return errors.New("pick a sound")
 		}
 		if s.Volume < 1 || s.Volume > MaxVolume {
@@ -56,7 +58,7 @@ func (s Step) Validate() error {
 		if s.Type == Message && s.ChannelID == "" {
 			return errors.New("pick a text channel")
 		}
-		if s.Type == DM && s.UserID == "" {
+		if s.Type == DM && s.UserID == "" && !s.ToTrigger {
 			return errors.New("pick a member")
 		}
 		if s.MessageID == 0 && strings.TrimSpace(s.Text) == "" {
@@ -102,6 +104,7 @@ type Task struct {
 	GuildID      string
 	Enabled      bool
 	Busy         string
+	Slash        bool // can be started with /task in Discord
 	Trigger      Trigger
 	Steps        []Step
 	PausedReason string // set when a run paused the task after a permanent error

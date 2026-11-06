@@ -371,3 +371,24 @@ h1, h2, h3, .row-title, .row-sub, .tile .v, .tile .s, .ch, .profile, .dhead, .sh
 .picker .suggestions li small { color: var(--muted); margin-left: 6px; }
 .step:not(:has(option[value=member]:checked)) .picker.follow { display: none; }
 html:not(.js) .js-only { display: none; }
+
+.sched:not(:has(input[name=kind][value=event]:checked)) .k-event { display: none; }
+.k-event:not(:has(select[name=event] option[value=message]:checked)) .ev-keyword { display: none; }
+.k-event:has(select[name=event] option[value=member_join]:checked) .ev-channel { display: none; }
+.k-event:not(:has(select[name=event] option[value=member_join]:checked)) .ev-members { display: none; }
+.tokens { position: relative; }
+.tokens .box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px; min-height: var(--tap); max-height: 148px; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm); cursor: text; }
+.tokens .box:focus-within { border-color: var(--accent); outline: 3px solid var(--focus); outline-offset: 2px; }
+.tokens .box input[type=search] { flex: 1 1 140px; width: auto; min-width: 120px; min-height: 32px; height: 32px; border: 0; background: none; padding: 0 6px; outline: none; }
+.tokens .box input::-webkit-search-cancel-button { display: none; }
+.tok { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; height: 32px; padding: 0 2px 0 4px; border-radius: 999px; background: var(--accent-soft); font-size: .9rem; }
+.tok .av { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-fg); font-size: .75rem; font-weight: 700; }
+.tok .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tok .un { color: var(--muted); }
+.tok button { flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+.tok button:hover { background: var(--surface); color: var(--fg); }
+.tok .i { width: 16px; height: 16px; }
+.tokens-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.tokens-foot .count { font-variant-numeric: tabular-nums; }
+.step:has(select.dm-to option[value=trigger]:checked) .picker.dm-member { display: none; }
+.step:has(option[value=trigger]:checked) .picker.follow { display: none; }

@@ -63,10 +63,70 @@
         list.className = 'suggestions';
         list.hidden = true;
         list.setAttribute('role', 'listbox');
-        input.after(list);
+        // token fields scroll, so the list goes outside the scrolling box
+        const tokens = input.closest('[data-tokens]');
+        if (tokens) tokens.append(list); else input.after(list);
         input.setAttribute('role', 'combobox');
         input.setAttribute('aria-expanded', 'false');
         let hits = [], active = -1, timer, seq = 0;
+
+        function picked() {
+            return Array.from(tokens.querySelectorAll('.tok input[type=hidden]'), (el) => el.value);
+        }
+        function tokensChanged() {
+            const n = tokens.querySelectorAll('.tok').length, max = Number(tokens.dataset.max);
+            input.hidden = n >= max;
+            const count = tokens.parentElement.querySelector('[data-count]');
+            if (count) count.textContent = n ? n + ' of ' + max : 'Any member';
+        }
+        function addToken(h) {
+            const tok = document.createElement('span');
+            tok.className = 'tok';
+            tok.title = h.label;
+            const av = document.createElement('span');
+            av.className = 'av';
+            av.setAttribute('aria-hidden', 'true');
+            av.textContent = (h.name.trim()[0] || '?').toUpperCase();
+            const nm = document.createElement('span');
+            nm.className = 'nm';
+            const un = document.createElement('span');
+            un.className = 'un';
+            un.textContent = '@' + h.username;
+            nm.append(h.name + ' ', un);
+            const hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = tokens.dataset.tokens;
+            hidden.value = h.id;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.setAttribute('aria-label', 'Remove ' + h.name);
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('class', 'i');
+            svg.setAttribute('aria-hidden', 'true');
+            const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+            use.setAttribute('href', '#i-x');
+            svg.append(use);
+            btn.append(svg);
+            tok.append(av, nm, hidden, btn);
+            input.before(tok);
+            input.value = '';
+            tokensChanged();
+            tokens.querySelector('.box').scrollTop = 1e6;
+            input.focus();
+        }
+        if (tokens) {
+            tokens.addEventListener('click', function (event) {
+                const btn = event.target.closest('.tok button');
+                if (btn) {
+                    event.preventDefault();
+                    btn.closest('.tok').remove();
+                    tokensChanged();
+                    input.focus();
+                } else if (event.target.classList.contains('box')) {
+                    input.focus();
+                }
+            });
+        }
 
         function close() {
             list.hidden = true;
@@ -93,7 +153,9 @@
         }
         function pick(h) {
             close();
-            if (input.dataset.insert) {
+            if (tokens) {
+                addToken(h);
+            } else if (input.dataset.insert) {
                 const area = input.form.elements[input.dataset.insert];
                 const mention = '<@' + h.id + '>';
                 const at = area.selectionStart ?? area.value.length;
@@ -114,13 +176,18 @@
                 const params = new URLSearchParams({ q, guild: input.dataset.members });
                 fetch('/members?' + params).then((r) => r.ok ? r.json() : []).then(function (data) {
                     if (mine !== seq) return;
-                    hits = data;
+                    hits = tokens ? data.filter((h) => !picked().includes(h.id)) : data;
                     active = hits.length ? 0 : -1;
                     show();
                 }).catch(() => {});
             }, 150);
         });
         input.addEventListener('keydown', function (event) {
+            if (tokens && event.key === 'Backspace' && input.value === '') {
+                const last = Array.from(tokens.querySelectorAll('.tok')).pop();
+                if (last) { last.remove(); tokensChanged(); }
+                return;
+            }
             if (list.hidden) return;
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                 event.preventDefault();

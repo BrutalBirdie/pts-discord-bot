@@ -141,9 +141,11 @@ func (m Message) Problems() []string {
 
 // Vars fill the placeholders when a message is sent.
 type Vars struct {
-	Now     time.Time
-	Channel string
-	Server  string
+	Now        time.Time
+	Channel    string
+	Server     string
+	MemberID   string // the member who started the run, for {member}
+	MemberName string
 }
 
 // Expand replaces {date}, {time}, {channel} and {server}.
@@ -156,10 +158,19 @@ func Expand(s string, v Vars) string {
 		"{time}", v.Now.Format("15:04"),
 		"{channel}", v.Channel,
 		"{server}", v.Server,
+		"{member}", mention(v.MemberID, v.MemberName),
+		"{member_name}", v.MemberName,
 	).Replace(s)
 }
 
-var Placeholders = []string{"{date}", "{time}", "{channel}", "{server}"}
+var Placeholders = []string{"{date}", "{time}", "{channel}", "{server}", "{member}", "{member_name}"}
+
+func mention(id, name string) string {
+	if id == "" {
+		return name
+	}
+	return "<@" + id + ">"
+}
 
 // MentionRe matches Discord user mentions like <@123> and <@!123>.
 var MentionRe = regexp.MustCompile(`<@!?([0-9]{15,21})>`)

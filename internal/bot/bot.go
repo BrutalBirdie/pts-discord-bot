@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/disgoorg/disgo"
@@ -31,6 +32,7 @@ const InvitePermissions = discord.PermissionViewChannel | discord.PermissionSend
 type Config struct {
 	Token         string
 	MembersIntent bool // GUILD_MEMBERS, privileged
+	MessageIntent bool // MESSAGE_CONTENT, privileged, for keyword triggers
 	Voice         []voice.ManagerConfigOpt
 	Logger        *slog.Logger
 }
@@ -42,6 +44,8 @@ type Bot struct {
 	mu          sync.RWMutex
 	client      *disgobot.Client
 	members     bool
+	messages    bool
+	handler     atomic.Pointer[Handler]
 	lastErr     string
 	connectedAt time.Time
 
@@ -50,7 +54,7 @@ type Bot struct {
 }
 
 func New(cfg Config) *Bot {
-	return &Bot{cfg: cfg, log: cfg.Logger, members: cfg.MembersIntent, playing: map[snowflake.ID]*Playing{}}
+	return &Bot{cfg: cfg, log: cfg.Logger, members: cfg.MembersIntent, messages: cfg.MessageIntent, playing: map[snowflake.ID]*Playing{}}
 }
 
 // Run keeps the gateway connected until ctx ends. When Discord refuses the
@@ -66,11 +70,11 @@ func (b *Bot) Run(ctx context.Context) {
 	}
 	for ctx.Err() == nil {
 		b.mu.RLock()
-		members := b.members
+		members, messages := b.members, b.messages
 		b.mu.RUnlock()
 
 		fatal := make(chan error, 1)
-		client, err := b.newClient(members, func(_ gateway.Gateway, err error, _ bool) {
+		client, err := b.newClient(members, messages, func(_ gateway.Gateway, err error, _ bool) {
 			select {
 			case fatal <- err:
 			default:
@@ -94,7 +98,7 @@ func (b *Bot) Run(ctx context.Context) {
 		b.mu.Lock()
 		b.client, b.lastErr, b.connectedAt = client, "", time.Now()
 		b.mu.Unlock()
-		b.log.Info("connected to discord", "members_intent", members)
+		b.log.Info("connected to discord", "members_intent", members, "message_content_intent", messages)
 
 		select {
 		case <-ctx.Done():
@@ -120,9 +124,15 @@ func (b *Bot) Run(ctx context.Context) {
 		}
 		switch code {
 		case gateway.CloseEventCodeDisallowedIntent.Code:
-			b.log.Error("discord refused the server members intent, connecting without it")
+			// drop the privileged intents one at a time, message content first
 			b.mu.Lock()
-			b.members = false
+			if b.messages {
+				b.log.Error("discord refused the message content intent, connecting without it")
+				b.messages = false
+			} else {
+				b.log.Error("discord refused the server members intent, connecting without it")
+				b.members = false
+			}
 			b.mu.Unlock()
 			continue
 		case gateway.CloseEventCodeAuthenticationFailed.Code:
@@ -148,13 +158,17 @@ func (b *Bot) setErr(msg string) {
 	b.mu.Unlock()
 }
 
-func (b *Bot) newClient(members bool, onClose gateway.CloseHandlerFunc) (*disgobot.Client, error) {
+func (b *Bot) newClient(members, messages bool, onClose gateway.CloseHandlerFunc) (*disgobot.Client, error) {
 	intents := []gateway.Intents{gateway.IntentGuilds, gateway.IntentGuildVoiceStates}
 	flags := []cache.Flags{cache.FlagGuilds, cache.FlagChannels, cache.FlagRoles, cache.FlagVoiceStates, cache.FlagMembers}
 	opts := []disgobot.ConfigOpt{
 		disgobot.WithLogger(b.log),
 		disgobot.WithCacheConfigOpts(cache.WithCaches(flags...)),
 		disgobot.WithVoiceManagerConfigOpts(b.cfg.Voice...),
+		disgobot.WithEventListeners(b.listeners()),
+	}
+	if messages {
+		intents = append(intents, gateway.IntentGuildMessages, gateway.IntentMessageContent)
 	}
 	if members {
 		intents = append(intents, gateway.IntentGuildMembers)
@@ -181,12 +195,13 @@ type Status struct {
 	User          string
 	ApplicationID string
 	MembersIntent bool
+	MessageIntent bool
 	Error         string
 }
 
 func (b *Bot) Status() Status {
 	b.mu.RLock()
-	c, st := b.client, Status{MembersIntent: b.members, Error: b.lastErr, Since: b.connectedAt}
+	c, st := b.client, Status{MembersIntent: b.members, MessageIntent: b.messages, Error: b.lastErr, Since: b.connectedAt}
 	b.mu.RUnlock()
 	if c == nil {
 		return st

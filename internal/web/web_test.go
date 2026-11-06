@@ -181,3 +181,63 @@ func TestWhen(t *testing.T) {
 		t.Errorf("clock: %q", got)
 	}
 }
+
+func TestParseEventTask(t *testing.T) {
+	form := url.Values{
+		"name": {"Greeting"}, "guild": {"1"}, "slash": {"on"}, "kind": {"event"}, "event": {"message"}, "event_channel": {"5"}, "keyword": {" adhan "},
+		"cooldown": {"60"}, "times": {"05:00"}, "steps": {"3"}, "ev_member": {" Amira (@amira) ", "", "Amira (@amira)", "Bilal"},
+		"s0.type": {"join"}, "s0.target": {"trigger"},
+		"s1.type": {"play"}, "s1.media": {"tag:greeting"}, "s1.volume": {"100"},
+		"s2.type": {"dm"}, "s2.to": {"trigger"}, "s2.user": {"Amira"}, "s2.message": {"0"}, "s2.text": {"Hi {member}"},
+	}
+	r := httptest.NewRequest("POST", "/tasks/new", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	_ = r.ParseForm()
+	task, bad := parseTask(r)
+	if len(bad) != 0 {
+		t.Fatalf("problems: %v", bad)
+	}
+	tr := task.Trigger
+	if !task.Slash || tr.Kind != tasks.Event || tr.Event != tasks.MessageIn || tr.ChannelID != "5" || tr.Keyword != "adhan" || tr.Cooldown != 60 || len(tr.Times) != 0 || strings.Join(tr.UserIDs, "|") != "Amira (@amira)|Bilal" {
+		t.Errorf("trigger: %+v slash=%v", tr, task.Slash)
+	}
+	if !task.Steps[0].ToTrigger || task.Steps[1].Tag != "greeting" || task.Steps[1].MediaID != 0 || !task.Steps[2].ToTrigger || task.Steps[2].UserID != "" {
+		t.Errorf("steps: %+v", task.Steps)
+	}
+	if p := task.Problems(); len(p) != 0 {
+		t.Errorf("problems: %v", p)
+	}
+	applyOp(&task, "evdel:0")
+	if strings.Join(task.Trigger.UserIDs, "|") != "Bilal" {
+		t.Errorf("evdel: %v", task.Trigger.UserIDs)
+	}
+}
+
+func TestParseTags(t *testing.T) {
+	got := ParseTags(" Greeting, funny   Sounds,greeting,, ")
+	if strings.Join(got, "|") != "funny sounds|greeting" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestEventEditorRenders(t *testing.T) {
+	s := testServer(t)
+	sess := &store.Session{Username: "ann", CSRFToken: "tok"}
+	task := tasks.Task{ID: 4, Name: "Greeting", GuildID: "1", Slash: true, Busy: tasks.BusyWait,
+		Trigger: tasks.Trigger{Kind: tasks.Event, Event: tasks.VoiceJoin, ChannelID: "2", Cooldown: 45, UserIDs: []string{"9"}},
+		Steps:   []tasks.Step{{Type: tasks.Join, ToTrigger: true}, {Type: tasks.Play, Tag: "greeting", Volume: 100}, {Type: tasks.DM, ToTrigger: true, Text: "Hi {member}"}}}
+	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Events: tasks.EventTypes, Tags: []string{"greeting"},
+		Voice: []bot.Channel{{ID: "2", Name: "lounge", Voice: true}}, Labels: map[string]string{}, EvMembers: []bot.Member{{ID: "9", Name: "amira", Username: "amira"}}, Page: 1, Pages: 1}
+	req := httptest.NewRequest("GET", "/tasks/4", nil)
+	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
+	rec := httptest.NewRecorder()
+	s.render(rec, req, http.StatusOK, "task", e)
+	body := rec.Body.String()
+	for _, want := range []string{`value="event" checked`, `<option value="voice_join" selected>A member joins a voice channel`, `<option value="2" selected>lounge`,
+		`name="cooldown" value="45"`, `<input type="hidden" name="ev_member" value="9">`, `value="evdel:0"`, `<span class="av" aria-hidden="true">A</span>`, "1 of 25", `name="slash" checked`, `<option value="trigger" selected>The channel of the member who started the run`,
+		`<option value="tag:greeting" selected>Random: greeting`, `<option value="trigger" selected>To the member who started the run`, "Runs when the event happens."} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+}

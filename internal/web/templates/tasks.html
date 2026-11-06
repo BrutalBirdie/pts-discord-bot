@@ -27,6 +27,7 @@
         <div class="meta">
           {{if ne $t.Trigger.Kind "manual"}}<span class="chip">{{icon "clock"}}{{$t.Trigger.Summary}}</span>{{end}}
           <span class="chip">{{if $t.UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}{{.Guild}}</span>
+          {{if $t.Slash}}<span class="chip accent">/task</span>{{end}}
         </div>
         <div class="row-sub">{{.What}}{{with .Next}} · next {{when .}}{{end}}{{with .Last}} · last run {{when .StartedAt}} {{template "runchip" .}}{{else}} · never ran{{end}}</div>
         {{with $t.PausedReason}}<div class="callout danger">{{icon "circle-x"}}<span>{{.}} Fix it and save the task, or resume it.</span></div>{{end}}
@@ -50,5 +51,5 @@
     {{end}}
   </ul>
 </section>
-<p class="hint">Times are in each task's timezone. Runs that fall into a restart of the app are not repeated.</p>
+<p class="hint">Times are in each task's timezone. Runs missed while the app was down are not repeated, they show up as skipped.</p>
 {{end}}

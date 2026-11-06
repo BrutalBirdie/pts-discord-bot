@@ -36,6 +36,8 @@
           <span class="row-sub">{{with .Category}}{{.}} · {{end}}{{if .Problem}}{{.Problem}}{{else if or .HasBot .InVoice}}{{if .HasBot}}Bot{{if .InVoice}} and {{end}}{{end}}{{with .InVoice}}{{join . ", "}}{{end}} connected{{else}}empty{{end}}</span></div>
         <div class="btns">
           {{if .Usable}}<button type="button" class="ib" popovertarget="sheet-play-{{.ID}}" aria-label="Play a sound in {{.Name}}" data-tip="Play a sound in {{.Name}}">{{icon "play"}}<span class="lbl">Play</span></button>
+          {{if not .HasBot}}<form method="post" action="/servers/{{$g.ID}}/join"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{.ID}}">
+            <button type="submit" class="ib" aria-label="Join {{.Name}}" data-tip="Join {{.Name}}">{{icon "log-in"}}<span class="lbl">Join</span></button></form>{{end}}
           {{else}}<span class="chip warn">no access</span>{{end}}
           <button type="button" class="ib quiet copy" data-copy="{{.ID}}" aria-label="Copy channel ID" data-tip="Copy channel ID" hidden>{{icon "copy"}}</button>
         </div>

@@ -12,6 +12,7 @@ import (
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/messages"
+	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
 )
 
 // displayLoc is the timezone of the settings, used for every time on the pages.
@@ -33,6 +34,12 @@ func loc() *time.Location {
 }
 
 var viewFuncs = template.FuncMap{
+	"initial": func(s string) string {
+		for _, r := range strings.TrimSpace(s) {
+			return strings.ToUpper(string(r))
+		}
+		return "?"
+	},
 	"icon": func(name string) template.HTML {
 		return template.HTML(`<svg class="i" aria-hidden="true"><use href="#i-` + template.HTMLEscapeString(name) + `"/></svg>`)
 	},
@@ -70,7 +77,9 @@ var viewFuncs = template.FuncMap{
 	"hasChannel": func(list []bot.Channel, id string) bool {
 		return slices.ContainsFunc(list, func(c bot.Channel) bool { return c.ID == id })
 	},
-	"hasID": func(list []int64, id int64) bool { return slices.Contains(list, id) },
+	"hasString":  func(list []string, v string) bool { return slices.Contains(list, v) },
+	"eventLabel": tasks.EventLabel,
+	"hasID":      func(list []int64, id int64) bool { return slices.Contains(list, id) },
 	"plural": func(n int, one, many string) string {
 		if n == 1 {
 			return "1 " + one

@@ -94,9 +94,18 @@ if [[ -n "${SCREENSHOTS:-}" ]]; then
     cp "${work}/shots/"*.png "${root}/screenshots/"
 fi
 
-echo "==> Restart keeps data"
-docker restart "${app}" >/dev/null
+echo "==> Restart keeps data, runs missed while stopped are recorded"
+docker stop "${app}" >/dev/null
+psql() { docker exec "${db}" psql -U bot -d bot -XAtc "$1"; }
+psql "INSERT INTO tasks (name, guild_id, trigger, steps, created_by, updated_by) VALUES
+  ('Every minute', '1', '{\"kind\":\"cron\",\"cron\":[\"* * * * *\"],\"timezone\":\"UTC\"}', '[{\"type\":\"leave\"}]', 'e2e', 'e2e'),
+  ('Greeting', '1', '{\"kind\":\"event\",\"event\":\"voice_join\",\"cooldown\":45,\"user_ids\":[\"333333333333333333\"],\"timezone\":\"UTC\"}', '[{\"type\":\"dm\",\"to_trigger\":true,\"text\":\"Hi {member}\"}]', 'e2e', 'e2e')" >/dev/null
+psql "UPDATE settings SET value = to_char((now() - interval '10 minutes') AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') WHERE key = 'heartbeat'" >/dev/null
+docker start "${app}" >/dev/null
 wait_healthy
+missed=$(psql "SELECT count(*) FROM runs r JOIN tasks t ON t.id = r.task_id WHERE t.name = 'Every minute' AND r.status = 'skipped'")
+expect "missed runs recorded" "^(9|10)$" "${missed}"
+expect "event tasks are not counted as missed" "^0$" "$(psql "SELECT count(*) FROM runs r JOIN tasks t ON t.id = r.task_id WHERE t.name = 'Greeting'")"
 browser persisted
 
 echo "==> Admin added to BOT_ADMINS applies to a running session"

@@ -20,9 +20,31 @@ const (
 	Once   TriggerKind = "once"
 	Cron   TriggerKind = "cron"
 	Manual TriggerKind = "manual"
+	Event  TriggerKind = "event"
 )
 
-var TriggerKinds = []TriggerKind{Daily, Weekly, Once, Cron, Manual}
+var TriggerKinds = []TriggerKind{Daily, Weekly, Once, Cron, Event, Manual}
+
+// Discord events a task can react to.
+const (
+	VoiceJoin  = "voice_join"
+	VoiceLeave = "voice_leave"
+	MemberJoin = "member_join"
+	MessageIn  = "message"
+)
+
+var EventTypes = []string{VoiceJoin, VoiceLeave, MemberJoin, MessageIn}
+
+func EventLabel(e string) string {
+	return map[string]string{VoiceJoin: "A member joins a voice channel", VoiceLeave: "A member leaves a voice channel",
+		MemberJoin: "A new member joins the server", MessageIn: "A message contains a keyword"}[e]
+}
+
+const (
+	DefaultCooldown = 30
+	MaxCooldown     = 86400
+	MaxEventMembers = 25
+)
 
 // OnceLayout is the format of an <input type="datetime-local">.
 const OnceLayout = "2006-01-02T15:04"
@@ -34,6 +56,12 @@ type Trigger struct {
 	OnceAt   string      `json:"once_at,omitempty"`  // OnceLayout in Timezone
 	Cron     []string    `json:"cron,omitempty"`     // standard 5 field expressions
 	Timezone string      `json:"timezone"`
+
+	Event     string   `json:"event,omitempty"`      // one of EventTypes
+	ChannelID string   `json:"channel_id,omitempty"` // event only in this channel, empty for all
+	Keyword   string   `json:"keyword,omitempty"`    // message events
+	UserIDs   []string `json:"user_ids,omitempty"`   // only these members start the task, empty for all
+	Cooldown  int      `json:"cooldown,omitempty"`   // seconds before the same member starts the task again
 }
 
 var WeekdayNames = []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
@@ -121,7 +149,7 @@ func (t Trigger) Schedule() (cron.Schedule, error) {
 		return nil, err
 	}
 	switch t.Kind {
-	case Manual:
+	case Manual, Event:
 		return nil, nil
 	case Once:
 		at, err := time.ParseInLocation(OnceLayout, t.OnceAt, loc)
@@ -155,8 +183,32 @@ func (t Trigger) Schedule() (cron.Schedule, error) {
 }
 
 func (t Trigger) Validate() error {
+	if t.Kind == Event {
+		switch {
+		case EventLabel(t.Event) == "":
+			return errors.New("pick an event")
+		case t.Event == MessageIn && strings.TrimSpace(t.Keyword) == "":
+			return errors.New("enter the keyword messages must contain")
+		case len(t.UserIDs) > MaxEventMembers:
+			return fmt.Errorf("pick at most %d members", MaxEventMembers)
+		case t.Cooldown < 0 || t.Cooldown > MaxCooldown:
+			return fmt.Errorf("the cooldown must be between 0 and %d seconds", MaxCooldown)
+		}
+		return nil
+	}
 	_, err := t.Schedule()
 	return err
+}
+
+// Matches reports whether an event starts a task with this trigger.
+func (t Trigger) Matches(event, channelID, userID, content string) bool {
+	if t.Kind != Event || t.Event != event || t.ChannelID != "" && t.ChannelID != channelID {
+		return false
+	}
+	if len(t.UserIDs) > 0 && !slices.Contains(t.UserIDs, userID) {
+		return false
+	}
+	return event != MessageIn || strings.Contains(strings.ToLower(content), strings.ToLower(strings.TrimSpace(t.Keyword)))
 }
 
 // Next returns up to n run times after from.
@@ -201,6 +253,21 @@ func (t Trigger) Summary() string {
 			return "Cron " + t.Cron[0]
 		}
 		return fmt.Sprintf("Cron %s and %d more", t.Cron[0], len(t.Cron)-1)
+	case Event:
+		var out string
+		if t.Event == MessageIn {
+			out = fmt.Sprintf("When a message contains %q", t.Keyword)
+		} else {
+			out = "When " + strings.ToLower(EventLabel(t.Event)[:1]) + EventLabel(t.Event)[1:]
+		}
+		switch len(t.UserIDs) {
+		case 0:
+		case 1:
+			out += ", only 1 member"
+		default:
+			out += fmt.Sprintf(", only %d members", len(t.UserIDs))
+		}
+		return out
 	}
 	return "Manual only"
 }

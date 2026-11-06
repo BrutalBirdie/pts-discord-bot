@@ -97,6 +97,18 @@ const steps = {
 
         await page.goto(BASE + '/media');
         check('media shows usage', (await text(page)).includes('used by message Friday reminder'));
+        await page.locator('[popovertarget^="sheet-edit-"]').first().click();
+        const editSheet = page.locator('[id^="sheet-edit-"]:popover-open');
+        await editSheet.locator('input[name=tags]').fill('Greeting, funny');
+        await editSheet.locator('button[type=submit]').click();
+        t = await text(page);
+        check('tags saved', t.includes('Saved.') && await page.locator('.list a.chip', { hasText: 'greeting' }).count() === 1);
+        await page.click('.pills a:has-text("greeting")');
+        check('tag filter', (await page.locator('main .list > li').count()) === 1);
+        await page.goto(BASE + '/media');
+        await page.fill('input[name=url]', 'http://127.0.0.1:8000/healthz');
+        await page.click('form[action="/media/url"] button[type=submit]');
+        check('link to the app itself refused', (await text(page)).includes('is not a public address'), (await text(page)).slice(0, 300));
 
         await page.goto(BASE + '/tasks/new');
         await page.fill('input[name=name]', 'Adhan');
@@ -219,6 +231,38 @@ const steps = {
         const t = await text(page);
         check('session survives restart', await page.locator('#sheet-account').count() === 1);
         check('media survive restart', t.includes('friday_card.png') && t.includes('beep.ogg'));
+        await page.goto(BASE + '/tasks');
+        await page.getByRole('link', { name: 'Every minute', exact: true }).click();
+        check('missed runs in the history', (await page.locator('[data-live=runs]').innerText()).includes('Missed, the app was not running.'));
+        await page.goto(BASE + '/tasks');
+        await page.getByRole('link', { name: 'Greeting', exact: true }).click();
+        check('event task in the editor', await page.locator('input[name=kind][value=event]').isChecked() && await page.inputValue('input[name=cooldown]') === '45'
+            && await page.locator('select[name="s0.to"]').inputValue() === 'trigger' && await page.locator('.picker.dm-member').isHidden());
+        check('event task summary', (await page.locator('main').innerText()).includes('Runs when the event happens.'));
+        const toks = () => page.locator('.tokens .tok input[type=hidden]').evaluateAll((els) => els.map((e) => e.value).join());
+        const count = () => page.locator('[data-count]').innerText();
+        check('member tokens rendered', await toks() === '333333333333333333' && await count() === '1 of 25');
+        await page.route('**/members?*', (route) => route.fulfill({ json: [
+            { id: '111111111111111111', label: 'Jane (@jane.doe)', name: 'Jane', username: 'jane.doe' },
+            { id: '333333333333333333', label: 'Old (@old)', name: 'Old', username: 'old' }] }));
+        const search = page.locator('.tokens input[type=search]');
+        await search.pressSequentially('j');
+        await page.locator('.tokens .suggestions li').first().waitFor();
+        check('picked members not suggested', await page.locator('.tokens .suggestions li').count() === 1);
+        await page.keyboard.press('Enter');
+        check('enter adds a token', await toks() === '333333333333333333,111111111111111111' && await count() === '2 of 25' && await search.inputValue() === '');
+        await page.keyboard.press('Backspace');
+        check('backspace removes the last token', await toks() === '333333333333333333');
+        await search.pressSequentially('j');
+        await page.locator('.tokens .suggestions li').first().waitFor();
+        await page.keyboard.press('Enter');
+        await page.locator('.tok button[aria-label="Remove 333333333333333333"]').click();
+        check('x removes a token', await toks() === '111111111111111111' && page.url().includes('/tasks/'));
+        await page.unroute('**/members?*');
+        await page.click('main .btns button[value=save]');
+        await page.goto(BASE + '/tasks');
+        await page.getByRole('link', { name: 'Greeting', exact: true }).click();
+        check('member tokens saved', await toks() === '111111111111111111', await toks());
     },
 };
 

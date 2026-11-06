@@ -25,10 +25,10 @@
     <label class="field"><span>Name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="100" required><span class="help">Only shown here and in task steps.</span></label>
     <label class="field"><span>Text <span class="counter" data-count="content" data-max="{{index $e.Limits "content"}}">{{$m.ContentChars}} / {{index $e.Limits "content"}}</span></span>
       <textarea name="content" rows="5" class="prose" data-preview="content">{{$m.Content}}</textarea>
-      <span class="help">Discord markdown works. Placeholders: <span class="mono">{date} {time} {server} {channel}</span>. A member mention is written as <span class="mono">&lt;@id&gt;</span>.</span>
+      <span class="help">Discord markdown works. Placeholders: <span class="mono">{date} {time} {server} {channel}</span>, and in runs started by a member <span class="mono">{member}</span> (a mention) and <span class="mono">{member_name}</span>. A member mention is written as <span class="mono">&lt;@id&gt;</span>.</span>
     </label>
     <div class="field js-only"><span>Mention a member</span>
-      <span class="picker"><input type="text" placeholder="Name or @username, inserts a mention into the text" aria-label="Mention a member" autocomplete="off" spellcheck="false" data-members="" data-insert="content"></span>
+      <span class="picker"><input type="search" placeholder="Search members to mention in the text" aria-label="Mention a member" autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other" data-members="" data-insert="content"></span>
     </div>
   </section>
 

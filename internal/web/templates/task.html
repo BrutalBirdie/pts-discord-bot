@@ -37,12 +37,13 @@
       </div>
     </div>
     <label class="switch-row"><span>Active<small>Off keeps the task but stops its schedule. Run now still works.</small></span><input type="checkbox" class="switch" name="enabled"{{if $t.Enabled}} checked{{end}}></label>
+    <label class="switch-row"><span>Can be started with /task in Discord<small>Members of this server can start it with the slash command. Who may use slash commands is set in the server's Integrations settings in Discord.</small></span><input type="checkbox" class="switch" name="slash"{{if $t.Slash}} checked{{end}}></label>
   </section>
 
   <section class="card form sched">
     <div class="sec-head"><h2 class="with-icon">{{icon "clock"}}When</h2></div>
     <div class="presets" role="radiogroup" aria-label="Schedule type">
-      {{range $e.Kinds}}<label><input type="radio" name="kind" value="{{.}}"{{if eq . $t.Trigger.Kind}} checked{{end}}>{{if eq . "daily"}}Daily{{else if eq . "weekly"}}Weekly{{else if eq . "once"}}Once{{else if eq . "cron"}}Cron{{else}}Manual only{{end}}</label>{{end}}
+      {{range $e.Kinds}}<label><input type="radio" name="kind" value="{{.}}"{{if eq . $t.Trigger.Kind}} checked{{end}}>{{if eq . "daily"}}Daily{{else if eq . "weekly"}}Weekly{{else if eq . "once"}}Once{{else if eq . "cron"}}Cron{{else if eq . "event"}}Discord event{{else}}Manual only{{end}}</label>{{end}}
     </div>
     <div class="field k-weekly"><span>Days</span>
       <div class="presets">{{range $i, $n := $e.Weekdays}}<label><input type="checkbox" name="weekday" value="{{$i}}"{{if hasInt $t.Trigger.Weekdays $i}} checked{{end}}>{{$n}}</label>{{end}}</div>
@@ -56,7 +57,33 @@
       <textarea name="cron" rows="4" spellcheck="false">{{$e.CronText}}</textarea>
       <span class="help">minute hour day-of-month month day-of-week, for example <span class="mono">*/15 9-17 * * 1-5</span>.</span>
     </label>
-    <p class="small muted k-manual">Runs only with Run now.</p>
+    <p class="small muted k-manual">Runs only with Run now{{if $t.Slash}} or /task{{end}}.</p>
+    <div class="form k-event">
+      <label class="field"><span>Event</span>
+        <select name="event">{{range $e.Events}}<option value="{{.}}"{{if eq . $t.Trigger.Event}} selected{{end}}>{{eventLabel .}}</option>{{end}}</select>
+      </label>
+      <label class="field ev-channel"><span>Only in channel</span>
+        <select name="event_channel"><option value="">Any channel</option>
+          {{if and $t.Trigger.ChannelID (not (or (hasChannel $e.Voice $t.Trigger.ChannelID) (hasChannel $e.Text $t.Trigger.ChannelID)))}}<option value="{{$t.Trigger.ChannelID}}" selected>Unknown channel {{$t.Trigger.ChannelID}}</option>{{end}}
+          <optgroup label="Voice channels">{{range $e.Voice}}<option value="{{.ID}}"{{if eq .ID $t.Trigger.ChannelID}} selected{{end}}>{{.Name}}</option>{{end}}</optgroup>
+          <optgroup label="Text channels">{{range $e.Text}}<option value="{{.ID}}"{{if eq .ID $t.Trigger.ChannelID}} selected{{end}}>#{{.Name}}</option>{{end}}</optgroup>
+        </select>
+      </label>
+      <label class="field ev-keyword"><span>Keyword</span><input type="text" name="keyword" value="{{$t.Trigger.Keyword}}" maxlength="100"><span class="help">Upper and lower case do not matter, the message only has to contain the keyword.</span></label>
+      {{if not .Bot.MessageIntent}}<div class="callout warn ev-keyword">{{icon "triangle-alert"}}<span>The bot cannot read messages: Discord refused the Message Content intent, or it is off in <span class="mono">/app/data/env.sh</span>. Switch on <strong>Message Content Intent</strong> under Bot in the Discord Developer Portal and restart the app.</span></div>{{end}}
+      {{if not .Bot.MembersIntent}}<div class="callout warn ev-members">{{icon "triangle-alert"}}<span>New members are only reported with the Server Members intent. Switch it on in the Discord Developer Portal and restart the app.</span></div>{{end}}
+      <div class="field"><span id="ev-members">Only these members</span>
+        <div class="tokens" data-tokens="ev_member" data-max="25">
+          <div class="box">
+            {{range $i, $m := $e.EvMembers}}<span class="tok" title="{{$m.Name}}{{with $m.Username}} (@{{.}}){{end}}"><span class="av" aria-hidden="true">{{initial $m.Name}}</span><span class="nm">{{$m.Name}}{{with $m.Username}} <span class="un">@{{.}}</span>{{end}}</span><input type="hidden" name="ev_member" value="{{$m.ID}}"><button type="submit" name="op" value="evdel:{{$i}}" aria-label="Remove {{$m.Name}}">{{icon "x"}}</button></span>{{end}}
+            <input type="search" name="ev_member" placeholder="Search members" aria-labelledby="ev-members" autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other" data-members="{{$t.GuildID}}"{{if ge (len $e.EvMembers) 25}} hidden{{end}}>
+          </div>
+        </div>
+        <div class="tokens-foot"><span class="help">Empty: any member starts the task.</span><span class="help count" data-count>{{with len $e.EvMembers}}{{.}} of 25{{else}}Any member{{end}}</span></div>
+      </div>
+      <label class="field"><span>Cooldown, seconds</span><input type="number" name="cooldown" value="{{if eq $t.Trigger.Kind "event"}}{{$t.Trigger.Cooldown}}{{else}}30{{end}}" min="0" max="86400"><span class="help">The same member starts the task at most once in this time. Bots never start tasks.</span></label>
+      <p class="hint">Steps can use the member who started the run: Join voice channel and Direct message have an option for it, and <span class="mono">{member}</span> mentions them in texts.</p>
+    </div>
     <div class="grid2">
       <label class="field k-timed"><span>Timezone</span>
         <input type="text" name="timezone" value="{{$t.Trigger.Timezone}}" list="timezones" spellcheck="false" autocomplete="off">
@@ -85,11 +112,14 @@
               {{if and $s.ChannelID (not (hasChannel $e.Voice $s.ChannelID))}}<option value="{{$s.ChannelID}}" selected>Unknown channel {{$s.ChannelID}}</option>{{end}}
               <optgroup label="Voice channels">{{range $e.Voice}}<option value="{{.ID}}"{{if eq .ID $s.ChannelID}} selected{{end}}>{{.Name}}{{with .Category}} · {{.}}{{end}}</option>{{end}}</optgroup>
               <option value="member"{{if $s.FollowUserID}} selected{{end}}>The channel a member is in</option>
+              <option value="trigger"{{if $s.ToTrigger}} selected{{end}}>The channel of the member who started the run</option>
             </select>
             {{template "memberpick" (dict "Name" (print $p "follow") "Value" (index $e.Labels $s.FollowUserID) "Guild" $e.Task.GuildID "Class" "follow" "Label" "Member to follow")}}
           {{else if eq $s.Type "play"}}
             <select name="{{$p}}media" aria-label="Sound">
-              {{if not $s.MediaID}}<option value="" selected>Pick a sound</option>{{end}}
+              {{if not (or $s.MediaID $s.Tag)}}<option value="" selected>Pick a sound</option>{{end}}
+              {{with $e.Tags}}<optgroup label="Random sound with the tag">{{range .}}<option value="tag:{{.}}"{{if eq . $s.Tag}} selected{{end}}>Random: {{.}}</option>{{end}}</optgroup>{{end}}
+              {{if and $s.Tag (not (hasString $e.Tags $s.Tag))}}<option value="tag:{{$s.Tag}}" selected>Random: {{$s.Tag}} (no sound has it)</option>{{end}}
               {{range $e.Sounds}}<option value="{{.ID}}"{{if eq .ID $s.MediaID}} selected{{end}}>{{.Name}}{{if .DurationMS}} · {{clock .DurationMS}}{{end}}</option>{{end}}
             </select>
             <label class="inline small"><span>Volume</span><input type="number" name="{{$p}}volume" value="{{$s.Volume}}" min="1" max="200" aria-label="Volume in percent"><span>%</span></label>
@@ -101,7 +131,8 @@
             </select>
             {{template "msgpick" (dict "P" $p "S" $s "E" $e)}}
           {{else if eq $s.Type "dm"}}
-            {{template "memberpick" (dict "Name" (print $p "user") "Value" (index $e.Labels $s.UserID) "Guild" $e.Task.GuildID "Class" "" "Label" "Member")}}
+            <select name="{{$p}}to" aria-label="Recipient" class="dm-to"><option value="member">To this member</option><option value="trigger"{{if $s.ToTrigger}} selected{{end}}>To the member who started the run</option></select>
+            {{template "memberpick" (dict "Name" (print $p "user") "Value" (index $e.Labels $s.UserID) "Guild" $e.Task.GuildID "Class" "dm-member" "Label" "Member")}}
             {{template "msgpick" (dict "P" $p "S" $s "E" $e)}}
           {{else if eq $s.Type "wait"}}
             <label class="inline small"><input type="number" name="{{$p}}seconds" value="{{$s.Seconds}}" min="1" max="3600" aria-label="Seconds"><span>seconds</span></label>
@@ -140,7 +171,7 @@
     <div class="sec-head"><h2>Next runs</h2><span class="chip">{{if $t.Trigger.Timezone}}{{$t.Trigger.Timezone}}{{else}}UTC{{end}}</span></div>
     <ul class="list">
       {{range $e.Next}}<li><span class="when">{{when .}}</span><span class="small muted">{{until .}}</span></li>
-      {{else}}<li><span class="muted small">{{if eq $t.Trigger.Kind "manual"}}Manual only.{{else}}None. Check the schedule.{{end}}</span></li>{{end}}
+      {{else}}<li><span class="muted small">{{if eq $t.Trigger.Kind "manual"}}Manual only.{{else if eq $t.Trigger.Kind "event"}}Runs when the event happens.{{else}}None. Check the schedule.{{end}}</span></li>{{end}}
     </ul>
     {{if not $t.Enabled}}<p class="small muted">The task is paused, these runs only happen when it is active.</p>{{end}}
     {{with $t.Trigger.CronLines}}<p class="hint mt">As cron: <span class="mono">{{join . " · "}}</span></p>{{end}}

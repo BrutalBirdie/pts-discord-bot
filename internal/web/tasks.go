@@ -134,6 +134,7 @@ type taskEditor struct {
 	Voice     []bot.Channel
 	Text      []bot.Channel
 	Labels    map[string]string // member picker text per user ID
+	EvMembers []bot.Member      // the members an event trigger is limited to
 	Sounds    []store.Media
 	Messages  []messages.Message
 	Next      []time.Time
@@ -147,6 +148,8 @@ type taskEditor struct {
 	StepTypes []tasks.StepType
 	Weekdays  []string
 	Kinds     []tasks.TriggerKind
+	Events    []string
+	Tags      []string
 }
 
 var commonTimezones = []string{"Europe/Berlin", "Europe/Vienna", "Europe/Zurich", "Europe/London", "Europe/Paris", "Europe/Istanbul",
@@ -157,7 +160,7 @@ const runsPerPage = 10
 func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, error) {
 	ctx := r.Context()
 	e := taskEditor{Task: t, New: isNew, Guilds: s.bot.Guilds(), StepTypes: tasks.StepTypes, Weekdays: tasks.WeekdayNames, Kinds: tasks.TriggerKinds,
-		TimesText: strings.Join(t.Trigger.Times, " "), CronText: strings.Join(t.Trigger.Cron, "\n"), Timezones: commonTimezones}
+		TimesText: strings.Join(t.Trigger.Times, " "), CronText: strings.Join(t.Trigger.Cron, "\n"), Timezones: commonTimezones, Events: tasks.EventTypes}
 	for _, c := range s.bot.Channels(t.GuildID) {
 		if !c.Usable {
 			continue
@@ -169,6 +172,13 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 		}
 	}
 	e.Labels = map[string]string{}
+	for _, id := range t.Trigger.UserIDs {
+		m, ok := s.bot.ResolveMember(t.GuildID, id)
+		if !ok {
+			m = bot.Member{ID: id, Name: id}
+		}
+		e.EvMembers = append(e.EvMembers, m)
+	}
 	for _, st := range t.Steps {
 		for _, id := range []string{st.UserID, st.FollowUserID} {
 			if id != "" {
@@ -186,6 +196,9 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 		}
 	}
 	if e.Messages, err = s.store.ListMessages(ctx); err != nil {
+		return e, err
+	}
+	if e.Tags, err = s.store.Tags(ctx); err != nil {
 		return e, err
 	}
 	e.Next = t.Trigger.Next(time.Now(), 5)
@@ -253,6 +266,7 @@ func parseTask(r *http.Request) (tasks.Task, []string) {
 		Name:    strings.TrimSpace(f.Get("name")),
 		GuildID: f.Get("guild"),
 		Enabled: f.Get("enabled") == "on",
+		Slash:   f.Get("slash") == "on",
 		Busy:    tasks.BusyWait,
 		Trigger: tasks.Trigger{Kind: tasks.TriggerKind(f.Get("kind")), Timezone: strings.TrimSpace(f.Get("timezone")), OnceAt: f.Get("once_at")},
 	}
@@ -292,6 +306,26 @@ func parseTask(r *http.Request) (tasks.Task, []string) {
 		t.Trigger.Times, t.Trigger.Weekdays, t.Trigger.OnceAt = nil, nil, ""
 	case tasks.Manual:
 		t.Trigger = tasks.Trigger{Kind: tasks.Manual, Timezone: t.Trigger.Timezone}
+	case tasks.Event:
+		ev := tasks.Trigger{Kind: tasks.Event, Timezone: t.Trigger.Timezone, Event: f.Get("event"), ChannelID: f.Get("event_channel"), Cooldown: tasks.DefaultCooldown}
+		if ev.Event == tasks.MessageIn {
+			ev.Keyword = strings.TrimSpace(f.Get("keyword"))
+		}
+		if ev.Event == tasks.MemberJoin {
+			ev.ChannelID = ""
+		}
+		// the member picker texts, resolved to IDs in resolveMembers
+		for _, v := range f["ev_member"] {
+			if v = strings.TrimSpace(v); v != "" && !slices.Contains(ev.UserIDs, v) {
+				ev.UserIDs = append(ev.UserIDs, v)
+			}
+		}
+		if v := strings.TrimSpace(f.Get("cooldown")); v != "" {
+			if ev.Cooldown, err = strconv.Atoi(v); err != nil {
+				bad = append(bad, "Cooldown: enter a number of seconds.")
+			}
+		}
+		t.Trigger = ev
 	}
 
 	n, _ := strconv.Atoi(f.Get("steps"))
@@ -304,11 +338,17 @@ func parseTask(r *http.Request) (tasks.Task, []string) {
 			// the member picker text, resolved to an ID in resolveMembers
 			if target := f.Get(p + "target"); target == "member" {
 				st.FollowUserID = strings.TrimSpace(f.Get(p + "follow"))
+			} else if target == "trigger" {
+				st.ToTrigger = true
 			} else {
 				st.ChannelID = target
 			}
 		case tasks.Play:
-			st.MediaID, _ = strconv.ParseInt(f.Get(p+"media"), 10, 64)
+			if tag, ok := strings.CutPrefix(f.Get(p+"media"), "tag:"); ok {
+				st.Tag = tag
+			} else {
+				st.MediaID, _ = strconv.ParseInt(f.Get(p+"media"), 10, 64)
+			}
 			st.Volume, err = strconv.Atoi(f.Get(p + "volume"))
 			if err != nil {
 				st.Volume = 100
@@ -324,6 +364,9 @@ func parseTask(r *http.Request) (tasks.Task, []string) {
 				st.UserID = ""
 			} else {
 				st.ChannelID = ""
+				if f.Get(p+"to") == "trigger" {
+					st.ToTrigger, st.UserID = true, ""
+				}
 			}
 		case tasks.Wait:
 			st.Seconds, _ = strconv.Atoi(f.Get(p + "seconds"))
@@ -363,6 +406,10 @@ func applyOp(t *tasks.Task, op string) {
 		if i >= 0 && i < len(t.Steps)-1 {
 			t.Steps[i+1], t.Steps[i] = t.Steps[i], t.Steps[i+1]
 		}
+	case "evdel":
+		if i >= 0 && i < len(t.Trigger.UserIDs) {
+			t.Trigger.UserIDs = slices.Delete(t.Trigger.UserIDs, i, i+1)
+		}
 	case "del":
 		if i >= 0 && i < len(t.Steps) {
 			t.Steps = slices.Delete(t.Steps, i, i+1)
@@ -373,6 +420,18 @@ func applyOp(t *tasks.Task, op string) {
 // resolveMembers turns the text of the member pickers into user IDs.
 func (s *Server) resolveMembers(t *tasks.Task) []string {
 	var bad []string
+	var ids []string
+	for _, v := range t.Trigger.UserIDs {
+		m, ok := s.bot.ResolveMember(t.GuildID, v)
+		switch {
+		case !ok:
+			bad = append(bad, fmt.Sprintf("Event: no member of this server matches %q. Pick one from the suggestions.", v))
+			ids = append(ids, v)
+		case !slices.Contains(ids, m.ID):
+			ids = append(ids, m.ID)
+		}
+	}
+	t.Trigger.UserIDs = ids
 	for i := range t.Steps {
 		for _, field := range []*string{&t.Steps[i].UserID, &t.Steps[i].FollowUserID} {
 			if *field == "" {

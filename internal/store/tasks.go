@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -9,11 +10,11 @@ import (
 	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
 )
 
-const taskCols = `id, name, guild_id, enabled, busy, trigger, steps, paused_reason, created_by, updated_by, updated_at`
+const taskCols = `id, name, guild_id, enabled, busy, slash, trigger, steps, paused_reason, created_by, updated_by, updated_at`
 
 func scanTask(r pgx.Row) (tasks.Task, error) {
 	var t tasks.Task
-	err := r.Scan(&t.ID, &t.Name, &t.GuildID, &t.Enabled, &t.Busy, &t.Trigger, &t.Steps, &t.PausedReason, &t.CreatedBy, &t.UpdatedBy, &t.UpdatedAt)
+	err := r.Scan(&t.ID, &t.Name, &t.GuildID, &t.Enabled, &t.Busy, &t.Slash, &t.Trigger, &t.Steps, &t.PausedReason, &t.CreatedBy, &t.UpdatedBy, &t.UpdatedAt)
 	return t, err
 }
 
@@ -32,15 +33,15 @@ func (s *Store) ListTasks(ctx context.Context) ([]tasks.Task, error) {
 
 func (s *Store) CreateTask(ctx context.Context, t tasks.Task, by string) (int64, error) {
 	var id int64
-	err := s.pool.QueryRow(ctx, `INSERT INTO tasks (name, guild_id, enabled, busy, trigger, steps, created_by, updated_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING id`, t.Name, t.GuildID, t.Enabled, t.Busy, t.Trigger, steps(t.Steps), by).Scan(&id)
+	err := s.pool.QueryRow(ctx, `INSERT INTO tasks (name, guild_id, enabled, busy, slash, trigger, steps, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) RETURNING id`, t.Name, t.GuildID, t.Enabled, t.Busy, t.Slash, t.Trigger, steps(t.Steps), by).Scan(&id)
 	return id, err
 }
 
 // UpdateTask saves the editor's state and clears a pause reason.
 func (s *Store) UpdateTask(ctx context.Context, t tasks.Task, by string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE tasks SET name = $2, guild_id = $3, enabled = $4, busy = $5, trigger = $6, steps = $7, paused_reason = '', updated_by = $8, updated_at = now() WHERE id = $1`,
-		t.ID, t.Name, t.GuildID, t.Enabled, t.Busy, t.Trigger, steps(t.Steps), by)
+	tag, err := s.pool.Exec(ctx, `UPDATE tasks SET name = $2, guild_id = $3, enabled = $4, busy = $5, slash = $6, trigger = $7, steps = $8, paused_reason = '', updated_by = $9, updated_at = now() WHERE id = $1`,
+		t.ID, t.Name, t.GuildID, t.Enabled, t.Busy, t.Slash, t.Trigger, steps(t.Steps), by)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
@@ -76,6 +77,8 @@ const (
 
 	SourceSchedule = "schedule"
 	SourceManual   = "manual"
+	SourceEvent    = "event"
+	SourceDiscord  = "discord" // slash command
 )
 
 type Run struct {
@@ -117,6 +120,31 @@ func (s *Store) StartRun(ctx context.Context, r Run) (int64, error) {
 
 func (s *Store) FinishRun(ctx context.Context, id int64, status string, failedStep *int, errText string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE runs SET status = $2, failed_step = $3, error = $4, finished_at = now() WHERE id = $1`, id, status, failedStep, errText)
+	return err
+}
+
+// AddMissedRun records a scheduled run that did not happen because the app was down.
+func (s *Store) AddMissedRun(ctx context.Context, taskID int64, title, guildID string, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO runs (task_id, title, guild_id, source, status, error, started_at, finished_at)
+VALUES ($1, $2, $3, 'schedule', 'skipped', 'Missed, the app was not running.', $4, $4)`, taskID, title, guildID, at)
+	return err
+}
+
+// Heartbeat is written every minute, after a restart it tells which runs were missed.
+func (s *Store) Heartbeat(ctx context.Context) (time.Time, error) {
+	var v string
+	err := s.pool.QueryRow(ctx, `SELECT value FROM settings WHERE key = 'heartbeat'`).Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Parse(time.RFC3339, v)
+}
+
+func (s *Store) SetHeartbeat(ctx context.Context, t time.Time) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO settings (key, value) VALUES ('heartbeat', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, t.UTC().Format(time.RFC3339))
 	return err
 }
 

@@ -90,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /servers/{id}/stop", s.requireLogin(s.stopVoice))
 	mux.Handle("POST /servers/{id}/leave", s.requireLogin(s.leaveVoice))
 	mux.Handle("POST /servers/{id}/play", s.requireLogin(s.playInChannel))
+	mux.Handle("POST /servers/{id}/join", s.requireLogin(s.joinVoice))
 
 	mux.Handle("GET /tasks", s.requireLogin(s.tasks))
 	mux.Handle("GET /tasks/new", s.requireLogin(s.newTask))
@@ -113,7 +114,9 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /media", s.requireLogin(s.mediaPage))
 	mux.Handle("POST /media", s.requireLoginStream(s.upload))
+	mux.Handle("POST /media/url", s.requireLogin(s.fetchMedia))
 	mux.Handle("GET /media/{id}/file", s.requireLogin(s.mediaFile))
+	mux.Handle("POST /media/{id}", s.requireLogin(s.updateMedia))
 	mux.Handle("POST /media/{id}/play", s.requireLogin(s.playMedia))
 	mux.Handle("POST /media/{id}/delete", s.requireLogin(s.deleteMedia))
 
@@ -256,6 +259,7 @@ var notices = map[string]string{
 	"playing":   "Playing. It shows up on the dashboard in a moment.",
 	"stopped":   "Stopped.",
 	"left":      "The bot left the voice channel.",
+	"joining":   "Joining. The bot shows up in the channel in a moment.",
 	"refreshed": "Members requested from Discord. Large servers take a few seconds.",
 	"copied":    "Copy created.",
 }

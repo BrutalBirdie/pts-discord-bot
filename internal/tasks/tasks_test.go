@@ -95,3 +95,38 @@ func TestProblems(t *testing.T) {
 		t.Error("UsesVoice false")
 	}
 }
+
+func TestEventTrigger(t *testing.T) {
+	tr := Trigger{Kind: Event, Event: MessageIn, Keyword: " Adhan ", ChannelID: "5"}
+	if err := tr.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if !tr.Matches(MessageIn, "5", "7", "when is ADHAN today?") || tr.Matches(MessageIn, "6", "7", "adhan") || tr.Matches(MessageIn, "5", "7", "hello") || tr.Matches(VoiceJoin, "5", "7", "adhan") {
+		t.Error("message matching")
+	}
+	if (Trigger{Kind: Event, Event: VoiceJoin}).Matches(VoiceJoin, "9", "7", "") != true {
+		t.Error("any channel")
+	}
+	only := Trigger{Kind: Event, Event: VoiceJoin, UserIDs: []string{"7", "8"}}
+	if !only.Matches(VoiceJoin, "9", "8", "") || only.Matches(VoiceJoin, "9", "6", "") {
+		t.Error("member filter")
+	}
+	if got := only.Summary(); got != "When a member joins a voice channel, only 2 members" {
+		t.Errorf("summary %q", got)
+	}
+	if (Trigger{Kind: Event, Event: VoiceJoin, UserIDs: make([]string, MaxEventMembers+1)}).Validate() == nil {
+		t.Error("too many members accepted")
+	}
+	if (Trigger{Kind: Event, Event: MessageIn}).Validate() == nil || (Trigger{Kind: Event}).Validate() == nil {
+		t.Error("missing keyword or event accepted")
+	}
+	if s, err := tr.Schedule(); s != nil || err != nil {
+		t.Error("events have no schedule")
+	}
+	if got := (Trigger{Kind: Event, Event: VoiceJoin}).Summary(); got != "When a member joins a voice channel" {
+		t.Errorf("summary %q", got)
+	}
+	if (Step{Type: DM, ToTrigger: true, Text: "hi"}).Validate() != nil || (Step{Type: Play, Tag: "greeting", Volume: 100}).Validate() != nil {
+		t.Error("trigger member or tag steps rejected")
+	}
+}

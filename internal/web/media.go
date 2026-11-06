@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"mime"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
@@ -22,6 +24,8 @@ type voiceGroup struct {
 type mediaData struct {
 	Items       []store.Media
 	Kind        string
+	Tag         string
+	Tags        []string
 	Counts      map[string]int
 	TotalBytes  int64
 	Voice       []voiceGroup
@@ -55,15 +59,20 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	d := mediaData{Kind: r.URL.Query().Get("kind"), Counts: map[string]int{}, Voice: s.voiceGroups(), MaxUploadMB: settings.MaxUploadMB}
+	d := mediaData{Kind: r.URL.Query().Get("kind"), Tag: r.URL.Query().Get("tag"), Counts: map[string]int{}, Voice: s.voiceGroups(), MaxUploadMB: settings.MaxUploadMB}
+	tags := map[string]bool{}
 	for _, m := range all {
 		d.Counts[""]++
 		d.Counts[m.Kind]++
 		d.TotalBytes += m.SizeBytes
-		if d.Kind == "" || d.Kind == m.Kind {
+		for _, t := range m.Tags {
+			tags[t] = true
+		}
+		if (d.Kind == "" || d.Kind == m.Kind) && (d.Tag == "" || slices.Contains(m.Tags, d.Tag)) {
 			d.Items = append(d.Items, m)
 		}
 	}
+	d.Tags = slices.Sorted(maps.Keys(tags))
 	s.render(w, r, http.StatusOK, "media", d)
 }
 
@@ -177,6 +186,75 @@ func (s *Server) saveUpload(r *http.Request, src io.Reader, name string, limit i
 		return err
 	}
 	return nil
+}
+
+// fetchMedia downloads a file from a link into the media library.
+func (s *Server) fetchMedia(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.store.Settings(r.Context())
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	body, name, err := media.Fetch(r.Context(), r.PostForm.Get("url"))
+	if err != nil {
+		s.fail(w, r, http.StatusBadRequest, "Not added: "+err.Error()+".")
+		return
+	}
+	defer body.Close()
+	if n := strings.TrimSpace(r.PostForm.Get("name")); n != "" {
+		name = n
+	}
+	if name, err = media.CleanName(name); err != nil {
+		s.fail(w, r, http.StatusBadRequest, "Not added: "+err.Error()+".")
+		return
+	}
+	if err := s.saveUpload(r, body, name, int64(settings.MaxUploadMB)<<20); err != nil {
+		s.fail(w, r, http.StatusBadRequest, name+" not added: "+err.Error())
+		return
+	}
+	s.audit(r, "media.upload", name, r.PostForm.Get("url"))
+	redirect(w, r, "/media", "uploaded")
+}
+
+// ParseTags accepts "greeting, Funny  sounds" and returns lower case tags without duplicates.
+func ParseTags(s string) []string {
+	var out []string
+	for _, t := range strings.Split(s, ",") {
+		t = strings.ToLower(strings.Join(strings.Fields(t), " "))
+		if t != "" && len(t) <= 50 && !slices.Contains(out, t) {
+			out = append(out, t)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+func (s *Server) updateMedia(w http.ResponseWriter, r *http.Request) {
+	m, ok := s.loadMedia(w, r)
+	if !ok {
+		return
+	}
+	name, err := media.CleanName(r.PostForm.Get("name"))
+	if err != nil {
+		s.fail(w, r, http.StatusBadRequest, err.Error()+".")
+		return
+	}
+	tags := ParseTags(r.PostForm.Get("tags"))
+	if len(tags) > 20 {
+		s.fail(w, r, http.StatusBadRequest, "At most 20 tags.")
+		return
+	}
+	err = s.store.UpdateMedia(r.Context(), m.ID, name, tags)
+	if errors.Is(err, store.ErrNameTaken) {
+		s.fail(w, r, http.StatusConflict, "A file named "+name+" exists already.")
+		return
+	}
+	if err != nil {
+		s.storeErr(w, r, err)
+		return
+	}
+	s.audit(r, "media.update", name, "tags="+strings.Join(tags, ","))
+	redirect(w, r, "/media", "saved")
 }
 
 func (s *Server) loadMedia(w http.ResponseWriter, r *http.Request) (store.Media, bool) {

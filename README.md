@@ -4,9 +4,10 @@
 
 Cloudron app with a Discord bot and a web UI to control it. Sign in with your Cloudron account.
 
-* Tasks on a schedule (daily, weekly, once, cron) or on demand: join a voice channel, play sounds, send messages and direct messages, wait, leave
+* Tasks on a schedule (daily, weekly, once, cron), on Discord events (voice joins and leaves, new members, message keywords) or on demand: join a voice channel, play sounds, send messages and direct messages, wait, leave
+* Slash commands: /play, /task, /stop, /leave
 * Saved messages with embeds, images and files, with a preview
-* Media library for sounds, images, videos and files
+* Media library for sounds, images, videos and files, with tags and random sounds per tag
 * Servers and channels the bot sees, with the bot's missing permissions
 * Member search when picking who gets a direct message, whose voice channel to join, or whom to mention
 * Run history, failure posts to a channel, audit log
@@ -17,7 +18,7 @@ Cloudron app with a Discord bot and a web UI to control it. Sign in with your Cl
 
 In Cloudron, open 'Add custom app' and enter `https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/CloudronVersions.json`.
 
-1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications). Under **Bot**, copy the token and switch on **Server Members Intent**.
+1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications). Under **Bot**, copy the token and switch on **Server Members Intent** and **Message Content Intent**.
 2. Open `/app/data/env.sh` in the File Manager of the app. Set `DISCORD_TOKEN`, and `BOT_ADMINS` or `BOT_ADMIN_GROUP`. Restart the app.
 3. Sign in, open **Servers** and add the bot to your server with the invite link.
 

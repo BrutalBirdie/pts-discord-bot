@@ -14,12 +14,23 @@
   <button type="submit" class="ib primary with-label">{{icon "upload"}}<span class="lbl">Upload</span></button>
 </form>
 
+<form method="post" action="/media/url" class="card form">
+  <input type="hidden" name="csrf" value="{{$csrf}}">
+  <span class="eyebrow">Add from a link</span>
+  <div class="grid2">
+    <label class="field"><span>Link to the file</span><input type="url" name="url" placeholder="https://example.com/sound.ogg" required></label>
+    <label class="field"><span>Name, optional</span><input type="text" name="name" placeholder="From the link"></label>
+  </div>
+  <div class="btns"><button type="submit" class="ib with-label">{{icon "download"}}<span class="lbl">Add</span></button><span class="hint">Direct links to files only, not video pages like YouTube.</span></div>
+</form>
+
 <div class="pills">
-  <a href="/media"{{if not $d.Kind}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
+  <a href="/media"{{if not (or $d.Kind $d.Tag)}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
   <a href="/media?kind=sound"{{if eq $d.Kind "sound"}} aria-current="page"{{end}}>Sounds {{index $d.Counts "sound"}}</a>
   <a href="/media?kind=image"{{if eq $d.Kind "image"}} aria-current="page"{{end}}>Images {{index $d.Counts "image"}}</a>
   <a href="/media?kind=video"{{if eq $d.Kind "video"}} aria-current="page"{{end}}>Videos {{index $d.Counts "video"}}</a>
   <a href="/media?kind=file"{{if eq $d.Kind "file"}} aria-current="page"{{end}}>Files {{index $d.Counts "file"}}</a>
+  {{range $d.Tags}}<a href="/media?tag={{.}}"{{if eq . $d.Tag}} aria-current="page"{{end}}>{{icon "hash"}}{{.}}</a>{{end}}
 </div>
 
 <section class="card">
@@ -31,6 +42,7 @@
         <div class="row-main">
           <span class="row-title mono">{{.Name}}{{if gt .SizeBytes 20971520}} <span class="chip warn">{{icon "triangle-alert"}}over 20 MB for Discord messages</span>{{end}}</span>
           <span class="row-sub">{{if .DurationMS}}{{clock .DurationMS}} · {{end}}{{if .Width}}{{.Width}} × {{.Height}} · {{end}}{{bytes .SizeBytes}} · {{with .UsedBy}}used by {{join . ", "}}{{else}}not used{{end}}</span>
+          {{with .Tags}}<span class="meta">{{range .}}<a class="chip accent" href="/media?tag={{.}}">{{.}}</a>{{end}}</span>{{end}}
           {{if eq .Kind "sound"}}<audio controls preload="none" src="/media/{{.ID}}/file"></audio>{{end}}
         </div>
       </div>
@@ -38,6 +50,7 @@
         {{if or (eq .Kind "sound") (eq .Kind "video")}}
         <button type="button" class="ib" popovertarget="sheet-play-{{.ID}}" aria-label="Play {{.Name}} in a voice channel" data-tip="Play in a voice channel">{{icon "volume-2"}}<span class="lbl">Play</span></button>
         {{end}}
+        <button type="button" class="ib" popovertarget="sheet-edit-{{.ID}}" aria-label="Rename or tag {{.Name}}" data-tip="Name and tags">{{icon "pencil"}}<span class="lbl">Edit</span></button>
         <a class="ib" href="/media/{{.ID}}/file?download=1" aria-label="Download {{.Name}}" data-tip="Download">{{icon "download"}}<span class="lbl">Download</span></a>
         <form method="post" action="/media/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$csrf}}">
           <button type="submit" class="ib danger" aria-label="Delete {{.Name}}" data-tip="Delete"{{if .UsedBy}} disabled{{end}} data-confirm-click="Delete {{.Name}}?">{{icon "trash-2"}}<span class="lbl">Delete</span></button></form>
@@ -50,6 +63,20 @@
 </section>
 <p class="hint">Files in use by a task or message can only be deleted after they are removed there.</p>
 
+{{range $d.Items}}
+<div popover id="sheet-edit-{{.ID}}" class="sheet" aria-labelledby="sheet-edit-{{.ID}}-title">
+  {{template "sheethead" (dict "ID" (print "sheet-edit-" .ID) "Icon" "pencil" "Title" "Edit" "Name" .Name)}}
+  <div class="sheet-body">
+    <form method="post" action="/media/{{.ID}}" class="form">
+      <input type="hidden" name="csrf" value="{{$csrf}}">
+      <label class="field"><span>Name</span><input type="text" name="name" value="{{.Name}}" maxlength="200" required><span class="help">Also the file name in Discord messages.</span></label>
+      <label class="field"><span>Tags</span><input type="text" name="tags" value="{{join .Tags ", "}}" list="media-tags" autocomplete="off"><span class="help">Separated by commas. A Play step or /play can pick a random sound with a tag.</span></label>
+      <div class="btns"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>
+    </form>
+  </div>
+</div>
+{{end}}
+<datalist id="media-tags">{{range $d.Tags}}<option value="{{.}}">{{end}}</datalist>
 {{range $d.Items}}{{if or (eq .Kind "sound") (eq .Kind "video")}}
 <div popover id="sheet-play-{{.ID}}" class="sheet" aria-labelledby="sheet-play-{{.ID}}-title">
   {{template "sheethead" (dict "ID" (print "sheet-play-" .ID) "Icon" "volume-2" "Title" "Play" "Name" .Name)}}

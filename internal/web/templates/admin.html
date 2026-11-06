@@ -19,6 +19,7 @@
     <ul class="list">
       <li><div class="row-main"><span class="row-title">Bot token</span><span class="row-sub">DISCORD_TOKEN in /app/data/env.sh</span></div>{{if .Bot.Connected}}<span class="chip ok">{{icon "check"}}accepted</span>{{else}}<span class="chip danger">{{icon "x"}}not connected</span>{{end}}</li>
       <li><div class="row-main"><span class="row-title">Server members intent</span><span class="row-sub">Privileged. Switch it on under Bot in the Discord Developer Portal to list members.</span></div>{{if .Bot.MembersIntent}}<span class="chip ok">{{icon "check"}}on</span>{{else}}<span class="chip warn">off</span>{{end}}</li>
+      <li><div class="row-main"><span class="row-title">Message content intent</span><span class="row-sub">Privileged. Needed for tasks that react to keywords in messages.</span></div>{{if .Bot.MessageIntent}}<span class="chip ok">{{icon "check"}}on</span>{{else}}<span class="chip warn">off</span>{{end}}</li>
       <li><div class="row-main"><span class="row-title">Guilds and voice states intents</span><span class="row-sub">Servers, channels and who is in voice</span></div><span class="chip ok">{{icon "check"}}on</span></li>
       <li><div class="row-main"><span class="row-title">Voice encryption (DAVE)</span><span class="row-sub">Required by Discord for voice channels</span></div><span class="chip ok">{{icon "check"}}built in</span></li>
     </ul>
