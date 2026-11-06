@@ -135,7 +135,20 @@
             {{template "memberpick" (dict "Name" (print $p "user") "Value" (index $e.Labels $s.UserID) "Guild" $e.Task.GuildID "Class" "dm-member" "Label" "Member")}}
             {{template "msgpick" (dict "P" $p "S" $s "E" $e)}}
           {{else if eq $s.Type "wait"}}
-            <label class="inline small"><input type="number" name="{{$p}}seconds" value="{{$s.Seconds}}" min="1" max="3600" aria-label="Seconds"><span>seconds</span></label>
+            <input type="hidden" name="{{$p}}until_was" value="{{$s.Until}}">
+            <select name="{{$p}}until" aria-label="Wait for" class="wait-until">
+              <option value="">Time only</option>
+              {{range untils}}<option value="{{.}}"{{if eq . $s.Until}} selected{{end}}>{{untilLabel .}}</option>{{end}}
+            </select>
+            <select name="{{$p}}to" aria-label="Member to wait for" class="wait-to"><option value="member">This member</option><option value="trigger"{{if $s.ToTrigger}} selected{{end}}>The member who started the run</option></select>
+            {{template "memberpick" (dict "Name" (print $p "user") "Value" (index $e.Labels $s.UserID) "Guild" $e.Task.GuildID "Class" "wait-member" "Label" "Member to wait for")}}
+            <select name="{{$p}}channel" aria-label="Voice channel to watch" class="wait-channel">
+              <option value="">Any voice channel</option>
+              {{if and $s.ChannelID (not (hasChannel $e.Voice $s.ChannelID))}}<option value="{{$s.ChannelID}}" selected>Unknown channel {{$s.ChannelID}}</option>{{end}}
+              {{range $e.Voice}}<option value="{{.ID}}"{{if eq .ID $s.ChannelID}} selected{{end}}>{{.Name}}{{with .Category}} · {{.}}{{end}}</option>{{end}}
+            </select>
+            <label class="inline small"><span class="wait-max">at most</span><input type="text" name="{{$p}}wait" value="{{$s.WaitValue}}" placeholder="500ms, 1.5s, 5m" aria-label="Duration" size="10" spellcheck="false" autocomplete="off"></label>
+            <select name="{{$p}}on_timeout" aria-label="When the time is up" class="wait-timeout"><option value="continue">then continue</option><option value="stop"{{if eq $s.OnTimeout "stop"}} selected{{end}}>then stop the run</option></select>
           {{else if eq $s.Type "leave"}}
             <span class="small muted">Stops playback and disconnects the bot from voice in this server.</span>
           {{end}}

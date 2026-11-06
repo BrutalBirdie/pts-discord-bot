@@ -51,6 +51,8 @@ type Bot struct {
 
 	vmu     sync.Mutex
 	playing map[snowflake.ID]*Playing
+
+	waiters voiceWaiters
 }
 
 func New(cfg Config) *Bot {

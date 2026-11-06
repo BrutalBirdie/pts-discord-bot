@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -67,7 +68,7 @@ func TestPagesRender(t *testing.T) {
 		{"task", taskEditor{Task: adhan, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, TimesText: "05:00 16:35",
 			Voice: []bot.Channel{{ID: "2", Name: "prayer", Voice: true}}, Text: []bot.Channel{{ID: "44", Name: "general"}}, Labels: map[string]string{"9": "Amira (@amira)"},
 			Sounds: []store.Media{sound}, Messages: []messages.Message{msg}, Next: adhan.Trigger.Next(now, 3), Runs: runs, RunCount: 2, Page: 1, Pages: 1},
-			[]string{`name="s0.target"`, `value="2" selected`, `name="s0.follow" value=""`, `data-members="1"`, `value="5" selected`, `name="s1.volume" value="80"`, `value="add:wait"`, `value="daily" checked`, "Unknown channel 4", `name="s3.user" value="Amira (@amira)"`, `name="s4.seconds" value="5"`, `action="/tasks/3/delete"`, "As cron"}},
+			[]string{`name="s0.target"`, `value="2" selected`, `name="s0.follow" value=""`, `data-members="1"`, `value="5" selected`, `name="s1.volume" value="80"`, `value="add:wait"`, `value="daily" checked`, "Unknown channel 4", `name="s3.user" value="Amira (@amira)"`, `name="s4.wait" value="5s"`, `action="/tasks/3/delete"`, "As cron"}},
 		{"task", taskEditor{Task: tasks.Task{Trigger: tasks.Trigger{Kind: tasks.Manual}}, New: true, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Problems: []string{"Give the task a name."}},
 			[]string{"Create task", "Give the task a name.", `action="/tasks/new"`}},
 		{"messages", []messageRow{{Message: msg, UsedBy: []string{"Adhan"}}}, []string{`href="/messages/7"`, "1 embed", "1 file"}},
@@ -110,7 +111,7 @@ func TestParseTask(t *testing.T) {
 		"s0.type": {"join"}, "s0.target": {"member"}, "s0.follow": {" Amira (@amira) "},
 		"s1.type": {"play"}, "s1.media": {"5"}, "s1.volume": {"80"},
 		"s2.type": {"dm"}, "s2.user": {"<@123>"}, "s2.message": {"0"}, "s2.text": {"hi"}, "s2.channel": {"4"},
-		"s3.type": {"wait"}, "s3.seconds": {"2"},
+		"s3.type": {"wait"}, "s3.wait": {"1.5s"}, "s3.user": {"Jane"}, "s3.channel": {"2"},
 		"s4.type": {"bogus"},
 	}
 	r := httptest.NewRequest("POST", "/tasks/new", strings.NewReader(form.Encode()))
@@ -126,7 +127,8 @@ func TestParseTask(t *testing.T) {
 	if len(task.Trigger.Cron) != 0 || len(task.Trigger.Weekdays) != 2 || task.Trigger.Times[0] != "05:00" {
 		t.Errorf("trigger: %+v", task.Trigger)
 	}
-	if len(task.Steps) != 4 || task.Steps[0].FollowUserID != "Amira (@amira)" || task.Steps[2].UserID != "<@123>" || task.Steps[2].ChannelID != "" {
+	if len(task.Steps) != 4 || task.Steps[0].FollowUserID != "Amira (@amira)" || task.Steps[2].UserID != "<@123>" || task.Steps[2].ChannelID != "" ||
+		task.Steps[3].WaitMS != 1500 || task.Steps[3].UserID != "" || task.Steps[3].ChannelID != "" {
 		t.Errorf("steps: %+v", task.Steps)
 	}
 	applyOp(&task, "up:1")
@@ -239,5 +241,64 @@ func TestEventEditorRenders(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}
+	}
+}
+
+func TestWaitUntil(t *testing.T) {
+	form := url.Values{"name": {"Greeting"}, "guild": {"1"}, "kind": {"manual"}, "steps": {"5"},
+		"s0.type": {"wait"}, "s0.until": {"undeafened"}, "s0.to": {"trigger"}, "s0.user": {"Jane"}, "s0.channel": {"2"}, "s0.wait": {"5s"}, "s0.on_timeout": {"stop"},
+		"s1.type": {"wait"}, "s1.until": {"channel_empty"}, "s1.until_was": {"channel_empty"}, "s1.to": {"member"}, "s1.user": {"Jane"}, "s1.channel": {"2"}, "s1.wait": {"5s"}, "s1.on_timeout": {"continue"},
+		"s2.type": {"wait"}, "s2.until": {"in_voice"}, "s2.to": {"member"}, "s2.user": {" Jane "}, "s2.wait": {""},
+		"s3.type": {"wait"}, "s3.wait": {"2y"},
+		"s4.type": {"wait"}, "s4.wait": {"1,5"},
+	}
+	r := httptest.NewRequest("POST", "/tasks/new", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	_ = r.ParseForm()
+	task, bad := parseTask(r)
+	if len(bad) != 0 {
+		t.Fatalf("bad: %v", bad)
+	}
+	st := task.Steps
+	if !st[0].ToTrigger || st[0].UserID != "" || st[0].ChannelID != "" || st[0].OnTimeout != tasks.OnTimeoutStop || st[0].WaitDuration() != tasks.DefaultUntilWait {
+		t.Errorf("trigger member: %+v", st[0])
+	}
+	if st[1].ToTrigger || st[1].UserID != "" || st[1].ChannelID != "2" || st[1].OnTimeout != "" || st[1].WaitDuration() != 5*time.Second {
+		t.Errorf("channel: %+v", st[1])
+	}
+	if st[2].UserID != "Jane" || st[2].WaitDuration() != tasks.DefaultUntilWait {
+		t.Errorf("member: %+v", st[2])
+	}
+	if st[3].WaitInput != "2y" || st[3].WaitMS != 0 || st[4].WaitMS != 1500 {
+		t.Errorf("durations: %+v %+v", st[3], st[4])
+	}
+	if p := task.Problems(); len(p) != 1 || p[0] != "Step 4: wait at most 24h." {
+		t.Errorf("problems: %v", p)
+	}
+
+	var legacy tasks.Step
+	if err := json.Unmarshal([]byte(`{"type":"wait","seconds":2}`), &legacy); err != nil || legacy.WaitDuration() != 2*time.Second || legacy.Validate() != nil {
+		t.Errorf("legacy: %+v %v", legacy, err)
+	}
+
+	s := testServer(t)
+	sess := &store.Session{Username: "ann", CSRFToken: "tok"}
+	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames,
+		Voice: []bot.Channel{{ID: "2", Name: "lounge", Voice: true}}, Labels: map[string]string{"Jane": "Jane (@jane)"}, Page: 1, Pages: 1}
+	req := httptest.NewRequest("GET", "/tasks/new", nil)
+	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
+	rec := httptest.NewRecorder()
+	s.render(rec, req, http.StatusOK, "task", e)
+	body := rec.Body.String()
+	for _, want := range []string{`<option value="undeafened" selected>Until a member is undeafened`, `name="s0.until_was" value="undeafened"`,
+		`<option value="trigger" selected>The member who started the run`, `<option value="stop" selected>then stop the run`, `name="s0.wait" value="5m"`,
+		`<option value="channel_empty" selected>Until the channel is empty`, `<option value="2" selected>lounge`, `name="s2.user" value="Jane (@jane)"`,
+		`name="s3.wait" value="2y"`, `name="s4.wait" value="1.5s"`, `placeholder="500ms, 1.5s, 5m"`, "e.g. 500ms, 1.5s, 5m, 2h"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(body, " style=") {
+		t.Error("inline style attribute, blocked by the CSP")
 	}
 }

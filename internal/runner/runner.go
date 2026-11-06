@@ -299,6 +299,11 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 	for i, s := range t.Steps {
 		if err := r.step(ctx, t, s, settings, ev); err != nil {
 			n := i + 1
+			var stop *stopRun
+			if errors.As(err, &stop) {
+				r.finish(log, runID, store.RunSkipped, nil, fmt.Sprintf("Step %d: %s", n, stop.msg))
+				return nil
+			}
 			msg := bot.Describe(err)
 			r.finish(log, runID, store.RunFailed, &n, msg)
 			r.afterFailure(t, n, s, err, msg, settings)
@@ -351,6 +356,11 @@ func truncate(s string, n int) string {
 	return s
 }
 
+// stopRun ends a run as skipped, a wait step returns it when its condition timed out.
+type stopRun struct{ msg string }
+
+func (e *stopRun) Error() string { return e.msg }
+
 func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings store.Settings, ev *bot.Event) error {
 	if s.ToTrigger {
 		if ev == nil || ev.UserID == "" {
@@ -398,12 +408,33 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 		return r.bot.Leave(ctx, guildID)
 
 	case tasks.Wait:
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Duration(s.Seconds) * time.Second):
+		d := s.WaitDuration()
+		if s.Until == "" {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(d):
+				return nil
+			}
+		}
+		userID, _ := bot.ParseID(s.UserID)
+		channelID, _ := bot.ParseID(s.ChannelID)
+		if tasks.MemberUntil(s.Until) && userID == 0 {
+			return &bot.PermanentError{Msg: "No member picked."}
+		}
+		wctx, cancel := context.WithTimeout(ctx, d)
+		defer cancel()
+		if r.bot.WaitVoice(wctx, guildID, r.bot.VoiceCond(guildID, s.Until, userID, channelID)) == nil {
 			return nil
 		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if s.OnTimeout == tasks.OnTimeoutStop {
+			what := s.UntilText(r.bot.MemberName(t.GuildID, s.UserID), r.bot.ChannelName(s.ChannelID))
+			return &stopRun{fmt.Sprintf("Waited %s %s, the run stopped.", tasks.FormatDuration(d), what)}
+		}
+		return nil
 
 	case tasks.Message, tasks.DM:
 		msg := messages.Message{Content: s.Text}

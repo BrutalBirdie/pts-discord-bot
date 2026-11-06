@@ -22,23 +22,26 @@ const (
 var StepTypes = []StepType{Join, Play, Message, DM, Wait, Leave}
 
 const (
-	MaxSteps       = 30
-	MaxWaitSeconds = 3600
-	MaxVolume      = 200
+	MaxSteps  = 30
+	MaxVolume = 200
 )
 
 type Step struct {
 	Type         StepType `json:"type"`
-	ChannelID    string   `json:"channel_id,omitempty"`     // join, message
+	ChannelID    string   `json:"channel_id,omitempty"`     // join, message, wait
 	FollowUserID string   `json:"follow_user_id,omitempty"` // join: the voice channel this member is in
 	MediaID      int64    `json:"media_id,omitempty"`       // play
 	Tag          string   `json:"tag,omitempty"`            // play: a random sound with this tag instead of MediaID
-	ToTrigger    bool     `json:"to_trigger,omitempty"`     // join, dm: the member who started the run
+	ToTrigger    bool     `json:"to_trigger,omitempty"`     // join, dm, wait: the member who started the run
 	Volume       int      `json:"volume,omitempty"`         // play, percent
-	UserID       string   `json:"user_id,omitempty"`        // dm
+	UserID       string   `json:"user_id,omitempty"`        // dm, wait
 	MessageID    int64    `json:"message_id,omitempty"`     // message, dm: a saved message
 	Text         string   `json:"text,omitempty"`           // message, dm: used without MessageID
-	Seconds      int      `json:"seconds,omitempty"`        // wait
+	Seconds      int      `json:"seconds,omitempty"`        // wait, before wait_ms
+	WaitMS       int64    `json:"wait_ms,omitempty"`        // wait, the timeout with Until
+	Until        string   `json:"until,omitempty"`          // wait: one of Untils
+	OnTimeout    string   `json:"on_timeout,omitempty"`     // wait with Until
+	WaitInput    string   `json:"-"`                        // wait: editor text that did not parse
 }
 
 func (s Step) Validate() error {
@@ -68,9 +71,7 @@ func (s Step) Validate() error {
 			return errors.New("the text is longer than 2000 characters")
 		}
 	case Wait:
-		if s.Seconds < 1 || s.Seconds > MaxWaitSeconds {
-			return fmt.Errorf("wait between 1 and %d seconds", MaxWaitSeconds)
-		}
+		return s.validateWait()
 	case Leave:
 	default:
 		return fmt.Errorf("unknown step %q", s.Type)
@@ -87,7 +88,7 @@ func (t StepType) Icon() string {
 }
 
 func (t StepType) Hint() string {
-	return map[StepType]string{Join: "A channel, or where a member is", Play: "From the media library", Leave: "Disconnect the bot", Message: "Text, embeds, files", DM: "To one member", Wait: "Seconds or minutes"}[t]
+	return map[StepType]string{Join: "A channel, or where a member is", Play: "From the media library", Leave: "Disconnect the bot", Message: "Text, embeds, files", DM: "To one member", Wait: "e.g. 500ms, 1.5s, 5m, 2h"}[t]
 }
 
 func (t StepType) Voice() bool { return t == Join || t == Play || t == Leave }

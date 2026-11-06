@@ -1,8 +1,11 @@
 package bot
 
 import (
+	"context"
 	"slices"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/snowflake/v2"
@@ -77,5 +80,93 @@ func TestVoiceTransitions(t *testing.T) {
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%s: got %v, want %v", name, got, c.want)
 		}
+	}
+}
+
+func TestVoiceCondMet(t *testing.T) {
+	lobby, other := snowflake.ID(2), snowflake.ID(3)
+	jane, botID := snowflake.ID(7), snowflake.ID(8)
+	isBot := func(id snowflake.ID) bool { return id == botID }
+	in := func(user, ch snowflake.ID, edit func(*discord.VoiceState)) []discord.VoiceState {
+		vs := discord.VoiceState{GuildID: 1, UserID: user, ChannelID: &ch}
+		if edit != nil {
+			edit(&vs)
+		}
+		return []discord.VoiceState{vs}
+	}
+	deaf := in(jane, lobby, func(vs *discord.VoiceState) { vs.SelfDeaf = true })
+	guildMuted := in(jane, lobby, func(vs *discord.VoiceState) { vs.GuildMute = true })
+	inLobby := in(jane, lobby, nil)
+	onlyBot := in(botID, lobby, nil)
+	for name, c := range map[string]struct {
+		until   string
+		channel snowflake.ID
+		states  []discord.VoiceState
+		want    bool
+	}{
+		"deafened":              {tasks.UntilUndeafened, 0, deaf, false},
+		"undeafened":            {tasks.UntilUndeafened, 0, inLobby, true},
+		"guild deafened":        {tasks.UntilUndeafened, 0, in(jane, lobby, func(vs *discord.VoiceState) { vs.GuildDeaf = true }), false},
+		"not in voice is heard": {tasks.UntilUndeafened, 0, nil, true},
+		"guild muted":           {tasks.UntilUnmuted, 0, guildMuted, false},
+		"unmuted":               {tasks.UntilUnmuted, 0, deaf, true},
+		"in any voice":          {tasks.UntilInVoice, 0, inLobby, true},
+		"in another channel":    {tasks.UntilInVoice, other, inLobby, false},
+		"in the channel":        {tasks.UntilInVoice, lobby, inLobby, true},
+		"not in voice":          {tasks.UntilInVoice, 0, nil, false},
+		"still in voice":        {tasks.UntilLeftVoice, 0, inLobby, false},
+		"left the channel":      {tasks.UntilLeftVoice, other, inLobby, true},
+		"left voice":            {tasks.UntilLeftVoice, 0, onlyBot, true},
+		"occupied":              {tasks.UntilOccupied, lobby, inLobby, true},
+		"only the bot":          {tasks.UntilOccupied, lobby, onlyBot, false},
+		"empty with bot":        {tasks.UntilEmpty, lobby, onlyBot, true},
+		"not empty":             {tasks.UntilEmpty, lobby, inLobby, false},
+		"other channel empty":   {tasks.UntilEmpty, other, inLobby, true},
+		"no channel":            {tasks.UntilEmpty, 0, nil, false},
+	} {
+		if got := voiceCondMet(c.until, jane, c.channel, c.states, isBot); got != c.want {
+			t.Errorf("%s: got %v, want %v", name, got, c.want)
+		}
+	}
+}
+
+func TestWaitVoice(t *testing.T) {
+	b := &Bot{}
+	var ready atomic.Bool
+	checks := atomic.Int32{}
+	cond := func() bool { checks.Add(1); return ready.Load() }
+	done := make(chan error, 1)
+	go func() { done <- b.WaitVoice(context.Background(), 1, cond) }()
+	for checks.Load() < 2 {
+		time.Sleep(time.Millisecond)
+	}
+	b.waiters.notify(2)
+	b.waiters.notify(1)
+	select {
+	case err := <-done:
+		t.Fatalf("returned while cond is false: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	ready.Store(true)
+	b.waiters.notify(1)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("not woken by the update")
+	}
+	if len(b.waiters.m) != 0 {
+		t.Errorf("waiter left behind: %v", b.waiters.m)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if err := b.WaitVoice(ctx, 1, func() bool { return false }); err != context.DeadlineExceeded {
+		t.Errorf("timeout: %v", err)
+	}
+	if err := b.WaitVoice(context.Background(), 1, func() bool { return true }); err != nil {
+		t.Errorf("already true: %v", err)
 	}
 }

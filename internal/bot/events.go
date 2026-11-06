@@ -97,6 +97,7 @@ func (b *Bot) listeners() disgobot.EventListener {
 			for _, ev := range voiceTransitions(e.VoiceState.GuildID, e.OldVoiceState.ChannelID, e.VoiceState.ChannelID, e.Member) {
 				b.emit(ev, e.Member.User.Bot)
 			}
+			b.waiters.notify(e.VoiceState.GuildID)
 		},
 		OnGuildMemberJoin: func(e *events.GuildMemberJoin) {
 			b.emit(Event{Type: tasks.MemberJoin, GuildID: e.GuildID.String(), UserID: e.Member.User.ID.String(), UserName: e.Member.EffectiveName()}, e.Member.User.Bot)

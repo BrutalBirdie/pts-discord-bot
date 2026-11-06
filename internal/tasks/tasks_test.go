@@ -130,3 +130,105 @@ func TestEventTrigger(t *testing.T) {
 		t.Error("trigger member or tag steps rejected")
 	}
 }
+
+func TestParseDuration(t *testing.T) {
+	for in, want := range map[string]time.Duration{
+		"1.5":      1500 * time.Millisecond,
+		"300":      5 * time.Minute,
+		"1,5":      1500 * time.Millisecond,
+		"500ms":    500 * time.Millisecond,
+		"1m30s":    90 * time.Second,
+		"1.5h":     90 * time.Minute,
+		" 2 H ":    2 * time.Hour,
+		"1d":       24 * time.Hour,
+		"5min":     5 * time.Minute,
+		"0.1s":     100 * time.Millisecond,
+		"1h1m1.5s": time.Hour + time.Minute + 1500*time.Millisecond,
+	} {
+		got, err := ParseDuration(in)
+		if err != nil || got != want {
+			t.Errorf("%q: got %v %v, want %v", in, got, err, want)
+		}
+	}
+	for in, msg := range map[string]string{
+		"1y":    "wait at most 24h",
+		"25h":   "wait at most 24h",
+		"1d1s":  "wait at most 24h",
+		"50ms":  "wait at least 100ms",
+		"0":     "wait at least 100ms",
+		"":      "enter how long to wait, e.g. 1.5s or 5m",
+		"-5s":   `"-5s" is not a duration, use e.g. 500ms, 1.5s, 5m or 2h`,
+		"1h30":  `"1h30" is not a duration, use e.g. 500ms, 1.5s, 5m or 2h`,
+		"1.2.3": `"1.2.3" is not a duration, use e.g. 500ms, 1.5s, 5m or 2h`,
+		"5x":    `"5x" is not a duration, use e.g. 500ms, 1.5s, 5m or 2h`,
+		"1e3s":  `"1e3s" is not a duration, use e.g. 500ms, 1.5s, 5m or 2h`,
+		"s":     `"s" is not a duration, use e.g. 500ms, 1.5s, 5m or 2h`,
+	} {
+		if _, err := ParseDuration(in); err == nil || err.Error() != msg {
+			t.Errorf("%q: got %v, want %q", in, err, msg)
+		}
+	}
+}
+
+func TestFormatDuration(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		1500 * time.Millisecond:         "1.5s",
+		500 * time.Millisecond:          "500ms",
+		5 * time.Minute:                 "5m",
+		90 * time.Minute:                "1h30m",
+		24 * time.Hour:                  "24h",
+		61001 * time.Millisecond:        "1m1.001s",
+		time.Hour + 5*time.Second:       "1h5s",
+		100 * time.Millisecond:          "100ms",
+		2*time.Second + time.Nanosecond: "2s",
+	} {
+		got := FormatDuration(d)
+		if got != want {
+			t.Errorf("%v: got %q, want %q", d, got, want)
+		}
+		if back, err := ParseDuration(got); err != nil || back != d.Round(time.Millisecond) {
+			t.Errorf("%q does not parse back: %v %v", got, back, err)
+		}
+	}
+}
+
+func TestWaitStep(t *testing.T) {
+	legacy := Step{Type: Wait, Seconds: 2}
+	if legacy.WaitDuration() != 2*time.Second || legacy.WaitValue() != "2s" || legacy.Validate() != nil {
+		t.Errorf("legacy seconds: %v %q %v", legacy.WaitDuration(), legacy.WaitValue(), legacy.Validate())
+	}
+	for name, c := range map[string]struct {
+		s   Step
+		err string
+	}{
+		"time":            {Step{Type: Wait, WaitMS: 1500}, ""},
+		"no time":         {Step{Type: Wait}, "enter how long to wait, e.g. 1.5s or 5m"},
+		"too long":        {Step{Type: Wait, WaitMS: (25 * time.Hour).Milliseconds()}, "wait at most 24h"},
+		"too short":       {Step{Type: Wait, WaitMS: 50}, "wait at least 100ms"},
+		"unparsed input":  {Step{Type: Wait, WaitInput: "2y"}, "wait at most 24h"},
+		"member":          {Step{Type: Wait, WaitMS: 300000, Until: UntilUndeafened, UserID: "7"}, ""},
+		"trigger member":  {Step{Type: Wait, WaitMS: 300000, Until: UntilUnmuted, ToTrigger: true, OnTimeout: OnTimeoutStop}, ""},
+		"no member":       {Step{Type: Wait, WaitMS: 300000, Until: UntilInVoice, ChannelID: "2"}, "pick the member to wait for"},
+		"left any":        {Step{Type: Wait, WaitMS: 300000, Until: UntilLeftVoice, UserID: "7"}, ""},
+		"channel":         {Step{Type: Wait, WaitMS: 300000, Until: UntilEmpty, ChannelID: "2"}, ""},
+		"no channel":      {Step{Type: Wait, WaitMS: 300000, Until: UntilOccupied, UserID: "7"}, "pick the voice channel to watch"},
+		"unknown until":   {Step{Type: Wait, WaitMS: 300000, Until: "speaking"}, `unknown wait condition "speaking"`},
+		"unknown timeout": {Step{Type: Wait, WaitMS: 300000, Until: UntilEmpty, ChannelID: "2", OnTimeout: "retry"}, `unknown timeout action "retry"`},
+	} {
+		got := ""
+		if err := c.s.Validate(); err != nil {
+			got = err.Error()
+		}
+		if got != c.err {
+			t.Errorf("%s: got %q, want %q", name, got, c.err)
+		}
+	}
+	s := Step{Type: Wait, Until: UntilUndeafened, UserID: "7"}
+	if got := s.UntilText("Jane", ""); got != "until Jane is undeafened" {
+		t.Errorf("until text %q", got)
+	}
+	s = Step{Type: Wait, Until: UntilLeftVoice, ToTrigger: true, ChannelID: "2"}
+	if got := s.UntilText("", "Lobby"); got != "until the member who started the run has left Lobby" {
+		t.Errorf("until text %q", got)
+	}
+}

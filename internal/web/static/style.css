@@ -392,3 +392,7 @@ html:not(.js) .js-only { display: none; }
 .tokens-foot .count { font-variant-numeric: tabular-nums; }
 .step:has(select.dm-to option[value=trigger]:checked) .picker.dm-member { display: none; }
 .step:has(option[value=trigger]:checked) .picker.follow { display: none; }
+.step:has(select.wait-until option[value=""]:checked) :is(.wait-to, .wait-member, .wait-channel, .wait-max, .wait-timeout) { display: none; }
+.step:has(select.wait-until :is(option[value=channel_occupied], option[value=channel_empty]):checked) :is(.wait-to, .wait-member) { display: none; }
+.step:has(select.wait-until :is(option[value=undeafened], option[value=unmuted]):checked) .wait-channel { display: none; }
+.step:has(select.wait-to option[value=trigger]:checked) .picker.wait-member { display: none; }

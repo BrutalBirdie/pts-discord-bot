@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -51,7 +52,11 @@ func (s *Server) describeSteps(t tasks.Task, mediaNames map[int64]string) string
 		case tasks.DM:
 			parts = append(parts, "DM to "+s.bot.MemberName(t.GuildID, st.UserID))
 		case tasks.Wait:
-			parts = append(parts, "wait "+dur(time.Duration(st.Seconds)*time.Second))
+			if st.Until == "" {
+				parts = append(parts, "wait "+tasks.FormatDuration(st.WaitDuration()))
+			} else {
+				parts = append(parts, "wait "+st.UntilText(s.bot.MemberName(t.GuildID, st.UserID), s.bot.ChannelName(st.ChannelID))+" (max "+tasks.FormatDuration(st.WaitDuration())+")")
+			}
 		}
 	}
 	out := strings.Join(parts, ", ")
@@ -369,10 +374,7 @@ func parseTask(r *http.Request) (tasks.Task, []string) {
 				}
 			}
 		case tasks.Wait:
-			st.Seconds, _ = strconv.Atoi(f.Get(p + "seconds"))
-			if f.Get(p+"unit") == "min" {
-				st.Seconds *= 60
-			}
+			parseWait(&st, f, p)
 		case tasks.Leave:
 		default:
 			continue
@@ -380,6 +382,43 @@ func parseTask(r *http.Request) (tasks.Task, []string) {
 		t.Steps = append(t.Steps, st)
 	}
 	return t, bad
+}
+
+const defaultWait = 5 * time.Second
+
+func parseWait(st *tasks.Step, f url.Values, p string) {
+	st.Until = f.Get(p + "until")
+	if st.Until != "" {
+		if f.Get(p+"on_timeout") == tasks.OnTimeoutStop {
+			st.OnTimeout = tasks.OnTimeoutStop
+		}
+		if tasks.MemberUntil(st.Until) {
+			if f.Get(p+"to") == "trigger" {
+				st.ToTrigger = true
+			} else {
+				// the member picker text, resolved to an ID in resolveMembers
+				st.UserID = strings.TrimSpace(f.Get(p + "user"))
+			}
+		}
+		if st.Until != tasks.UntilUndeafened && st.Until != tasks.UntilUnmuted {
+			st.ChannelID = f.Get(p + "channel")
+		}
+	}
+	in := strings.TrimSpace(f.Get(p + "wait"))
+	if in == "" && st.Until != "" {
+		st.WaitMS = tasks.DefaultUntilWait.Milliseconds()
+		return
+	}
+	d, err := tasks.ParseDuration(in)
+	if err != nil {
+		st.WaitInput = in
+		return
+	}
+	// picking a condition turns the time only default into the condition default
+	if st.Until != "" && f.Get(p+"until_was") == "" && d == defaultWait {
+		d = tasks.DefaultUntilWait
+	}
+	st.WaitMS = d.Milliseconds()
 }
 
 // applyOp changes the steps for the editor buttons that do not save.
@@ -393,7 +432,7 @@ func applyOp(t *tasks.Task, op string) {
 		case tasks.Play:
 			st.Volume = 100
 		case tasks.Wait:
-			st.Seconds = 5
+			st.WaitMS = defaultWait.Milliseconds()
 		}
 		if slices.Contains(tasks.StepTypes, st.Type) && len(t.Steps) < tasks.MaxSteps {
 			t.Steps = append(t.Steps, st)

@@ -79,6 +79,8 @@ var viewFuncs = template.FuncMap{
 	},
 	"hasString":  func(list []string, v string) bool { return slices.Contains(list, v) },
 	"eventLabel": tasks.EventLabel,
+	"untilLabel": tasks.UntilLabel,
+	"untils":     func() []string { return tasks.Untils },
 	"hasID":      func(list []int64, id int64) bool { return slices.Contains(list, id) },
 	"plural": func(n int, one, many string) string {
 		if n == 1 {
