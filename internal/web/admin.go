@@ -23,6 +23,7 @@ type adminData struct {
 	Page       int
 	More       bool
 	Timezones  []string
+	Access     *accessTab
 }
 
 const auditPerPage = 50
@@ -51,6 +52,11 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			d.Text = append(d.Text, gc)
+		}
+	case "access":
+		if d.Access, err = s.accessTab(r); err != nil {
+			s.internalError(w, r, err)
+			return
 		}
 	case "audit":
 		q := r.URL.Query()

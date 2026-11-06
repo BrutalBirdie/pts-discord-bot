@@ -111,4 +111,37 @@ CREATE TABLE IF NOT EXISTS bot_profile_changes (
     changed_at timestamptz,
     blocked_until timestamptz,
     PRIMARY KEY (guild_id, field)
+);
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'cloudron';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS guild_ids text[] NOT NULL DEFAULT '{}';
+ALTER TABLE oidc_logins ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'cloudron';
+CREATE TABLE IF NOT EXISTS discord_users (
+    user_id text PRIMARY KEY,
+    username text NOT NULL,
+    global_name text NOT NULL DEFAULT '',
+    avatar text NOT NULL DEFAULT '',
+    blocked boolean NOT NULL DEFAULT false,
+    blocked_by text,
+    blocked_at timestamptz,
+    last_login_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS access_requests (
+    id bigserial PRIMARY KEY,
+    user_id text NOT NULL REFERENCES discord_users (user_id) ON DELETE CASCADE,
+    guild_ids text[] NOT NULL,
+    note text NOT NULL DEFAULT '',
+    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'denied', 'revoked')),
+    requested_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL DEFAULT now() + interval '7 days',
+    decided_by text,
+    decided_at timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS access_requests_one_pending ON access_requests (user_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS access_requests_user ON access_requests (user_id, id DESC);
+CREATE TABLE IF NOT EXISTS discord_grants (
+    user_id text NOT NULL REFERENCES discord_users (user_id) ON DELETE CASCADE,
+    guild_id text NOT NULL,
+    granted_by text NOT NULL,
+    granted_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, guild_id)
 );`

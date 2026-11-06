@@ -43,6 +43,8 @@ type Config struct {
 	ClientSecret string
 	Admins       access.Admins
 	MediaDir     media.Dir
+	// DiscordSecret is the OAuth2 client secret of the bot's application, empty turns Discord login off
+	DiscordSecret string
 }
 
 type Server struct {
@@ -55,12 +57,13 @@ type Server struct {
 
 	oidcMu   sync.Mutex
 	provider *oidc.Provider
+	discord  discordAPI
 }
 
-var pageNames = []string{"login", "error", "dashboard", "servers", "server", "tasks", "task", "messages", "message", "media", "trash", "admin"}
+var pageNames = []string{"login", "error", "dashboard", "servers", "server", "tasks", "task", "messages", "message", "media", "trash", "admin", "access"}
 
 func New(cfg Config, st *store.Store, b *bot.Bot, r *runner.Runner, log *slog.Logger) (*Server, error) {
-	s := &Server{cfg: cfg, store: st, bot: b, run: r, log: log, pages: map[string]*template.Template{}}
+	s := &Server{cfg: cfg, store: st, bot: b, run: r, log: log, pages: map[string]*template.Template{}, discord: httpDiscord{client: &http.Client{Timeout: 15 * time.Second}}}
 	for _, page := range pageNames {
 		t, err := template.New("layout.html").Funcs(viewFuncs).ParseFS(assets, "templates/layout.html", "templates/parts.html", "templates/icons.html", "templates/"+page+".html")
 		if err != nil {
@@ -68,6 +71,7 @@ func New(cfg Config, st *store.Store, b *bot.Bot, r *runner.Runner, log *slog.Lo
 		}
 		s.pages[page] = t
 	}
+	b.OnGuildLeave(s.guildLeft)
 	return s, nil
 }
 
@@ -78,8 +82,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	mux.HandleFunc("GET /login", s.login)
 	mux.HandleFunc("GET /auth/callback", s.callback)
+	mux.HandleFunc("GET /login/discord", s.discordLogin)
+	mux.HandleFunc("GET /auth/discord/callback", s.discordCallback)
+	mux.Handle("POST /access/request", s.requireDiscord(s.requestAccess))
+	mux.Handle("POST /access/withdraw", s.requireDiscord(s.withdrawAccess))
 
-	mux.Handle("GET /{$}", s.requireLogin(s.dashboard))
+	mux.Handle("GET /{$}", s.requireLogin(s.home))
 	mux.Handle("POST /logout", s.requireLogin(s.logout))
 	mux.Handle("POST /account", s.requireLogin(s.saveAccount))
 
@@ -130,13 +138,14 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /admin", s.requireAdmin(s.admin))
 	mux.Handle("GET /admin/{tab}", s.requireAdmin(s.admin))
 	mux.Handle("POST /admin/settings", s.requireAdmin(s.saveSettings))
+	mux.Handle("POST /admin/access/{user}", s.requireAdmin(s.decideAccess))
 	return securityHeaders(mux)
 }
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; img-src 'self'; media-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+		h.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; img-src 'self' "+discordCDN+"; media-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("X-Content-Type-Options", "nosniff")
 		// no-referrer would make browsers send "Origin: null" on form posts
@@ -180,8 +189,12 @@ func (s *Server) authed(h http.HandlerFunc, stream bool) http.Handler {
 			return
 		}
 		// BOT_ADMINS and BOT_ADMIN_GROUP changes apply to existing sessions after a restart
-		sess.IsAdmin = s.cfg.Admins.IsAdmin(sess.Username, sess.Groups)
+		sess.IsAdmin = s.isAdmin(sess)
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, sess))
+		if sess.Discord() && !discordAllowed(r) {
+			s.fail(w, r, http.StatusForbidden, "Discord accounts can only open the start page for now.")
+			return
+		}
 		if r.Method == http.MethodPost && !(stream && s.validOrigin(r, sess) || !stream && s.validPost(w, r, sess)) {
 			s.fail(w, r, http.StatusForbidden, "The request could not be verified. Reload the page and try again.")
 			return
@@ -192,6 +205,16 @@ func (s *Server) authed(h http.HandlerFunc, stream bool) http.Handler {
 
 func clearCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+}
+
+func (s *Server) requireDiscord(h http.HandlerFunc) http.Handler {
+	return s.requireLogin(func(w http.ResponseWriter, r *http.Request) {
+		if !sessionFrom(r).Discord() {
+			s.notFound(w, r)
+			return
+		}
+		h(w, r)
+	})
 }
 
 func (s *Server) requireAdmin(h http.HandlerFunc) http.Handler {
@@ -251,11 +274,14 @@ type pageData struct {
 	Undo      *trashRef // restore button next to the notice after a delete
 	Trash     int       // items in the trash
 	TrashDays int
-	Data      any
+	Pending   int // open access requests, for admins
+	// DiscordLogin shows the Discord button on the login page
+	DiscordLogin bool
+	Data         any
 }
 
 var navOf = map[string]string{"dashboard": "home", "servers": "servers", "server": "servers", "tasks": "tasks", "task": "tasks",
-	"messages": "messages", "message": "messages", "media": "media", "trash": "trash", "admin": "admin"}
+	"messages": "messages", "message": "messages", "media": "media", "trash": "trash", "admin": "admin", "access": "home"}
 
 // notices are shown after a redirect with ?done=<key>.
 var notices = map[string]string{
@@ -277,6 +303,14 @@ var notices = map[string]string{
 	"restored-task": "Restored. It stays paused until you resume it.",
 	"purged":        "Deleted for good.",
 	"emptied":       "The trash is empty.",
+
+	"requested":        "Request sent.",
+	"withdrawn":        "Request withdrawn.",
+	"access-approved":  "Approved. They can log in now.",
+	"access-denied":    "Request denied.",
+	"access-blocked":   "Blocked.",
+	"access-unblocked": "Unblocked. They can ask for access again.",
+	"access-revoked":   "Access revoked.",
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page string, data any) {
@@ -286,7 +320,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page
 func (s *Server) renderMsg(w http.ResponseWriter, r *http.Request, status int, page, msg string, data any) {
 	sess := sessionFrom(r)
 	prefs := store.DefaultPrefs
-	trash, trashDays := 0, store.DefaultSettings.TrashRetentionDays
+	trash, trashDays, pending := 0, store.DefaultSettings.TrashRetentionDays, 0
 	if sess != nil && s.store != nil {
 		if p, err := s.store.Prefs(r.Context(), sess.Username); err != nil {
 			s.log.Error("reading preferences", "user", sess.Username, "err", err)
@@ -294,8 +328,15 @@ func (s *Server) renderMsg(w http.ResponseWriter, r *http.Request, status int, p
 			prefs = p
 		}
 		var err error
-		if trash, err = s.store.CountTrash(r.Context()); err != nil {
-			s.log.Error("counting the trash", "err", err)
+		if !sess.Discord() {
+			if trash, err = s.store.CountTrash(r.Context()); err != nil {
+				s.log.Error("counting the trash", "err", err)
+			}
+		}
+		if sess.IsAdmin {
+			if pending, err = s.store.PendingAccessCount(r.Context()); err != nil {
+				s.log.Error("counting access requests", "err", err)
+			}
 		}
 		if st, err := s.store.Settings(r.Context()); err == nil {
 			trashDays = st.TrashRetentionDays
@@ -317,18 +358,20 @@ func (s *Server) renderMsg(w http.ResponseWriter, r *http.Request, status int, p
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	err := s.pages[page].Execute(w, pageData{
-		Title:     "PTS Discord Bot",
-		Session:   sess,
-		Prefs:     prefs,
-		Nav:       navOf[page],
-		Path:      r.URL.Path,
-		Bot:       s.bot.Status(),
-		Error:     msg,
-		Notice:    notice,
-		Undo:      undo,
-		Trash:     trash,
-		TrashDays: trashDays,
-		Data:      data,
+		Title:        "PTS Discord Bot",
+		Session:      sess,
+		Prefs:        prefs,
+		Nav:          navOf[page],
+		Path:         r.URL.Path,
+		Bot:          s.bot.Status(),
+		Error:        msg,
+		Notice:       notice,
+		Undo:         undo,
+		Trash:        trash,
+		TrashDays:    trashDays,
+		Pending:      pending,
+		DiscordLogin: s.discordEnabled(),
+		Data:         data,
 	})
 	if err != nil {
 		s.log.Error("render", "page", page, "err", err)
@@ -358,9 +401,12 @@ func (s *Server) storeErr(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func (s *Server) audit(r *http.Request, action, target, detail string) {
-	actor := sessionFrom(r).Username
+	s.auditAs(r.Context(), sessionFrom(r).Username, action, target, detail)
+}
+
+func (s *Server) auditAs(ctx context.Context, actor, action, target, detail string) {
 	s.log.Info("audit", "actor", actor, "action", action, "target", target, "detail", detail)
-	if err := s.store.Audit(r.Context(), store.AuditEntry{Actor: actor, Action: action, Target: target, Detail: detail}); err != nil {
+	if err := s.store.Audit(ctx, store.AuditEntry{Actor: actor, Action: action, Target: target, Detail: detail}); err != nil {
 		s.log.Error("audit write failed", "err", err)
 	}
 }
@@ -391,7 +437,8 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok\n"))
 }
 
-// PurgeLoop removes expired sessions, old runs and items that were long enough in the trash.
+// PurgeLoop removes expired sessions, old runs and items that were long enough
+// in the trash, and keeps Discord access in line with server membership.
 func (s *Server) PurgeLoop(ctx context.Context) {
 	t := time.NewTicker(15 * time.Minute)
 	defer t.Stop()
@@ -412,6 +459,10 @@ func (s *Server) PurgeLoop(ctx context.Context) {
 		}
 		if n > 0 {
 			s.log.Info("removed items from the trash", "count", n)
+		}
+		err = maintainAccess(ctx, s.store, s.bot, func(action, target, detail string) { s.auditAs(ctx, store.SystemActor, action, target, detail) })
+		if err != nil && ctx.Err() == nil {
+			s.log.Error("checking discord access", "err", err)
 		}
 		select {
 		case <-ctx.Done():

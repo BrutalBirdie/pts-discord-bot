@@ -54,7 +54,7 @@ func TestPagesRender(t *testing.T) {
 		want []string
 	}
 	pages := []page{
-		{"login", nil, []string{"Sign in with Cloudron"}},
+		{"login", nil, []string{"Log in with Cloudron"}},
 		{"error", nil, []string{"Something went wrong"}},
 		{"dashboard", dashboardData{Upcoming: []upcoming{{At: now.Add(time.Hour), Task: adhan, Guild: "PTS", What: "Join prayer"}}, Runs: runs, Runs24h: 2, Failed24h: 1,
 			Playing: []playingView{{P: bot.Playing{GuildID: "1", Name: "muezzin.ogg", Channel: "prayer", Started: now, Duration: time.Minute}, CSRF: "tok", Next: "/"}}},

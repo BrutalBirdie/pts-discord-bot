@@ -1,0 +1,79 @@
+{{define "content"}}
+{{$d := .Data}}
+{{if ne $d.View "blocked"}}
+<div class="page-head">
+  <div class="person">
+    {{template "discordava" (dict "Avatar" $d.Avatar "Name" $d.User.Name)}}
+    <div class="row-main"><strong>{{$d.User.Name}}</strong><span class="row-sub mono">@{{$d.User.Username}} on Discord</span></div>
+  </div>
+  {{with .Session}}<form method="post" action="/logout" class="btns"><input type="hidden" name="csrf" value="{{.CSRFToken}}">
+    <button type="submit" class="ib with-label">{{icon "log-out"}}<span class="lbl">Log out</span></button></form>{{end}}
+</div>
+{{end}}
+
+{{if eq $d.View "form"}}
+<form method="post" action="/access/request" class="card form">
+  {{template "csrf" .}}
+  <div class="stack-sm">
+    <h1>Ask for access</h1>
+    <p class="hint">An admin of this bot decides. If nobody answers within 7 days, the request is denied and you can ask again.</p>
+  </div>
+  <fieldset class="picks" data-pick-list="8">
+    <legend>Servers you want to manage</legend>
+    <input type="search" class="js-only" placeholder="Search servers" aria-label="Search servers" data-pick-search>
+    {{range $d.Servers}}
+    <label data-pick="{{.Name}}"><input type="checkbox" name="guild" value="{{.ID}}"><span class="row-main"><strong>{{.Name}}</strong><span class="row-sub">{{plural .MemberCount "member" "members"}}</span></span></label>
+    {{end}}
+    <div class="pager js-only" data-pick-pager>
+      <button type="button" class="ib with-label" data-prev><span class="lbl">Previous</span></button>
+      <span class="hint" data-page-text></span>
+      <button type="button" class="ib with-label" data-next><span class="lbl">Next</span></button>
+    </div>
+    <span class="hint">Only servers you and the bot are both in are listed.<span class="js-only"> <span data-picked>0</span> picked.</span></span>
+  </fieldset>
+  <label class="field"><span>Message to the admin <span class="muted">(optional)</span></span>
+    <textarea name="note" rows="3" maxlength="{{$d.NoteMax}}" class="prose" placeholder="What do you want to set up?"></textarea></label>
+  <div class="btns"><button type="submit" class="ib primary with-label" data-pick-send>{{icon "send"}}<span class="lbl">Send request</span></button></div>
+</form>
+{{end}}
+
+{{if eq $d.View "pending"}}
+<section class="card stack" role="status">
+  <span class="chip warn start">waiting for an admin</span>
+  <h1>Request sent</h1>
+  <p>You asked for {{join $d.Asked " and "}}. Reload this page once an admin approved it. If nobody answers, the request is denied on {{$d.ExpiresOn}}.</p>
+  <form method="post" action="/access/withdraw" class="btns">{{template "csrf" .}}
+    <button type="submit" class="ib with-label">{{icon "x"}}<span class="lbl">Withdraw request</span></button></form>
+</section>
+{{end}}
+
+{{if or (eq $d.View "denied") (eq $d.View "revoked")}}
+<section class="card stack" role="status">
+  <h1>{{if eq $d.View "revoked"}}Access removed{{else}}Request denied{{end}}</h1>
+  <p>{{if eq $d.View "revoked"}}An admin removed your access.{{else}}Your last request was not approved.{{end}} You can ask again.</p>
+  <div class="btns"><a class="ib primary with-label" href="/?again=1">{{icon "send"}}<span class="lbl">Ask again</span></a></div>
+</section>
+{{end}}
+
+{{if eq $d.View "blocked"}}
+<section class="card stack blocked" role="status">
+  <h1>No access</h1>
+  <p>This Discord account cannot ask for access to this bot.</p>
+</section>
+{{end}}
+
+{{if eq $d.View "none"}}
+<section class="card stack" role="status">
+  <h1>No shared server</h1>
+  <p>You are not in any server this bot is in, so there is nothing to ask for.</p>
+</section>
+{{end}}
+
+{{if eq $d.View "approved"}}
+<section class="card stack" role="status">
+  <span class="chip ok start">{{icon "check"}}approved</span>
+  <h1>Access approved</h1>
+  <p>Access approved for: {{join $d.Active ", "}}. Managing tasks is coming soon.</p>
+</section>
+{{end}}
+{{end}}

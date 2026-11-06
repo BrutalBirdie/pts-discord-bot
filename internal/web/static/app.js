@@ -573,4 +573,43 @@
             try { sessionStorage.setItem(key, String(window.scrollY)); } catch (e) { /* storage blocked */ }
         });
     });
+
+    // server choices of an access request: search and pages, without JavaScript all are listed
+    document.querySelectorAll('[data-pick-list]').forEach(function (box) {
+        const items = Array.from(box.querySelectorAll('[data-pick]'));
+        const search = box.querySelector('[data-pick-search]');
+        const pager = box.querySelector('[data-pick-pager]');
+        const prev = pager.querySelector('[data-prev]');
+        const next = pager.querySelector('[data-next]');
+        const info = pager.querySelector('[data-page-text]');
+        const picked = box.querySelector('[data-picked]');
+        const send = box.form && box.form.querySelector('[data-pick-send]');
+        const per = Number(box.dataset.pickList) || 8;
+        let page = 0;
+        function show() {
+            const q = search.value.trim().toLowerCase();
+            const match = items.filter((el) => !q || el.dataset.pick.toLowerCase().includes(q));
+            const pages = Math.max(1, Math.ceil(match.length / per));
+            page = Math.min(page, pages - 1);
+            items.forEach((el) => { el.hidden = true; });
+            match.slice(page * per, page * per + per).forEach((el) => { el.hidden = false; });
+            info.textContent = match.length ? 'Page ' + (page + 1) + ' of ' + pages : 'No server matches.';
+            prev.disabled = page === 0;
+            next.disabled = page >= pages - 1;
+            pager.hidden = pages === 1 && match.length > 0;
+            search.hidden = items.length <= per;
+        }
+        function count() {
+            const n = box.querySelectorAll('input[type=checkbox]:checked').length;
+            picked.textContent = String(n);
+            if (send) send.disabled = n === 0;
+        }
+        search.addEventListener('input', function () { page = 0; show(); });
+        search.addEventListener('keydown', function (event) { if (event.key === 'Enter') event.preventDefault(); });
+        prev.addEventListener('click', function () { page--; show(); });
+        next.addEventListener('click', function () { page++; show(); });
+        box.addEventListener('change', count);
+        show();
+        count();
+    });
 })();

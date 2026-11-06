@@ -100,12 +100,13 @@ func run(log *slog.Logger) error {
 	}()
 
 	srv, err := web.New(web.Config{
-		Origin:       os.Getenv("CLOUDRON_APP_ORIGIN"),
-		Issuer:       os.Getenv("CLOUDRON_OIDC_ISSUER"),
-		ClientID:     os.Getenv("CLOUDRON_OIDC_CLIENT_ID"),
-		ClientSecret: os.Getenv("CLOUDRON_OIDC_CLIENT_SECRET"),
-		Admins:       access.Parse(os.Getenv("BOT_ADMINS"), os.Getenv("BOT_ADMIN_GROUP")),
-		MediaDir:     dir,
+		Origin:        os.Getenv("CLOUDRON_APP_ORIGIN"),
+		Issuer:        os.Getenv("CLOUDRON_OIDC_ISSUER"),
+		ClientID:      os.Getenv("CLOUDRON_OIDC_CLIENT_ID"),
+		ClientSecret:  os.Getenv("CLOUDRON_OIDC_CLIENT_SECRET"),
+		Admins:        access.Parse(os.Getenv("BOT_ADMINS"), os.Getenv("BOT_ADMIN_GROUP")),
+		MediaDir:      dir,
+		DiscordSecret: os.Getenv("DISCORD_CLIENT_SECRET"),
 	}, st, b, rn, log)
 	if err != nil {
 		return err

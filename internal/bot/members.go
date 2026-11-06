@@ -2,8 +2,12 @@ package bot
 
 import (
 	"cmp"
+	"context"
+	"errors"
 	"slices"
 	"strings"
+
+	"github.com/disgoorg/disgo/rest"
 )
 
 // Label is how the member picker shows and accepts a member: "Name (@username)".
@@ -87,4 +91,30 @@ func (b *Bot) MemberLabel(guildID, userID string) string {
 		return m.Label()
 	}
 	return userID
+}
+
+// IsMember asks the member cache and then Discord whether a user is in a
+// server. It is false as well when the bot is not in that server any more.
+func (b *Bot) IsMember(ctx context.Context, guildID, userID string) (bool, error) {
+	c, err := b.get()
+	if err != nil {
+		return false, err
+	}
+	gid, ok1 := ParseID(guildID)
+	uid, ok2 := ParseID(userID)
+	if !ok1 || !ok2 {
+		return false, nil
+	}
+	if _, ok := c.Caches.Member(gid, uid); ok {
+		return true, nil
+	}
+	_, err = c.Rest.GetMember(gid, uid, rest.WithCtx(ctx))
+	var re *rest.Error
+	if errors.As(err, &re) {
+		switch re.Code {
+		case rest.JSONErrorCodeUnknownMember, rest.JSONErrorCodeUnknownUser, rest.JSONErrorCodeUnknownGuild, rest.JSONErrorCodeMissingAccess:
+			return false, nil
+		}
+	}
+	return err == nil, err
 }

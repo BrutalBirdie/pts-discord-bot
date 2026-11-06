@@ -1,12 +1,13 @@
 {{define "navlinks"}}
+{{if .Session.Discord}}<a href="/"{{if eq .Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Home</span></a>{{else}}
 <a href="/"{{if eq .Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Dashboard</span></a>
 <a href="/servers"{{if eq .Nav "servers"}} aria-current="page"{{end}}>{{icon "server"}}<span>Servers</span></a>
 <a href="/tasks"{{if eq .Nav "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span>Tasks</span></a>
 <a href="/messages"{{if eq .Nav "messages"}} aria-current="page"{{end}}>{{icon "message-square"}}<span>Messages</span></a>
 <a href="/media"{{if eq .Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>
 <a href="/trash"{{if eq .Nav "trash"}} aria-current="page"{{end}}>{{icon "trash-2"}}<span>Trash</span>{{with .Trash}}<span class="badge">{{.}}</span>{{end}}</a>
-{{if .Session.IsAdmin}}<a href="/admin"{{if eq .Nav "admin"}} aria-current="page"{{end}}>{{icon "shield"}}<span>Admin</span></a>{{end}}
-{{end}}
+{{if .Session.IsAdmin}}<a href="/admin"{{if eq .Nav "admin"}} aria-current="page"{{end}}>{{icon "shield"}}<span>Admin</span>{{with .Pending}}<span class="badge accent" aria-label="{{.}} open access requests">{{.}}</span>{{end}}</a>{{end}}
+{{end}}{{end}}
 
 {{define "sheethead"}}
 <div class="sheet-head">
@@ -90,3 +91,5 @@
   {{if .More}}<a class="ib with-label" href="{{.Next}}" rel="next"><span class="lbl">{{if .Dated}}Older{{else}}Next{{end}}</span>{{icon "chevron-right"}}</a>{{else}}<span></span>{{end}}
 </nav>
 {{end}}{{end}}
+
+{{define "discordava"}}{{if .Avatar}}<span class="ava lg"><img src="{{.Avatar}}" alt="" width="44" height="44" loading="lazy" referrerpolicy="no-referrer"></span>{{else}}<span class="ava lg" aria-hidden="true">{{with initials .Name}}{{.}}{{else}}?{{end}}</span>{{end}}{{end}}

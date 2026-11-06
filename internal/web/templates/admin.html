@@ -4,6 +4,7 @@
 <nav class="tabs" aria-label="Admin">
   <a class="tab" href="/admin"{{if eq $d.Tab "overview"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}Overview</a>
   <a class="tab" href="/admin/settings"{{if eq $d.Tab "settings"}} aria-current="page"{{end}}>{{icon "settings"}}Settings</a>
+  <a class="tab" href="/admin/access"{{if eq $d.Tab "access"}} aria-current="page"{{end}}>{{icon "users"}}Access{{with .Pending}}<span class="badge accent" aria-label="{{.}} open requests">{{.}}</span>{{end}}</a>
   <a class="tab" href="/admin/audit"{{if eq $d.Tab "audit"}} aria-current="page"{{end}}>{{icon "list"}}Audit log</a>
 </nav>
 
@@ -54,6 +55,67 @@
 </form>
 {{end}}
 
+{{if eq $d.Tab "access"}}{{$a := $d.Access}}{{$csrf := .Session.CSRFToken}}
+<p class="hint">Discord members of servers the bot is in can ask for access. An approved member manages tasks, messages and media of the servers you approve. Requests nobody answers are denied after 7 days.</p>
+<form class="search" method="get" action="/admin/access">
+  <input type="hidden" name="state" value="{{$a.State}}">
+  <input type="search" name="q" value="{{$a.Search}}" placeholder="Search by name, username or server" aria-label="Search requests">
+  <button type="submit" class="ib" aria-label="Search" data-tip="Search">{{icon "search"}}</button>
+</form>
+<div class="pills">
+  <a href="/admin/access?state=pending&amp;q={{$a.Search}}"{{if eq $a.State "pending"}} aria-current="page"{{end}}>Pending {{index $a.Counts "pending"}}</a>
+  <a href="/admin/access?state=approved&amp;q={{$a.Search}}"{{if eq $a.State "approved"}} aria-current="page"{{end}}>Approved {{index $a.Counts "approved"}}</a>
+  <a href="/admin/access?state=denied&amp;q={{$a.Search}}"{{if eq $a.State "denied"}} aria-current="page"{{end}}>Denied {{index $a.Counts "denied"}}</a>
+  <a href="/admin/access?state=blocked&amp;q={{$a.Search}}"{{if eq $a.State "blocked"}} aria-current="page"{{end}}>Blocked {{index $a.Counts "blocked"}}</a>
+</div>
+<section class="card" aria-label="{{$a.State}} requests">
+  <ul class="list">
+    {{range $a.Rows}}{{$form := print "access-" .ID}}
+    <li>
+      <div class="person top">
+        {{template "discordava" (dict "Avatar" .Avatar "Name" .Name)}}
+        <div class="row-main">
+          <div class="row-title">{{.Name}} <span class="mono small muted">@{{.Username}}</span> <span class="chip{{with .ChipClass}} {{.}}{{end}}">{{.Chip}}</span></div>
+          {{with .Sub}}<div class="row-sub">{{.}}</div>{{end}}
+          {{with .Note}}<blockquote class="note">{{.}}</blockquote>{{end}}
+          {{if .Servers}}<div class="meta"><span class="small muted">{{.ServersLabel}}</span>
+            {{if .Editable}}{{range .Servers}}<label class="gpick"><input type="checkbox" name="guild" value="{{.ID}}" form="{{$form}}" checked>{{.Name}}</label>{{end}}
+            {{else}}{{range .Servers}}<span class="chip">{{.Name}}</span>{{end}}{{end}}
+          </div>{{end}}
+        </div>
+      </div>
+      <div class="btns">
+        <form method="post" action="/admin/access/{{.ID}}" id="{{$form}}">
+          <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="state" value="{{$a.State}}"><input type="hidden" name="q" value="{{$a.Search}}"><input type="hidden" name="page" value="{{$a.Page}}">
+          {{if eq .State "pending"}}
+          <button type="submit" name="do" value="approve" class="ib primary" aria-label="Approve {{.Name}}" data-tip="Approve" data-confirm-desc="Gives @{{.Username}} access to the checked servers.">{{icon "check"}}<span class="lbl">Approve</span></button>
+          <button type="submit" name="do" value="deny" class="ib" aria-label="Deny {{.Name}}" data-tip="Deny" data-confirm-desc="Denies the request. {{.Name}} can ask again later.">{{icon "x"}}<span class="lbl">Deny</span></button>
+          <button type="submit" name="do" value="block" class="ib danger" aria-label="Block {{.Name}}" data-tip="Block" data-confirm-desc="Denies the request and stops @{{.Username}} from asking again until you unblock them." data-irreversible>{{icon "ban"}}<span class="lbl">Block</span></button>
+          {{else if eq .State "approved"}}
+          <button type="submit" name="do" value="revoke" class="ib danger" aria-label="Revoke access of {{.Name}}" data-tip="Revoke access" data-confirm-desc="Logs {{.Name}} out and removes their access." data-irreversible>{{icon "x"}}<span class="lbl">Revoke access</span></button>
+          <button type="submit" name="do" value="block" class="ib danger" aria-label="Block {{.Name}}" data-tip="Block" data-confirm-desc="Removes access and stops @{{.Username}} from asking again." data-irreversible>{{icon "ban"}}<span class="lbl">Block</span></button>
+          {{else if eq .State "denied"}}
+          <button type="submit" name="do" value="block" class="ib danger" aria-label="Block {{.Name}}" data-tip="Block" data-confirm-desc="Stops @{{.Username}} from asking again." data-irreversible>{{icon "ban"}}<span class="lbl">Block</span></button>
+          {{else if eq .State "blocked"}}
+          <button type="submit" name="do" value="unblock" class="ib" aria-label="Unblock {{.Name}}" data-tip="Unblock" data-confirm-desc="{{.Name}} can ask for access again.">{{icon "rotate-ccw"}}<span class="lbl">Unblock</span></button>
+          {{end}}
+        </form>
+      </div>
+    </li>
+    {{else}}
+    <li><span class="muted">{{if $a.Search}}Nothing matches {{$a.Search}}.{{else if eq $a.State "pending"}}No open requests.{{else if eq $a.State "approved"}}Nobody from Discord has access yet.{{else if eq $a.State "denied"}}No denied requests.{{else}}Nobody is blocked.{{end}}</span></li>
+    {{end}}
+  </ul>
+  {{if $a.Total}}
+  <div class="pager mt">
+    {{if gt $a.Page 1}}<a class="ib with-label" href="/admin/access?state={{$a.State}}&amp;q={{$a.Search}}&amp;page={{add $a.Page -1}}"><span class="lbl">Newer</span></a>{{else}}<span></span>{{end}}
+    <span class="hint">Page {{$a.Page}} of {{$a.Pages}} · {{plural $a.Total "request" "requests"}}</span>
+    {{if lt $a.Page $a.Pages}}<a class="ib with-label" href="/admin/access?state={{$a.State}}&amp;q={{$a.Search}}&amp;page={{add $a.Page 1}}"><span class="lbl">Older</span></a>{{else}}<span></span>{{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}
+
 {{if eq $d.Tab "audit"}}
 <form class="search" method="get" action="/admin/audit">
   {{with $d.Category}}<input type="hidden" name="category" value="{{.}}">{{end}}
@@ -67,6 +129,7 @@
   <a href="/admin/audit?category=media&amp;q={{$d.Search}}"{{if eq $d.Category "media"}} aria-current="page"{{end}}>Media</a>
   <a href="/admin/audit?category=voice&amp;q={{$d.Search}}"{{if eq $d.Category "voice"}} aria-current="page"{{end}}>Voice</a>
   <a href="/admin/audit?category=settings&amp;q={{$d.Search}}"{{if eq $d.Category "settings"}} aria-current="page"{{end}}>Settings</a>
+  <a href="/admin/audit?category=access&amp;q={{$d.Search}}"{{if eq $d.Category "access"}} aria-current="page"{{end}}>Access</a>
 </div>
 <section class="card">
   <ul class="list">

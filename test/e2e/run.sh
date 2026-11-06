@@ -8,6 +8,7 @@ set -eu
 cd "$(dirname "$0")"
 readonly root=$(cd ../.. && pwd)
 readonly img=ptsbot:e2e
+readonly build_img=ptsbot:e2e-build
 readonly net=ptse2e
 readonly app=ptse2e-app
 readonly mock=ptse2e-mock
@@ -58,6 +59,7 @@ wait_healthy() {
 
 echo "==> Building"
 docker build -q -t "${img}" "${root}" >/dev/null
+docker build -q --target build -t "${build_img}" "${root}" >/dev/null
 docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${PWD}:/e2e" -w /e2e mcr.microsoft.com/playwright:v1.65.0-noble npm install --no-audit --no-fund --silent
 chmod 0777 "${work}"
 
@@ -79,6 +81,11 @@ expect "env.sh created on first start" 'BOT_ADMIN_GROUP="\$\{BOT_ADMIN_GROUP:-\}
 expect "old sounds imported" "imported sound into the media library.*beep.ogg" "$(docker logs "${app}" 2>&1)"
 expect "sounds directory removed" "^gone$" "$(docker exec "${app}" sh -c 'test -e /app/data/sounds || echo gone')"
 expect "no token, no crash" "DISCORD_TOKEN is not set|web ui listening" "$(docker logs "${app}" 2>&1)"
+
+echo "==> Store tests against PostgreSQL"
+docker exec "${db}" psql -U bot -d bot -XAtc "CREATE DATABASE storetest" >/dev/null
+docker run --rm --network "${net}" -e TEST_DATABASE_URL="postgres://bot:botpw@${db}:5432/storetest" "${build_img}" go test -count=1 ./internal/store/ \
+    && pass "store tests" || fail "store tests" "see the output above"
 
 docker exec "${app}" sed -i 's/^export BOT_ADMIN_GROUP=.*/export BOT_ADMIN_GROUP="bot-admins"/' /app/data/env.sh
 docker restart "${app}" >/dev/null
@@ -122,6 +129,30 @@ for _ in $(seq 1 10); do
 done
 expect "trash older than the retention purged" "^New trash$" "$(psql "SELECT string_agg(name, ',') FROM messages WHERE name LIKE '% trash'")"
 browser promoted
+
+echo "==> Discord access"
+psql "INSERT INTO discord_users (user_id, username, global_name) VALUES
+  ('111111111111111111', 'mira.k', 'Mira'), ('222222222222222222', 'free_nitro_x', 'spam'), ('333333333333333334', 'ann', 'ann'), ('444444444444444444', 'kim', 'Kim');
+UPDATE discord_users SET blocked = true, blocked_by = 'ann', blocked_at = now() WHERE user_id = '222222222222222222';
+INSERT INTO access_requests (user_id, guild_ids, note, requested_at, expires_at) VALUES
+  ('111111111111111111', '{1,2}', 'I run the raid nights.', now() - interval '6 days', now() + interval '1 day'),
+  ('444444444444444444', '{1}', '', now() - interval '8 days', now() - interval '1 day');
+INSERT INTO access_requests (user_id, guild_ids, status, decided_by, decided_at) VALUES ('333333333333333334', '{1}', 'approved', 'ann', now());
+INSERT INTO discord_grants (user_id, guild_id, granted_by) VALUES ('333333333333333334', '1', 'ann');
+INSERT INTO sessions (id_hash, username, display_name, is_admin, groups, csrf_token, provider, guild_ids)
+  VALUES (sha256('e2e-discord-session'::bytea), 'discord:333333333333333334', 'ann', true, '{bot-admins}', 'e2e', 'discord', '{1}')" >/dev/null
+docker exec "${app}" sed -i 's/^export DISCORD_CLIENT_SECRET=.*/export DISCORD_CLIENT_SECRET="e2e-secret"/' /app/data/env.sh
+docker restart "${app}" >/dev/null
+wait_healthy
+for _ in $(seq 1 10); do
+    [[ "$(psql "SELECT status FROM access_requests WHERE user_id = '444444444444444444'")" == denied ]] && break
+    sleep 1
+done
+expect "expired request denied automatically" "^denied\|system$" "$(psql "SELECT status || '|' || decided_by FROM access_requests WHERE user_id = '444444444444444444'")"
+expect "pending request not expired" "^pending$" "$(psql "SELECT status FROM access_requests WHERE user_id = '111111111111111111'")"
+browser access
+expect "approved servers granted" "^1$" "$(psql "SELECT string_agg(guild_id, ',') FROM discord_grants WHERE user_id = '111111111111111111'")"
+expect "secret not logged" "^0$" "$(docker logs "${app}" 2>&1 | grep -c e2e-secret || true)"
 
 if (( failures > 0 )); then
     echo "==> ${failures} failure(s)"

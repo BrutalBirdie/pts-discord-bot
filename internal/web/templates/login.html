@@ -2,7 +2,11 @@
 <section class="card login">
   <img src="/static/logo.png" alt="" width="64" height="64">
   <h1>PTS Discord Bot</h1>
-  <p>Sign in to schedule tasks and control the bot.</p>
-  <a class="ib primary with-label" href="/login">{{icon "user"}}<span class="lbl">Sign in with Cloudron</span></a>
+  <p>Log in to manage tasks, messages and sounds.</p>
+  <div class="login-opts">
+    <a class="ib primary with-label" href="/login">{{icon "log-in"}}<span class="lbl">Log in with Cloudron</span></a>
+    {{if .DiscordLogin}}<a class="ib with-label" href="/login/discord">{{icon "message-square"}}<span class="lbl">Log in with Discord</span></a>{{end}}
+  </div>
+  {{if .DiscordLogin}}<p class="hint">Discord login is for members of the servers this bot is in. An admin approves new members first.</p>{{end}}
 </section>
 {{end}}

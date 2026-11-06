@@ -47,6 +47,7 @@ type Bot struct {
 	members     bool
 	messages    bool
 	handler     atomic.Pointer[Handler]
+	onLeave     atomic.Pointer[func(string)]
 	lastErr     string
 	connectedAt time.Time
 

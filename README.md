@@ -24,6 +24,13 @@ In Cloudron, open 'Add custom app' and enter `https://raw.githubusercontent.com/
 
 Every Cloudron user with access to the app can use it. Only admins see the Admin page.
 
+## Discord login
+
+Optional. Members of the servers the bot is in log in with Discord and ask for access to some of those servers. An admin approves, denies or blocks them under **Admin > Access**. For now an approved member only sees which servers were approved, managing tasks follows later.
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), open the bot's application, then **OAuth2**. Add the redirect `https://<app domain>/auth/discord/callback` and copy the **Client Secret**.
+2. Set `DISCORD_CLIENT_SECRET` in `/app/data/env.sh` and restart the app.
+
 Changes per version are in the [releases](https://github.com/BrutalBirdie/pts-discord-bot/releases).
 
 ## Upgrading from 0.2

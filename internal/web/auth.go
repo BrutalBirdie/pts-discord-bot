@@ -27,7 +27,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state, nonce, verifier := randomToken(), randomToken(), oauth2.GenerateVerifier()
-	if err := s.store.SaveOIDCLogin(r.Context(), state, verifier, nonce); err != nil {
+	if err := s.store.SaveOIDCLogin(r.Context(), store.ProviderCloudron, state, verifier, nonce); err != nil {
 		s.internalError(w, r, err)
 		return
 	}
@@ -53,7 +53,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, http.StatusBadRequest, "Login expired or was started in another browser. Please sign in again.")
 		return
 	}
-	verifier, nonce, err := s.store.TakeOIDCLogin(ctx, state)
+	verifier, nonce, err := s.store.TakeOIDCLogin(ctx, store.ProviderCloudron, state)
 	if errors.Is(err, store.ErrNotFound) {
 		s.fail(w, r, http.StatusBadRequest, "Login expired. Please sign in again.")
 		return
@@ -127,6 +127,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		IsAdmin:     s.cfg.Admins.IsAdmin(username, cl.Groups),
 		Groups:      cl.Groups,
 		CSRFToken:   randomToken(),
+		Provider:    store.ProviderCloudron,
 	}
 	sessionToken := randomToken()
 	if err := s.store.CreateSession(ctx, sessionToken, sess); err != nil {

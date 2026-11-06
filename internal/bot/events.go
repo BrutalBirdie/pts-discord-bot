@@ -30,6 +30,9 @@ type Handler interface {
 
 func (b *Bot) SetHandler(h Handler) { b.handler.Store(&h) }
 
+// OnGuildLeave is called with the guild ID when the bot is removed from a server.
+func (b *Bot) OnGuildLeave(f func(guildID string)) { b.onLeave.Store(&f) }
+
 func (b *Bot) h() Handler {
 	if p := b.handler.Load(); p != nil {
 		return *p
@@ -98,6 +101,11 @@ func (b *Bot) listeners() disgobot.EventListener {
 				b.emit(ev, e.Member.User.Bot)
 			}
 			b.waiters.notify(e.VoiceState.GuildID)
+		},
+		OnGuildLeave: func(e *events.GuildLeave) {
+			if f := b.onLeave.Load(); f != nil {
+				go (*f)(e.GuildID.String())
+			}
 		},
 		OnGuildMemberJoin: func(e *events.GuildMemberJoin) {
 			b.emit(Event{Type: tasks.MemberJoin, GuildID: e.GuildID.String(), UserID: e.Member.User.ID.String(), UserName: e.Member.EffectiveName()}, e.Member.User.Bot)

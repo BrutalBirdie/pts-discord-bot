@@ -19,7 +19,7 @@
   </div>
 </header>
 <main class="wrap" id="main">
-{{if .Session}}{{if not .Bot.Connected}}
+{{if and .Session (not .Session.Discord)}}{{if not .Bot.Connected}}
 <div class="callout warn">{{icon "triangle-alert"}}<span>The bot is not connected to Discord.{{with .Bot.Error}} {{.}}{{end}}</span></div>
 {{end}}{{end}}
 {{with .Notice}}<div class="notice" role="status">{{icon "circle-check"}}<span>{{.}}</span>{{with $.Undo}}
@@ -30,23 +30,23 @@
 {{with .Session}}
 <nav class="tabbar" aria-label="Main">
   <a href="/"{{if eq $.Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Home</span></a>
-  <a href="/servers"{{if eq $.Nav "servers"}} aria-current="page"{{end}}>{{icon "server"}}<span>Servers</span></a>
+  {{if not .Discord}}<a href="/servers"{{if eq $.Nav "servers"}} aria-current="page"{{end}}>{{icon "server"}}<span>Servers</span></a>
   <a href="/tasks"{{if eq $.Nav "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span>Tasks</span></a>
-  <a href="/media"{{if eq $.Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>
+  <a href="/media"{{if eq $.Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>{{end}}
   <button type="button" popovertarget="sheet-account">{{icon "more"}}<span>More</span></button>
 </nav>
 <div popover id="sheet-account" class="sheet" aria-labelledby="sheet-account-title">
   {{template "sheethead" (dict "ID" "sheet-account" "Icon" "user" "Title" "Account")}}
   <div class="sheet-body">
     <section>
-      <div class="profile"><span class="avatar">{{initials .DisplayName}}</span><span><strong>{{.DisplayName}}</strong><span class="small muted">{{.Username}}{{if .IsAdmin}} · administrator{{end}}</span></span></div>
+      <div class="profile"><span class="avatar">{{initials .DisplayName}}</span><span><strong>{{.DisplayName}}</strong><span class="small muted">{{if .Discord}}Discord account{{else}}{{.Username}}{{end}}{{if .IsAdmin}} · administrator{{end}}</span></span></div>
     </section>
-    <section>
+    {{if not .Discord}}<section>
       <span class="eyebrow">Pages</span>
       <a class="choice" href="/messages">{{icon "message-square"}}<span><strong>Messages</strong><small>Saved messages for tasks</small></span></a>
       <a class="choice" href="/trash">{{icon "trash-2"}}<span><strong>Trash{{with $.Trash}} <span class="badge">{{.}}</span>{{end}}</strong><small>Deleted tasks, messages and media</small></span></a>
-      {{if .IsAdmin}}<a class="choice" href="/admin">{{icon "shield"}}<span><strong>Admin</strong><small>Discord connection, settings, audit log</small></span></a>{{end}}
-    </section>
+      {{if .IsAdmin}}<a class="choice" href="/admin">{{icon "shield"}}<span><strong>Admin{{with $.Pending}} <span class="badge accent">{{.}}</span>{{end}}</strong><small>Discord connection, settings, access, audit log</small></span></a>{{end}}
+    </section>{{end}}
     <form method="post" action="/account" class="form" data-autosave>
       <input type="hidden" name="csrf" value="{{.CSRFToken}}">
       <input type="hidden" name="next" value="{{$.Path}}">

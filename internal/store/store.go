@@ -54,18 +54,32 @@ func noRows(err error) error {
 	return err
 }
 
+// Login providers of a session.
+const (
+	ProviderCloudron = "cloudron"
+	ProviderDiscord  = "discord"
+)
+
 type Session struct {
-	Username    string
+	Username    string // Cloudron user ID, or discord:<user ID>
 	DisplayName string
 	IsAdmin     bool     // computed per request from Groups and the admin config
 	Groups      []string // Cloudron groups at login
 	CSRFToken   string
+	Provider    string
+	GuildIDs    []string // Discord: servers shared with the bot at login
 }
+
+func (s *Session) Discord() bool { return s.Provider == ProviderDiscord }
 
 // CreateSession stores only a hash of the token, a database leak does not expose live sessions.
 func (s *Store) CreateSession(ctx context.Context, token string, sess Session) error {
-	_, err := s.pool.Exec(ctx, `INSERT INTO sessions (id_hash, username, display_name, is_admin, groups, csrf_token) VALUES ($1, $2, $3, $4, $5, $6)`,
-		hash(token), sess.Username, sess.DisplayName, sess.IsAdmin, groupsOrEmpty(sess.Groups), sess.CSRFToken)
+	provider := sess.Provider
+	if provider == "" {
+		provider = ProviderCloudron
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO sessions (id_hash, username, display_name, is_admin, groups, csrf_token, provider, guild_ids) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		hash(token), sess.Username, sess.DisplayName, sess.IsAdmin, groupsOrEmpty(sess.Groups), sess.CSRFToken, provider, groupsOrEmpty(sess.GuildIDs))
 	return err
 }
 
@@ -74,8 +88,8 @@ func (s *Store) GetSession(ctx context.Context, token string, idle, absolute tim
 	err := s.pool.QueryRow(ctx, `
 UPDATE sessions SET last_seen_at = now()
 WHERE id_hash = $1 AND last_seen_at > now() - $2 * interval '1 second' AND created_at > now() - $3 * interval '1 second'
-RETURNING username, display_name, is_admin, groups, csrf_token`,
-		hash(token), int(idle.Seconds()), int(absolute.Seconds())).Scan(&sess.Username, &sess.DisplayName, &sess.IsAdmin, &sess.Groups, &sess.CSRFToken)
+RETURNING username, display_name, is_admin, groups, csrf_token, provider, guild_ids`,
+		hash(token), int(idle.Seconds()), int(absolute.Seconds())).Scan(&sess.Username, &sess.DisplayName, &sess.IsAdmin, &sess.Groups, &sess.CSRFToken, &sess.Provider, &sess.GuildIDs)
 	if err != nil {
 		return nil, noRows(err)
 	}
@@ -107,15 +121,16 @@ func (s *Store) Purge(ctx context.Context, idle, absolute time.Duration, runRete
 	return err
 }
 
-func (s *Store) SaveOIDCLogin(ctx context.Context, state, verifier, nonce string) error {
-	_, err := s.pool.Exec(ctx, `INSERT INTO oidc_logins (state_hash, verifier, nonce) VALUES ($1, $2, $3)`, hash(state), verifier, nonce)
+func (s *Store) SaveOIDCLogin(ctx context.Context, provider, state, verifier, nonce string) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO oidc_logins (state_hash, verifier, nonce, provider) VALUES ($1, $2, $3, $4)`, hash(state), verifier, nonce, provider)
 	return err
 }
 
-// TakeOIDCLogin returns and deletes a pending login, so each state can be used once.
-func (s *Store) TakeOIDCLogin(ctx context.Context, state string) (verifier, nonce string, err error) {
-	err = s.pool.QueryRow(ctx, `DELETE FROM oidc_logins WHERE state_hash = $1 AND created_at > now() - interval '10 minutes' RETURNING verifier, nonce`,
-		hash(state)).Scan(&verifier, &nonce)
+// TakeOIDCLogin returns and deletes a pending login, so each state can be used
+// once and only with the provider it was started for.
+func (s *Store) TakeOIDCLogin(ctx context.Context, provider, state string) (verifier, nonce string, err error) {
+	err = s.pool.QueryRow(ctx, `DELETE FROM oidc_logins WHERE state_hash = $1 AND provider = $2 AND created_at > now() - interval '10 minutes' RETURNING verifier, nonce`,
+		hash(state), provider).Scan(&verifier, &nonce)
 	return verifier, nonce, noRows(err)
 }
 

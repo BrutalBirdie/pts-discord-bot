@@ -29,7 +29,7 @@ async function session(user) {
 async function login(page, user, groups) {
     await page.goto(BASE + '/');
     if (await page.locator('#sheet-account').count()) return;
-    await page.getByRole('link', { name: 'Sign in with Cloudron' }).click();
+    await page.getByRole('link', { name: 'Log in with Cloudron' }).click();
     await page.fill('input[name=username]', user);
     await page.fill('textarea[name=claims]', JSON.stringify({ groups, name: user }));
     await page.click('input[type=submit]');
@@ -44,6 +44,9 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const steps = {
     async admin() {
         const { page, save } = await session('ann');
+        await page.goto(BASE + '/');
+        check('no Discord login without a client secret', await page.locator('a[href="/login/discord"]').count() === 0
+            && (await page.request.get(BASE + '/login/discord', { maxRedirects: 0 })).status() === 404);
         await login(page, 'ann', ['bot-admins']);
         await save();
         let t = await text(page);
@@ -384,6 +387,61 @@ const steps = {
         const { page } = await session('bob');
         await page.goto(BASE + '/admin');
         check('same session is admin now', (await text(page)).includes('BOT_ADMINS') && (await text(page)).includes('carol.smith'));
+    },
+
+    // rows seeded by run.sh: Mira pending, ann approved with a session, spam blocked, kim denied after 7 days
+    async access() {
+        const anon = await (await browser.newContext()).newPage();
+        await anon.goto(BASE + '/');
+        check('Discord login with a client secret', await anon.getByRole('link', { name: 'Log in with Discord' }).count() === 1);
+        await anon.goto(BASE + '/login/discord');
+        check('Discord login needs the bot', (await anon.locator('main').innerText()).includes('once the bot is connected'));
+
+        const { page } = await session('ann');
+        await page.goto(BASE + '/admin/access');
+        let t = await text(page);
+        check('pending badge on the admin nav', await page.locator('.nav a[href="/admin"] .badge').innerText() === '1');
+        check('access tab lists the request', t.includes('Mira') && t.includes('@mira.k') && t.includes('I run the raid nights.') && t.includes('denied tomorrow')
+            && t.includes('Pending 1') && t.includes('Approved 1') && t.includes('Blocked 1') && t.includes('Denied 1'), t.slice(0, 600));
+        const submit = async (user, action) => {
+            const nav = page.waitForNavigation();
+            await page.locator(`form[action="/admin/access/${user}"]`).evaluate((f, a) => f.requestSubmit(f.querySelector(`button[value="${a}"]`)), action);
+            await nav;
+        };
+        await page.locator('input[name=guild][value="2"][form="access-111111111111111111"]').uncheck();
+        await submit('111111111111111111', 'approve');
+        t = await text(page);
+        check('approve a subset of the servers', t.includes('Approved. They can log in now.') && t.includes('Pending 0') && t.includes('Approved 2'), t.slice(0, 400));
+        await page.goto(BASE + '/admin/access?state=approved&q=mira');
+        t = await text(page);
+        check('search on the approved tab', t.includes('Mira') && !t.includes('@ann') && t.includes('Can manage'), t.slice(0, 400));
+        await page.goto(BASE + '/admin/access?state=denied');
+        check('auto denied request', (await text(page)).includes('Denied automatically'));
+        await page.goto(BASE + '/admin/access?state=blocked');
+        await submit('222222222222222222', 'unblock');
+        check('unblock', (await text(page)).includes('Unblocked.') && (await text(page)).includes('Blocked 0'));
+        await page.goto(BASE + '/admin/audit?category=access');
+        t = await text(page);
+        check('access in the audit log', ['access.approve', 'access.unblock', 'access.autodeny'].every((a) => t.includes(a)), t.slice(0, 600));
+
+        const discord = await browser.newContext();
+        await discord.addCookies([{ name: '__Host-session', value: 'e2e-discord-session', domain: 'localhost', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }]);
+        const d = await discord.newPage();
+        d.on('pageerror', (e) => consoleErrors.push(e.message));
+        lastPage = d;
+        await d.goto(BASE + '/');
+        t = await d.locator('main').innerText();
+        check('Discord user sees the placeholder home', t.includes('Access approved for: 1.') && t.includes('coming soon'), t.slice(0, 300));
+        check('Discord user named like an admin is no admin', await d.locator('a[href="/admin"], a[href="/tasks"]').count() === 0);
+        for (const path of ['/tasks', '/admin', '/admin/access', '/media', '/trash']) {
+            const res = await d.goto(BASE + path);
+            check(`Discord session blocked from ${path}`, res.status() === 403);
+        }
+        await page.goto(BASE + '/admin/access?state=approved');
+        await submit('333333333333333334', 'revoke');
+        check('revoke', (await text(page)).includes('Access revoked.'));
+        await d.goto(BASE + '/');
+        check('revoke logs the Discord user out', await d.getByRole('link', { name: 'Log in with Cloudron' }).count() === 1);
     },
 
     // store and README screenshots, run with SCREENSHOTS=1
