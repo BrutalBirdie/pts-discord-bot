@@ -92,7 +92,7 @@
     <div class="sec-head"><h2 class="with-icon">{{icon "list"}}Steps</h2><span class="hint">One after the other. A failing step stops the run.</span></div>
     <ol class="steps" data-steps>
       {{range $i, $s := $t.Steps}}{{$p := print "s" $i "."}}
-      <li class="step{{if and (eq $s.Type "play") ($e.Play $i).Over}} bad{{end}}">
+      <li class="step{{if and (eq $s.Type "play") ($e.Play $i).Over}} bad{{else if and (eq $s.Type "profile") ($e.Avatar $i).Problem}} bad{{end}}">
         <span class="handle"><span class="num">{{add $i 1}}</span><span class="grip js-only" data-tip="Drag to move" aria-hidden="true">{{icon "grip-vertical"}}</span></span>
         <div class="row-main">
           <input type="hidden" name="{{$p}}type" value="{{$s.Type}}">
@@ -142,12 +142,30 @@
             </select>
             <label class="inline small"><span class="wait-max">at most</span><input type="text" name="{{$p}}wait" value="{{$s.WaitValue}}" placeholder="500ms, 1.5s, 5m" aria-label="Duration" size="10" spellcheck="false" autocomplete="off"></label>
             <select name="{{$p}}on_timeout" aria-label="When the time is up" class="wait-timeout"><option value="continue">then continue</option><option value="stop"{{if eq $s.OnTimeout "stop"}} selected{{end}}>then stop the run</option></select>
+          {{else if eq $s.Type "profile"}}
+            {{$av := $e.Avatar $i}}
+            <select name="{{$p}}nick_mode" aria-label="Nickname" class="nick-mode">
+              <option value="">Keep the nickname</option>
+              <option value="set"{{if $s.Nick}} selected{{end}}>Set the nickname to</option>
+              <option value="reset"{{if $s.ResetNick}} selected{{end}}>Reset to the bot's name</option>
+            </select>
+            <input type="text" name="{{$p}}nick" value="{{$s.Nick}}" maxlength="32" placeholder="Nickname, {member_name} {server} {date} {time} work" aria-label="Nickname" class="nick-text" spellcheck="false" autocomplete="off">
+            <select name="{{$p}}avatar" aria-label="Server avatar">
+              <option value="">Keep the avatar</option>
+              <option value="reset"{{if $s.ResetAvatar}} selected{{end}}>Reset to the bot's avatar</option>
+              {{with $av.Picked}}<option value="{{$s.AvatarMediaID}}" selected>{{.}}</option>{{end}}
+              <optgroup label="Images from the media library">{{range $av.Images}}<option value="{{.ID}}"{{if eq .ID $s.AvatarMediaID}} selected{{end}}>{{.Name}}</option>{{end}}</optgroup>
+            </select>
           {{else if eq $s.Type "leave"}}
             <span class="small muted">Stops playback and disconnects the bot from voice in this server.</span>
           {{end}}
           </div>
           {{if or (eq $s.Type "message") (eq $s.Type "dm")}}
           <input type="text" name="{{$p}}text" value="{{$s.Text}}" maxlength="2000" placeholder="Text, used when no saved message is picked. {date} {time} {server} {channel} work." aria-label="Message text" class="mt">
+          {{end}}
+          {{if eq $s.Type "profile"}}
+          {{with ($e.Avatar $i).Problem}}<p class="hint mt over">{{.}}. Pick another image.</p>{{end}}
+          <p class="hint mt">Only in this server. Discord limits how often a bot changes its profile: a change waits up to 30 s for the limit, a longer limit skips the run. PNG, JPEG, GIF or WebP up to 8 MB.</p>
           {{end}}
         </div>
         <div class="btns">

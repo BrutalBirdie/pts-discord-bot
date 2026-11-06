@@ -136,6 +136,8 @@ const steps = {
         check('moved step renumbered', await page.locator('.step').nth(1).locator('button[data-move="-1"]').getAttribute('value') === 'up:1'
             && await page.locator('.step').nth(1).locator('.num').innerText() === '2'
             && await page.locator('.step').nth(0).locator('button[data-move="-1"]').isDisabled());
+        // keep the drag away from the edge autoscroll of the step list
+        await page.locator('.step').nth(0).evaluate((el) => el.scrollIntoView({ block: 'center' }));
         const handle = page.locator('.step').nth(2).locator('.handle');
         const target = await page.locator('.step').nth(0).boundingBox();
         const from = await handle.boundingBox();
@@ -171,6 +173,13 @@ const steps = {
 
         const res = await page.request.post(BASE + '/tasks/new', { form: { op: 'save', name: 'x' } });
         check('post without csrf token rejected', res.status() === 403);
+
+        await page.click('button[value="add:profile"]');
+        const nick = page.locator('input[name="s4.nick"]');
+        const hiddenFirst = await nick.isHidden();
+        await page.selectOption('select[name="s4.nick_mode"]', 'set');
+        check('profile step shows the nickname field when set', hiddenFirst && await nick.isVisible());
+        check('profile step offers library images', (await page.locator('select[name="s4.avatar"] option').allInnerTexts()).includes('friday_card.png'));
 
         const throwaway = async (name) => {
             await page.goto(BASE + '/messages/new');

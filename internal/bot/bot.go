@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,7 +28,7 @@ var ErrNotConnected = errors.New("the bot is not connected to Discord")
 
 // Permissions the invite link asks for.
 const InvitePermissions = discord.PermissionViewChannel | discord.PermissionSendMessages | discord.PermissionEmbedLinks |
-	discord.PermissionAttachFiles | discord.PermissionConnect | discord.PermissionSpeak
+	discord.PermissionAttachFiles | discord.PermissionConnect | discord.PermissionSpeak | discord.PermissionChangeNickname
 
 type Config struct {
 	Token         string
@@ -53,6 +54,7 @@ type Bot struct {
 	playing map[snowflake.ID]*Playing
 
 	waiters voiceWaiters
+	limits  profileLimits
 }
 
 func New(cfg Config) *Bot {
@@ -168,6 +170,7 @@ func (b *Bot) newClient(members, messages bool, onClose gateway.CloseHandlerFunc
 		disgobot.WithCacheConfigOpts(cache.WithCaches(flags...)),
 		disgobot.WithVoiceManagerConfigOpts(b.cfg.Voice...),
 		disgobot.WithEventListeners(b.listeners()),
+		disgobot.WithRestClientConfigOpts(rest.WithHTTPClient(&http.Client{Timeout: 20 * time.Second, Transport: &limitTransport{base: http.DefaultTransport, limits: &b.limits}})),
 	}
 	if messages {
 		intents = append(intents, gateway.IntentGuildMessages, gateway.IntentMessageContent)

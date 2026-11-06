@@ -6,6 +6,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/disgoorg/disgo v0.20.0
 	github.com/disgoorg/godave/golibdave v0.3.0
+	github.com/disgoorg/omit v1.0.0
 	github.com/disgoorg/snowflake/v2 v2.0.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.12.0
@@ -17,7 +18,6 @@ require (
 	github.com/disgoorg/godave v0.3.0 // indirect
 	github.com/disgoorg/godave/libdave v0.3.0 // indirect
 	github.com/disgoorg/json/v2 v2.0.0 // indirect
-	github.com/disgoorg/omit v1.0.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

@@ -420,13 +420,14 @@ html:not(.js) .js-only { display: none; }
 .tok .pv-vol input[type=range] { width: 7rem; }
 .tok .pv-vol output { font-size: .8rem; min-width: 2.4rem; }
 .total { align-self: center; font-variant-numeric: tabular-nums; }
-.total.over { color: var(--danger); font-weight: 700; }
+.total.over, .hint.over { color: var(--danger); font-weight: 700; }
 .step:has(select.dm-to option[value=trigger]:checked) .picker.dm-member { display: none; }
 .step:has(option[value=trigger]:checked) .picker.follow { display: none; }
 .step:has(select.wait-until option[value=""]:checked) :is(.wait-to, .wait-member, .wait-channel, .wait-max, .wait-timeout) { display: none; }
 .step:has(select.wait-until :is(option[value=channel_occupied], option[value=channel_empty]):checked) :is(.wait-to, .wait-member) { display: none; }
 .step:has(select.wait-until :is(option[value=undeafened], option[value=unmuted]):checked) .wait-channel { display: none; }
 .step:has(select.wait-to option[value=trigger]:checked) .picker.wait-member { display: none; }
+.step:has(select.nick-mode option:not([value=set]):checked) .nick-text { display: none; }
 
 .badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: .75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .notice .undo { margin-left: auto; }

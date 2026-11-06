@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/snowflake/v2"
 	"github.com/robfig/cron/v3"
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
@@ -476,17 +477,7 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 				return err
 			}
 		}
-		loc, err := t.Trigger.Location()
-		if err != nil || t.Trigger.Timezone == "" {
-			loc, _ = time.LoadLocation(settings.Timezone)
-		}
-		if loc == nil {
-			loc = time.UTC
-		}
-		vars := messages.Vars{Now: time.Now().In(loc), Server: r.bot.GuildName(t.GuildID)}
-		if ev != nil {
-			vars.MemberID, vars.MemberName = ev.UserID, ev.UserName
-		}
+		vars := r.vars(t, settings, ev)
 		if s.Type == tasks.Message {
 			vars.Channel = "#" + r.bot.ChannelName(s.ChannelID)
 		}
@@ -507,8 +498,114 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 			return &bot.PermanentError{Msg: "No text channel picked."}
 		}
 		return r.bot.Send(cid, mc)
+
+	case tasks.Profile:
+		return r.profile(ctx, t, s, settings, ev, guildID)
 	}
 	return &bot.PermanentError{Msg: fmt.Sprintf("Unknown step %q.", s.Type)}
+}
+
+func location(t tasks.Task, settings store.Settings) *time.Location {
+	loc, err := t.Trigger.Location()
+	if err != nil || t.Trigger.Timezone == "" {
+		loc, _ = time.LoadLocation(settings.Timezone)
+	}
+	if loc == nil {
+		loc = time.UTC
+	}
+	return loc
+}
+
+func (r *Runner) vars(t tasks.Task, settings store.Settings, ev *bot.Event) messages.Vars {
+	vars := messages.Vars{Now: time.Now().In(location(t, settings)), Server: r.bot.GuildName(t.GuildID)}
+	if ev != nil {
+		vars.MemberID, vars.MemberName = ev.UserID, ev.UserName
+	}
+	return vars
+}
+
+// profile changes the bot's nickname and avatar in the server of the task. It
+// waits for a short rate limit and skips the run for a longer one.
+func (r *Runner) profile(ctx context.Context, t tasks.Task, s tasks.Step, settings store.Settings, ev *bot.Event, guildID snowflake.ID) error {
+	fields := s.ProfileFields()
+	if len(fields) == 0 {
+		return &bot.PermanentError{Msg: "Nothing to change picked."}
+	}
+	var p bot.ProfileChange
+	switch {
+	case s.ResetNick:
+		p.Nick = new(string)
+	case s.Nick != "":
+		vars := r.vars(t, settings, ev)
+		// a mention would show as <@id> in a nickname
+		vars.MemberID = ""
+		nick := truncate(strings.TrimSpace(messages.Expand(s.Nick, vars)), tasks.MaxNick)
+		if nick == "" {
+			return &bot.PermanentError{Msg: "The nickname is empty after filling in the placeholders."}
+		}
+		p.Nick = &nick
+	}
+	switch {
+	case s.ResetAvatar:
+		p.ResetAvatar = true
+	case s.AvatarMediaID != 0:
+		m, err := r.st.Media(ctx, s.AvatarMediaID)
+		if errors.Is(err, store.ErrNotFound) {
+			return &bot.PermanentError{Msg: "The avatar image was deleted from the media library."}
+		}
+		if err != nil {
+			return err
+		}
+		if msg := media.AvatarProblem(m); msg != "" {
+			return &bot.PermanentError{Msg: msg + "."}
+		}
+		data, err := os.ReadFile(r.media.Path(m.ID))
+		if err != nil {
+			return err
+		}
+		typ := media.AvatarType(data)
+		if typ == "" {
+			return &bot.PermanentError{Msg: m.Name + " is not a PNG, JPEG, GIF or WebP image."}
+		}
+		p.Avatar = discord.NewIconRaw(discord.IconType(typ), data)
+	}
+
+	limits, err := r.st.ProfileLimits(ctx, t.GuildID)
+	if err != nil {
+		return err
+	}
+	loc := location(t, settings)
+	skipped := func(at time.Time) error {
+		return &stopRun{"Profile change skipped, Discord allows the next change at " + at.In(loc).Format("15:04") + "."}
+	}
+	wait, at, skip := tasks.ProfileDecide(time.Now(), limits, fields)
+	if skip {
+		return skipped(at)
+	}
+	if wait > 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+	cctx, cancel := context.WithTimeout(ctx, tasks.ProfileMaxWait)
+	defer cancel()
+	err = r.bot.UpdateProfile(cctx, guildID, p)
+	var rl *bot.RateLimitedError
+	if errors.As(err, &rl) {
+		if err := r.st.BlockProfile(context.WithoutCancel(ctx), t.GuildID, fields, rl.Until); err != nil {
+			r.log.Error("recording profile rate limit", "err", err)
+		}
+		return skipped(rl.Until)
+	}
+	if err != nil {
+		return err
+	}
+	if err := r.st.RecordProfileChange(context.WithoutCancel(ctx), t.GuildID, fields, time.Now()); err != nil {
+		r.log.Error("recording profile change", "err", err)
+	}
+	return nil
 }
 
 // Build turns a saved message into a Discord message with its files opened.

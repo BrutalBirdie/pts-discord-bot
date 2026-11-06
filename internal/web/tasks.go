@@ -67,6 +67,12 @@ func (s *Server) describeSteps(t tasks.Task, mediaNames map[int64]string) string
 			} else {
 				parts = append(parts, "wait "+st.UntilText(s.bot.MemberName(t.GuildID, st.UserID), s.bot.ChannelName(st.ChannelID))+" (max "+tasks.FormatDuration(st.WaitDuration())+")")
 			}
+		case tasks.Profile:
+			name := mediaNames[st.AvatarMediaID]
+			if name == "" {
+				name = "a deleted image"
+			}
+			parts = append(parts, st.ProfileText(name))
 		}
 	}
 	out := strings.Join(parts, ", ")
@@ -151,6 +157,7 @@ type taskEditor struct {
 	Labels    map[string]string // member picker text per user ID
 	EvMembers []bot.Member      // the members an event trigger is limited to
 	Sounds    []store.Media
+	Images    []store.Media // avatars of profile steps
 	Messages  []messages.Message
 	Next      []time.Time
 	Runs      []store.Run
@@ -212,6 +219,9 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 	for _, m := range all {
 		if media.HasAudio(m) {
 			e.Sounds = append(e.Sounds, m)
+		}
+		if m.Kind == store.KindImage {
+			e.Images = append(e.Images, m)
 		}
 	}
 	settings, err := s.store.Settings(ctx)
@@ -408,6 +418,22 @@ func parseTask(r *http.Request) (tasks.Task, []string) {
 			}
 		case tasks.Wait:
 			parseWait(&st, f, p)
+		case tasks.Profile:
+			switch f.Get(p + "nick_mode") {
+			case "set":
+				if st.Nick = strings.TrimSpace(f.Get(p + "nick")); st.Nick == "" {
+					bad = append(bad, fmt.Sprintf("Step %d: enter the nickname.", i+1))
+				}
+			case "reset":
+				st.ResetNick = true
+			}
+			switch v := f.Get(p + "avatar"); v {
+			case "":
+			case "reset":
+				st.ResetAvatar = true
+			default:
+				st.AvatarMediaID, _ = strconv.ParseInt(v, 10, 64)
+			}
 		case tasks.Leave:
 		default:
 			continue
@@ -561,6 +587,7 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
+	bad = append(bad, avatarProblems(t, sounds)...)
 	bad = append(bad, playProblems(t, slices.DeleteFunc(sounds, func(m store.Media) bool { return !media.HasAudio(m) }), settings.MaxPlayMinutes)...)
 	if problems := append(bad, t.Problems()...); len(problems) > 0 {
 		s.renderEditor(w, r, http.StatusUnprocessableEntity, t, isNew, problems, true)
@@ -665,4 +692,45 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, "task.delete", t.Name, trashDetail(trashed))
 	removed(w, r, "/tasks", store.TrashTask, t.ID, trashed)
+}
+
+// avatarProblems checks the avatar images of profile steps against the library and Discord's limits.
+func avatarProblems(t tasks.Task, all []store.Media) []string {
+	var out []string
+	byID := soundsByID(all)
+	for i, st := range t.Steps {
+		if st.Type != tasks.Profile || st.AvatarMediaID == 0 {
+			continue
+		}
+		m, ok := byID[st.AvatarMediaID]
+		if !ok {
+			out = append(out, fmt.Sprintf("Step %d: the avatar image was deleted from the media library, pick another.", i+1))
+		} else if msg := media.AvatarProblem(m); msg != "" {
+			out = append(out, fmt.Sprintf("Step %d: %s.", i+1, msg))
+		}
+	}
+	return out
+}
+
+// avatarView is the image picker of a profile step.
+type avatarView struct {
+	Images  []store.Media // usable as avatar
+	Picked  string        // name of a picked image that is not in Images
+	Problem string
+}
+
+func (e taskEditor) Avatar(i int) avatarView {
+	st := e.Task.Steps[i]
+	var v avatarView
+	for _, m := range e.Images {
+		if msg := media.AvatarProblem(m); msg == "" {
+			v.Images = append(v.Images, m)
+		} else if m.ID == st.AvatarMediaID {
+			v.Picked, v.Problem = m.Name, msg
+		}
+	}
+	if st.AvatarMediaID != 0 && v.Picked == "" && !slices.ContainsFunc(v.Images, func(m store.Media) bool { return m.ID == st.AvatarMediaID }) {
+		v.Picked, v.Problem = "Deleted image", "The image was deleted from the media library"
+	}
+	return v
 }

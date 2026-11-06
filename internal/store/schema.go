@@ -104,4 +104,11 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_by text;
 ALTER TABLE media ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE media ADD COLUMN IF NOT EXISTS deleted_by text;
 ALTER TABLE media DROP CONSTRAINT IF EXISTS media_name_key;
-CREATE UNIQUE INDEX IF NOT EXISTS media_name_live ON media (name) WHERE deleted_at IS NULL;`
+CREATE UNIQUE INDEX IF NOT EXISTS media_name_live ON media (name) WHERE deleted_at IS NULL;
+CREATE TABLE IF NOT EXISTS bot_profile_changes (
+    guild_id text NOT NULL,
+    field text NOT NULL,
+    changed_at timestamptz,
+    blocked_until timestamptz,
+    PRIMARY KEY (guild_id, field)
+);`

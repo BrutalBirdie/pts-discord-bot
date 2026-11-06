@@ -99,18 +99,22 @@ func (s *Store) MediaByName(ctx context.Context, name string) (Media, error) {
 	return m, noRows(err)
 }
 
-// ListMedia returns all media of a kind, every kind when kind is empty.
-func (s *Store) ListMedia(ctx context.Context, kind string) ([]Media, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+mediaCols+`,
+// listMediaQuery fills UsedBy with the tasks and messages that reference a file.
+const listMediaQuery = `SELECT ` + mediaCols + `,
   ARRAY(SELECT 'task ' || t.name FROM tasks t WHERE t.deleted_at IS NULL AND (t.steps @> jsonb_build_array(jsonb_build_object('media_id', m.id))
            OR t.steps @> jsonb_build_array(jsonb_build_object('media_ids', jsonb_build_array(m.id)))
+           OR t.steps @> jsonb_build_array(jsonb_build_object('avatar_media_id', m.id))
            OR EXISTS (SELECT FROM jsonb_array_elements(t.steps) st WHERE st->>'tag' = ANY (m.tags)))
         UNION ALL
         SELECT 'message ' || g.name FROM messages g
         WHERE g.deleted_at IS NULL AND (m.id = ANY (g.files)
            OR g.embeds @> jsonb_build_array(jsonb_build_object('image_media_id', m.id))
            OR g.embeds @> jsonb_build_array(jsonb_build_object('thumb_media_id', m.id))))
-FROM media m WHERE m.deleted_at IS NULL AND ($1 = '' OR kind = $1) ORDER BY kind, lower(name)`, kind)
+FROM media m WHERE m.deleted_at IS NULL AND ($1 = '' OR kind = $1) ORDER BY kind, lower(name)`
+
+// ListMedia returns all media of a kind, every kind when kind is empty.
+func (s *Store) ListMedia(ctx context.Context, kind string) ([]Media, error) {
+	rows, err := s.pool.Query(ctx, listMediaQuery, kind)
 	if err != nil {
 		return nil, err
 	}

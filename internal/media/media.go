@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"unicode"
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/store"
+	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
 )
 
 // Dir holds one file per media row, named by its id.
@@ -116,3 +118,25 @@ func Probe(ctx context.Context, path, name string) (store.Media, error) {
 
 // HasAudio reports whether the file can be played in a voice channel.
 func HasAudio(m store.Media) bool { return m.Kind == store.KindSound || m.Kind == store.KindVideo }
+
+var avatarTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
+
+// AvatarProblem says why Discord would not take the image as avatar, empty when it would.
+// https://docs.discord.com/developers/reference#image-data
+func AvatarProblem(m store.Media) string {
+	if m.Kind != store.KindImage || !avatarTypes[m.ContentType] {
+		return m.Name + " is not a PNG, JPEG, GIF or WebP image"
+	}
+	if m.SizeBytes > tasks.MaxAvatarBytes {
+		return fmt.Sprintf("%s has %.1f MB, an avatar may have at most %d MB", m.Name, float64(m.SizeBytes)/(1<<20), tasks.MaxAvatarBytes>>20)
+	}
+	return ""
+}
+
+// AvatarType is the type of avatar image data, empty when Discord does not take it.
+func AvatarType(data []byte) string {
+	if t := http.DetectContentType(data); avatarTypes[t] {
+		return t
+	}
+	return ""
+}

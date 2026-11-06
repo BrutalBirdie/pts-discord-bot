@@ -18,9 +18,10 @@ const (
 	Message StepType = "message"
 	DM      StepType = "dm"
 	Wait    StepType = "wait"
+	Profile StepType = "profile"
 )
 
-var StepTypes = []StepType{Join, Play, Message, DM, Wait, Leave}
+var StepTypes = []StepType{Join, Play, Message, DM, Wait, Profile, Leave}
 
 const (
 	MaxSteps  = 30
@@ -35,24 +36,28 @@ const (
 )
 
 type Step struct {
-	Type         StepType `json:"type"`
-	ChannelID    string   `json:"channel_id,omitempty"`     // join, message, wait
-	FollowUserID string   `json:"follow_user_id,omitempty"` // join: the voice channel this member is in
-	MediaID      int64    `json:"media_id,omitempty"`       // play: legacy single sound, folded into MediaIDs when loaded
-	MediaIDs     []int64  `json:"media_ids,omitempty"`      // play
-	Tag          string   `json:"tag,omitempty"`            // play: legacy, a random sound with this tag
-	Order        string   `json:"order,omitempty"`          // play: OrderSequence or OrderRandom
-	Find         string   `json:"-"`                        // play: sound name typed in the editor without JavaScript
-	ToTrigger    bool     `json:"to_trigger,omitempty"`     // join, dm, wait: the member who started the run
-	Volume       int      `json:"volume,omitempty"`         // play, percent
-	UserID       string   `json:"user_id,omitempty"`        // dm, wait
-	MessageID    int64    `json:"message_id,omitempty"`     // message, dm: a saved message
-	Text         string   `json:"text,omitempty"`           // message, dm: used without MessageID
-	Seconds      int      `json:"seconds,omitempty"`        // wait, before wait_ms
-	WaitMS       int64    `json:"wait_ms,omitempty"`        // wait, the timeout with Until
-	Until        string   `json:"until,omitempty"`          // wait: one of Untils
-	OnTimeout    string   `json:"on_timeout,omitempty"`     // wait with Until
-	WaitInput    string   `json:"-"`                        // wait: editor text that did not parse
+	Type          StepType `json:"type"`
+	ChannelID     string   `json:"channel_id,omitempty"`      // join, message, wait
+	FollowUserID  string   `json:"follow_user_id,omitempty"`  // join: the voice channel this member is in
+	MediaID       int64    `json:"media_id,omitempty"`        // play: legacy single sound, folded into MediaIDs when loaded
+	MediaIDs      []int64  `json:"media_ids,omitempty"`       // play
+	Tag           string   `json:"tag,omitempty"`             // play: legacy, a random sound with this tag
+	Order         string   `json:"order,omitempty"`           // play: OrderSequence or OrderRandom
+	Find          string   `json:"-"`                         // play: sound name typed in the editor without JavaScript
+	ToTrigger     bool     `json:"to_trigger,omitempty"`      // join, dm, wait: the member who started the run
+	Volume        int      `json:"volume,omitempty"`          // play, percent
+	UserID        string   `json:"user_id,omitempty"`         // dm, wait
+	MessageID     int64    `json:"message_id,omitempty"`      // message, dm: a saved message
+	Text          string   `json:"text,omitempty"`            // message, dm: used without MessageID
+	Seconds       int      `json:"seconds,omitempty"`         // wait, before wait_ms
+	WaitMS        int64    `json:"wait_ms,omitempty"`         // wait, the timeout with Until
+	Until         string   `json:"until,omitempty"`           // wait: one of Untils
+	OnTimeout     string   `json:"on_timeout,omitempty"`      // wait with Until
+	WaitInput     string   `json:"-"`                         // wait: editor text that did not parse
+	Nick          string   `json:"nick,omitempty"`            // profile, may hold message placeholders
+	ResetNick     bool     `json:"reset_nick,omitempty"`      // profile
+	AvatarMediaID int64    `json:"avatar_media_id,omitempty"` // profile: an image, not media_id, which play steps fold into MediaIDs
+	ResetAvatar   bool     `json:"reset_avatar,omitempty"`    // profile
 }
 
 func (s Step) Validate() error {
@@ -90,6 +95,8 @@ func (s Step) Validate() error {
 		}
 	case Wait:
 		return s.validateWait()
+	case Profile:
+		return s.validateProfile()
 	case Leave:
 	default:
 		return fmt.Errorf("unknown step %q", s.Type)
@@ -128,15 +135,15 @@ func (s Step) Sounds() []SoundRef {
 }
 
 func (t StepType) Label() string {
-	return map[StepType]string{Join: "Join voice channel", Play: "Play sound", Leave: "Leave voice channel", Message: "Send message", DM: "Direct message", Wait: "Wait"}[t]
+	return map[StepType]string{Join: "Join voice channel", Play: "Play sound", Leave: "Leave voice channel", Message: "Send message", DM: "Direct message", Wait: "Wait", Profile: "Change bot profile"}[t]
 }
 
 func (t StepType) Icon() string {
-	return map[StepType]string{Join: "log-in", Play: "music", Leave: "log-out", Message: "send", DM: "mail", Wait: "timer"}[t]
+	return map[StepType]string{Join: "log-in", Play: "music", Leave: "log-out", Message: "send", DM: "mail", Wait: "timer", Profile: "bot"}[t]
 }
 
 func (t StepType) Hint() string {
-	return map[StepType]string{Join: "A channel, or where a member is", Play: "From the media library", Leave: "Disconnect the bot", Message: "Text, embeds, files", DM: "To one member", Wait: "e.g. 500ms, 1.5s, 5m, 2h"}[t]
+	return map[StepType]string{Join: "A channel, or where a member is", Play: "From the media library", Leave: "Disconnect the bot", Message: "Text, embeds, files", DM: "To one member", Wait: "e.g. 500ms, 1.5s, 5m, 2h", Profile: "Nickname and avatar in this server"}[t]
 }
 
 func (t StepType) Voice() bool { return t == Join || t == Play || t == Leave }

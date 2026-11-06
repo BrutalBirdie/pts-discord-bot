@@ -340,6 +340,69 @@ func TestPlayEditorRenders(t *testing.T) {
 	}
 }
 
+func TestProfileStepEditor(t *testing.T) {
+	form := url.Values{"name": {"Rename"}, "guild": {"1"}, "kind": {"manual"}, "steps": {"4"},
+		"s0.type": {"profile"}, "s0.nick_mode": {"set"}, "s0.nick": {" DJ {member_name} "}, "s0.avatar": {"7"},
+		"s1.type": {"profile"}, "s1.nick_mode": {"reset"}, "s1.nick": {"ignored"}, "s1.avatar": {"reset"},
+		"s2.type": {"profile"}, "s2.nick_mode": {""}, "s2.nick": {"ignored"}, "s2.avatar": {"9"},
+		"s3.type": {"profile"}, "s3.nick_mode": {"set"}, "s3.nick": {" "},
+	}
+	r := httptest.NewRequest("POST", "/tasks/new", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	_ = r.ParseForm()
+	task, bad := parseTask(r)
+	if len(bad) != 1 || bad[0] != "Step 4: enter the nickname." {
+		t.Errorf("bad: %v", bad)
+	}
+	st := task.Steps
+	if st[0].Nick != "DJ {member_name}" || st[0].AvatarMediaID != 7 || st[0].ResetNick || st[0].ResetAvatar {
+		t.Errorf("set: %+v", st[0])
+	}
+	if !st[1].ResetNick || !st[1].ResetAvatar || st[1].Nick != "" || st[1].AvatarMediaID != 0 {
+		t.Errorf("reset: %+v", st[1])
+	}
+	if st[2].Nick != "" || st[2].AvatarMediaID != 9 {
+		t.Errorf("avatar only: %+v", st[2])
+	}
+	if p := task.Problems(); len(p) != 1 || p[0] != "Step 4: pick a nickname or an avatar to change." {
+		t.Errorf("problems: %v", p)
+	}
+
+	images := []store.Media{{ID: 7, Name: "cat.png", Kind: store.KindImage, ContentType: "image/png", SizeBytes: 1000},
+		{ID: 8, Name: "huge.png", Kind: store.KindImage, ContentType: "image/png", SizeBytes: tasks.MaxAvatarBytes + 1}}
+	task.Steps[3] = tasks.Step{Type: tasks.Profile, AvatarMediaID: 8}
+	want := []string{"Step 3: the avatar image was deleted from the media library, pick another.", "Step 4: huge.png has 8.0 MB, an avatar may have at most 8 MB."}
+	if got := avatarProblems(task, images); !slices.Equal(got, want) {
+		t.Errorf("avatar problems %q", got)
+	}
+
+	s := testServer(t)
+	sess := &store.Session{Username: "ann", CSRFToken: "tok"}
+	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Images: images, Page: 1, Pages: 1}
+	req := httptest.NewRequest("GET", "/tasks/new", nil)
+	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
+	rec := httptest.NewRecorder()
+	s.render(rec, req, http.StatusOK, "task", e)
+	body := rec.Body.String()
+	for _, want := range []string{`<option value="set" selected>Set the nickname to`, `name="s0.nick" value="DJ {member_name}"`, `<option value="7" selected>cat.png`,
+		`<option value="reset" selected>Reset to the bot's name`, `<option value="reset" selected>Reset to the bot's avatar`,
+		`<option value="9" selected>Deleted image`, `<option value="8" selected>huge.png`, "huge.png has 8.0 MB, an avatar may have at most 8 MB. Pick another image.",
+		`<li class="step bad">`, "Change bot profile", "Nickname and avatar in this server", `value="add:profile"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(body, `<option value="8">huge.png`) {
+		t.Error("an image Discord refuses is offered")
+	}
+	if strings.Contains(body, " style=") {
+		t.Error("inline style attribute, blocked by the CSP")
+	}
+	if strings.Contains(body, "\u2014") {
+		t.Error("em dash in the editor")
+	}
+}
+
 func TestPlayProblems(t *testing.T) {
 	sounds := []store.Media{{ID: 1, Name: "a", DurationMS: 4 * 60000, Tags: []string{"x"}}, {ID: 2, Name: "b", DurationMS: 7 * 60000, Tags: []string{"x"}}, {ID: 3, Name: "c"}}
 	play := func(order, tag string, ids ...int64) tasks.Task {
