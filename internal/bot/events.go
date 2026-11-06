@@ -51,6 +51,24 @@ func voiceEvent(typ string, guildID snowflake.ID, channelID *snowflake.ID, m dis
 	return ev
 }
 
+// voiceTransitions turns a voice state update into join and leave events. disgo
+// fires GuildVoiceMove for any update inside a channel (mute, deafen, stream),
+// so the channel IDs are compared here instead:
+// https://github.com/disgoorg/disgo/blob/v0.19.6/bot/handlers/voice_handlers.go
+func voiceTransitions(guildID snowflake.ID, old, cur *snowflake.ID, m discord.Member) []Event {
+	switch {
+	case old == nil && cur == nil:
+		return nil
+	case old == nil:
+		return []Event{voiceEvent(tasks.VoiceJoin, guildID, cur, m)}
+	case cur == nil:
+		return []Event{voiceEvent(tasks.VoiceLeave, guildID, old, m)}
+	case *old == *cur:
+		return nil
+	}
+	return []Event{voiceEvent(tasks.VoiceLeave, guildID, old, m), voiceEvent(tasks.VoiceJoin, guildID, cur, m)}
+}
+
 func (b *Bot) listeners() disgobot.EventListener {
 	return &events.ListenerAdapter{
 		OnReady: func(e *events.Ready) {
@@ -75,15 +93,10 @@ func (b *Bot) listeners() disgobot.EventListener {
 				h.OnAutocomplete(e)
 			}
 		},
-		OnGuildVoiceJoin: func(e *events.GuildVoiceJoin) {
-			b.emit(voiceEvent(tasks.VoiceJoin, e.VoiceState.GuildID, e.VoiceState.ChannelID, e.Member), e.Member.User.Bot)
-		},
-		OnGuildVoiceMove: func(e *events.GuildVoiceMove) {
-			b.emit(voiceEvent(tasks.VoiceLeave, e.VoiceState.GuildID, e.OldVoiceState.ChannelID, e.Member), e.Member.User.Bot)
-			b.emit(voiceEvent(tasks.VoiceJoin, e.VoiceState.GuildID, e.VoiceState.ChannelID, e.Member), e.Member.User.Bot)
-		},
-		OnGuildVoiceLeave: func(e *events.GuildVoiceLeave) {
-			b.emit(voiceEvent(tasks.VoiceLeave, e.VoiceState.GuildID, e.OldVoiceState.ChannelID, e.Member), e.Member.User.Bot)
+		OnGuildVoiceStateUpdate: func(e *events.GuildVoiceStateUpdate) {
+			for _, ev := range voiceTransitions(e.VoiceState.GuildID, e.OldVoiceState.ChannelID, e.VoiceState.ChannelID, e.Member) {
+				b.emit(ev, e.Member.User.Bot)
+			}
 		},
 		OnGuildMemberJoin: func(e *events.GuildMemberJoin) {
 			b.emit(Event{Type: tasks.MemberJoin, GuildID: e.GuildID.String(), UserID: e.Member.User.ID.String(), UserName: e.Member.EffectiveName()}, e.Member.User.Bot)

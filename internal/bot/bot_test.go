@@ -1,6 +1,14 @@
 package bot
 
-import "testing"
+import (
+	"slices"
+	"testing"
+
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/snowflake/v2"
+
+	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
+)
 
 func TestCheckToken(t *testing.T) {
 	for token, ok := range map[string]bool{
@@ -46,5 +54,28 @@ func TestMatchMember(t *testing.T) {
 	}
 	if got := SearchMembers(members, "yt", 10); len(got) != 0 {
 		t.Errorf("bots must be left out: %+v", got)
+	}
+}
+
+func TestVoiceTransitions(t *testing.T) {
+	a, b := snowflake.ID(1), snowflake.ID(2)
+	m := discord.Member{User: discord.User{ID: 7, Username: "jane"}}
+	for name, c := range map[string]struct {
+		old, cur *snowflake.ID
+		want     []string
+	}{
+		"join":         {nil, &a, []string{tasks.VoiceJoin + " 1"}},
+		"leave":        {&a, nil, []string{tasks.VoiceLeave + " 1"}},
+		"move":         {&a, &b, []string{tasks.VoiceLeave + " 1", tasks.VoiceJoin + " 2"}},
+		"mute or deaf": {&a, &a, nil},
+		"not in voice": {nil, nil, nil},
+	} {
+		var got []string
+		for _, ev := range voiceTransitions(9, c.old, c.cur, m) {
+			got = append(got, ev.Type+" "+ev.ChannelID)
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s: got %v, want %v", name, got, c.want)
+		}
 	}
 }
