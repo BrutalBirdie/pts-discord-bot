@@ -90,10 +90,10 @@
 
   <section class="card form">
     <div class="sec-head"><h2 class="with-icon">{{icon "list"}}Steps</h2><span class="hint">One after the other. A failing step stops the run.</span></div>
-    <ol class="steps">
+    <ol class="steps" data-steps>
       {{range $i, $s := $t.Steps}}{{$p := print "s" $i "."}}
       <li class="step{{if and (eq $s.Type "play") ($e.Play $i).Over}} bad{{end}}">
-        <span class="num">{{add $i 1}}</span>
+        <span class="handle"><span class="num">{{add $i 1}}</span><span class="grip js-only" data-tip="Drag to move" aria-hidden="true">{{icon "grip-vertical"}}</span></span>
         <div class="row-main">
           <input type="hidden" name="{{$p}}type" value="{{$s.Type}}">
           <div class="row-title">{{icon $s.Type.Icon}}{{$s.Type.Label}}</div>
@@ -151,8 +151,8 @@
           {{end}}
         </div>
         <div class="btns">
-          <button type="submit" name="op" value="up:{{$i}}" class="ib sm quiet" aria-label="Move step {{add $i 1}} up" data-tip="Move up"{{if eq $i 0}} disabled{{end}}>{{icon "arrow-up"}}</button>
-          <button type="submit" name="op" value="down:{{$i}}" class="ib sm quiet" aria-label="Move step {{add $i 1}} down" data-tip="Move down"{{if eq (add $i 1) (len $t.Steps)}} disabled{{end}}>{{icon "arrow-down"}}</button>
+          <button type="submit" name="op" value="up:{{$i}}" class="ib sm quiet" data-move="-1" aria-label="Move step {{add $i 1}} up" data-tip="Move up"{{if eq $i 0}} disabled{{end}}>{{icon "arrow-up"}}</button>
+          <button type="submit" name="op" value="down:{{$i}}" class="ib sm quiet" data-move="1" aria-label="Move step {{add $i 1}} down" data-tip="Move down"{{if eq (add $i 1) (len $t.Steps)}} disabled{{end}}>{{icon "arrow-down"}}</button>
           <button type="submit" name="op" value="del:{{$i}}" class="ib sm quiet danger" aria-label="Remove step {{add $i 1}}" data-tip="Remove">{{icon "trash-2"}}</button>
         </div>
       </li>

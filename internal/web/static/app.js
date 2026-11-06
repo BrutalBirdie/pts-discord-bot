@@ -461,4 +461,115 @@
             );
         });
     }
+
+    // steps move in the page; the form is saved as it is ordered when submitted
+    document.querySelectorAll('ol[data-steps]').forEach(function (list) {
+        const items = () => Array.from(list.children).filter((li) => li.classList.contains('step'));
+        const prefix = /\bs\d+\./g;
+
+        function renumber() {
+            const all = items();
+            // two passes so radio groups never share a name and lose their checked state
+            ['tmp', 's'].forEach(function (pass) {
+                all.forEach(function (li, i) {
+                    li.querySelectorAll('[name]').forEach(function (el) {
+                        el.name = el.name.replace(/^(?:tmp|s)\d+\./, pass + i + '.');
+                    });
+                });
+            });
+            all.forEach(function (li, i) {
+                li.querySelector('.num').textContent = i + 1;
+                li.querySelectorAll('*').forEach(function (el) {
+                    ['id', 'for', 'list', 'aria-controls', 'aria-describedby', 'data-tokens'].forEach(function (a) {
+                        const v = el.getAttribute(a);
+                        if (v && prefix.test(v)) el.setAttribute(a, v.replace(prefix, 's' + i + '.'));
+                        prefix.lastIndex = 0;
+                    });
+                    const label = el.getAttribute('aria-label');
+                    if (label && /^(Move|Remove) step \d+/.test(label)) el.setAttribute('aria-label', label.replace(/step \d+/, 'step ' + (i + 1)));
+                });
+                li.querySelectorAll('button[name=op]').forEach(function (b) {
+                    b.value = b.value.replace(/^(up|down|del):\d+$/, '$1:' + i).replace(/^tokdel:s\d+\./, 'tokdel:s' + i + '.');
+                });
+                li.querySelector('button[data-move="-1"]').disabled = i === 0;
+                li.querySelector('button[data-move="1"]').disabled = i === all.length - 1;
+            });
+        }
+
+        function moved(li) {
+            renumber();
+            li.classList.remove('moved');
+            void li.offsetWidth;
+            li.classList.add('moved');
+            toast('Step moved to position ' + (items().indexOf(li) + 1) + '. Save to keep the order.');
+        }
+
+        list.addEventListener('click', function (event) {
+            const button = event.target.closest('button[data-move]');
+            if (!button) return;
+            event.preventDefault();
+            const li = button.closest('li.step');
+            const all = items(), i = all.indexOf(li), j = i + Number(button.dataset.move);
+            if (j < 0 || j >= all.length) return;
+            const top = li.getBoundingClientRect().top;
+            if (j < i) all[j].before(li); else all[j].after(li);
+            moved(li);
+            // keep the moved step under the pointer instead of the page jumping
+            window.scrollBy(0, li.getBoundingClientRect().top - top);
+            (button.disabled ? li.querySelector('button[data-move="' + -button.dataset.move + '"]') : button).focus();
+        });
+
+        let drag = null;
+        list.addEventListener('pointerdown', function (event) {
+            const handle = event.target.closest('.handle');
+            if (!handle || event.button !== 0) return;
+            const li = handle.closest('li.step');
+            event.preventDefault();
+            handle.setPointerCapture(event.pointerId);
+            drag = { li, start: items().indexOf(li), y: event.clientY + window.scrollY, offset: li.offsetTop };
+            li.classList.add('dragging');
+            list.classList.add('drag-active');
+        });
+        list.addEventListener('pointermove', function (event) {
+            if (!drag) return;
+            const li = drag.li;
+            for (const other of items()) {
+                if (other === li) continue;
+                const r = other.getBoundingClientRect(), mid = r.top + r.height / 2;
+                const before = li.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_PRECEDING;
+                if (before && event.clientY < mid) { other.before(li); break; }
+                if (!before && event.clientY > mid) { other.after(li); }
+            }
+            const shift = event.clientY + window.scrollY - drag.y - (li.offsetTop - drag.offset);
+            li.style.translate = '0 ' + shift + 'px';
+            const edge = 60;
+            if (event.clientY < edge) window.scrollBy(0, -12); else if (event.clientY > window.innerHeight - edge) window.scrollBy(0, 12);
+        });
+        function drop() {
+            if (!drag) return;
+            const li = drag.li;
+            li.style.translate = '';
+            li.classList.remove('dragging');
+            list.classList.remove('drag-active');
+            if (items().indexOf(li) !== drag.start) moved(li);
+            drag = null;
+        }
+        list.addEventListener('pointerup', drop);
+        list.addEventListener('pointercancel', drop);
+    });
+
+    // editor buttons that post the form come back to the same scroll position
+    document.querySelectorAll('form').forEach(function (form) {
+        if (!form.querySelector('button[name=op]')) return;
+        const key = 'scroll:' + location.pathname;
+        try {
+            const y = sessionStorage.getItem(key);
+            if (y !== null) { sessionStorage.removeItem(key); window.scrollTo(0, Number(y)); }
+        } catch (e) { /* storage blocked */ }
+        form.addEventListener('submit', function (event) {
+            const op = event.submitter && event.submitter.name === 'op' ? event.submitter.value : '';
+            if (!op || op === 'save') return;
+            try { sessionStorage.setItem(key, String(window.scrollY)); } catch (e) { /* storage blocked */ }
+        });
+    });
 })();

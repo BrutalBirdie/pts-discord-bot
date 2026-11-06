@@ -128,9 +128,25 @@ const steps = {
         await page.click('button[value="add:play"]');
         await page.click('button[value="add:wait"]');
         await page.click('button[value="add:leave"]');
+        const stepTypes = () => page.locator('input[name$=".type"]').evaluateAll((els) => els.map((e) => e.name + '=' + e.value).join());
+        await page.evaluate(() => { window.notReloaded = true; });
         await page.click('button[value="up:2"]');
-        const types = await page.locator('input[name$=".type"]').evaluateAll((els) => els.map((e) => e.value));
-        check('steps added and moved', types.join() === 'play,leave,wait', types.join());
+        check('steps added and moved', await stepTypes() === 's0.type=play,s1.type=leave,s2.type=wait', await stepTypes());
+        check('moving does not reload the page', await page.evaluate(() => window.notReloaded === true));
+        check('moved step renumbered', await page.locator('.step').nth(1).locator('button[data-move="-1"]').getAttribute('value') === 'up:1'
+            && await page.locator('.step').nth(1).locator('.num').innerText() === '2'
+            && await page.locator('.step').nth(0).locator('button[data-move="-1"]').isDisabled());
+        const handle = page.locator('.step').nth(2).locator('.handle');
+        const target = await page.locator('.step').nth(0).boundingBox();
+        const from = await handle.boundingBox();
+        await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+        await page.mouse.down();
+        for (let k = 1; k <= 10; k++) await page.mouse.move(from.x + from.width / 2, from.y + (target.y + 5 - from.y) * k / 10);
+        await page.mouse.up();
+        check('drag and drop moves a step', await stepTypes() === 's0.type=wait,s1.type=play,s2.type=leave', await stepTypes());
+        await page.locator('.step').nth(0).locator('button[data-move="1"]').click();
+        await page.locator('.step').nth(1).locator('button[data-move="1"]').click();
+        check('down moves back', await stepTypes() === 's0.type=play,s1.type=leave,s2.type=wait' && await page.evaluate(() => window.notReloaded === true), await stepTypes());
         await page.click('button[value="add:dm"]');
         await page.fill('input[name="s3.user"]', 'nobody');
         await page.click('main .btns button[value=save]');

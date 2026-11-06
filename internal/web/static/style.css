@@ -314,6 +314,14 @@ button.link { background: none; border: 0; color: var(--accent); font: inherit; 
 .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .step { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 10px 10px 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
 .step .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.step .handle { display: grid; justify-items: center; gap: 2px; }
+.js .step .handle { cursor: grab; touch-action: none; user-select: none; }
+.step .grip { position: relative; color: var(--muted); display: grid; }
+.js .step .handle:hover .grip { color: var(--accent); }
+.step.dragging { position: relative; z-index: 5; border-color: var(--accent); box-shadow: 0 6px 18px rgb(16 24 40 / .18); cursor: grabbing; }
+.steps.drag-active, .steps.drag-active * { cursor: grabbing; }
+.step.moved { animation: fresh 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .step.moved { animation: none; } }
 .step .row-title { min-height: 40px; }
 .step .row-title .i { color: var(--accent); }
 .step .fields { display: flex; flex-wrap: wrap; gap: 8px; }
