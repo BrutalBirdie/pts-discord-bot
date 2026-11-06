@@ -204,12 +204,12 @@
     <button type="submit" class="ib with-label">{{icon "clock"}}<span class="lbl">Resume</span></button></form>
   {{end}}
   <div class="callout info">{{icon "info"}}<span>Discord errors that retrying cannot fix, such as a deleted channel or a missing permission, pause the task.</span></div>
+  {{$desc := "Moves the task and its run history to the Trash. Sounds and messages it uses stay."}}
   <form method="post" action="/tasks/{{$t.ID}}/delete" class="danger-box">
     <input type="hidden" name="csrf" value="{{$csrf}}">
     <h3>{{icon "trash-2"}}Delete task</h3>
-    <p class="small">Removes the task and its run history. Sounds and messages it uses stay.</p>
-    {{template "confirmfield" $t.Name}}
-    <div class="btns"><button type="submit" class="ib danger solid with-label needs-confirm">{{icon "trash-2"}}<span class="lbl">Delete task</span></button></div>
+    <p class="small">{{$desc}}</p>
+    <div class="btns"><button type="submit" class="ib danger" aria-label="Delete task" data-tip="Delete task" data-confirm-desc="{{$desc}}">{{icon "trash-2"}}<span class="lbl">Delete task</span></button></div>
   </form>
   {{end}}
 </aside>

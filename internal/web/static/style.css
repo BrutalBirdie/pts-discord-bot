@@ -76,9 +76,15 @@ main.wrap { padding-top: 24px; padding-bottom: 48px; display: grid; grid-templat
 .ib.with-label { padding: 0 16px 0 13px; }
 .ib.with-label .lbl, .labels .ib .lbl { display: inline; }
 .labels .ib:not(.with-label) { padding: 0 12px; }
+.ib.armed { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); padding: 0 16px 0 13px; }
+.ib.danger.armed { background: var(--danger); border-color: var(--danger); color: var(--danger-fg); }
+.ib.armed .lbl { display: inline; }
+.confirm-line { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: .9rem; font-weight: 700; }
+.list .confirm-line { justify-content: flex-end; }
+.labels .list .confirm-line { justify-content: flex-start; }
 [data-tip]:hover::after, [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); right: 0; background: var(--fg); color: var(--bg); font: 700 .8rem/1.3 var(--font); padding: 5px 8px; border-radius: 6px; white-space: nowrap; pointer-events: none; z-index: 40; }
 .topbar [data-tip]::after { bottom: auto; top: calc(100% + 6px); }
-.labels [data-tip]::after, .with-label[data-tip]::after { display: none; }
+.labels [data-tip]::after, .with-label[data-tip]::after, .armed[data-tip]::after { display: none; }
 @media (hover: none) { [data-tip]::after { display: none !important; } }
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; box-shadow: var(--shadow); min-width: 0; }
@@ -285,9 +291,18 @@ button.link { background: none; border: 0; color: var(--accent); font: inherit; 
 .pills button { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--fg); font: .9rem var(--font); cursor: pointer; }
 .thumb { width: 48px; height: 48px; border-radius: var(--r-sm); background: var(--surface-2); color: var(--muted); display: grid; place-items: center; flex: none; overflow: hidden; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.preview-tile { position: relative; flex: none; width: var(--tap); height: var(--tap); padding: 0; border-radius: var(--r-sm); border: 1px solid transparent; background: var(--surface-2); color: var(--accent); display: grid; place-items: center; cursor: pointer; }
+.preview-tile:hover { border-color: var(--accent); }
+.preview-tile[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.preview-tile[aria-pressed="true"] .i, .tok .pv[aria-pressed="true"] .i { fill: currentColor; }
+.pv-vol { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.pv-vol label { display: flex; min-width: 0; }
+.pv-vol input[type=range] { width: 12rem; max-width: 100%; height: 24px; margin: 0; accent-color: var(--accent); }
+.pv-vol output { font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2.6rem; }
+[data-preview-detail][hidden] { display: none; }
+.vh { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .notice { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: var(--r-sm); background: var(--ok-soft); color: var(--ok); font-weight: 700; }
 .problems { margin: 0; padding-left: 20px; }
-audio { width: 100%; max-width: 360px; height: 40px; }
 
 .sched:not(:has(input[name=kind][value=daily]:checked, input[name=kind][value=weekly]:checked)) .k-times,
 .sched:not(:has(input[name=kind][value=weekly]:checked)) .k-weekly,
@@ -392,7 +407,10 @@ html:not(.js) .js-only { display: none; }
 .tokens-foot .count { font-variant-numeric: tabular-nums; }
 .step .fields > .field.wide { flex-basis: 100%; }
 .tok .pv { color: var(--accent); }
-.tok input[type=range] { width: 8rem; min-height: 0; height: 24px; padding: 0; border: 0; background: none; accent-color: var(--accent); }
+.tok .pv[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.tok .pv-vol { gap: 4px; }
+.tok .pv-vol input[type=range] { width: 7rem; }
+.tok .pv-vol output { font-size: .8rem; min-width: 2.4rem; }
 .total { align-self: center; font-variant-numeric: tabular-nums; }
 .total.over { color: var(--danger); font-weight: 700; }
 .step:has(select.dm-to option[value=trigger]:checked) .picker.dm-member { display: none; }

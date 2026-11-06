@@ -30,7 +30,10 @@ type mediaData struct {
 	TotalBytes  int64
 	Voice       []voiceGroup
 	MaxUploadMB int
+	Vols        map[int64]int // preview volumes of the listed sounds
 }
+
+func (d mediaData) Vol(id int64) int { return previewVolume(d.Vols, id) }
 
 func (s *Server) voiceGroups() []voiceGroup {
 	var out []voiceGroup
@@ -73,6 +76,16 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	d.Tags = slices.Sorted(maps.Keys(tags))
+	var sounds []int64
+	for _, m := range d.Items {
+		if m.Kind == store.KindSound {
+			sounds = append(sounds, m.ID)
+		}
+	}
+	if d.Vols, err = s.store.PreviewVolumes(r.Context(), sessionFrom(r).Username, sounds); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
 	s.render(w, r, http.StatusOK, "media", d)
 }
 

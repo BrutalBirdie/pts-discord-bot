@@ -272,11 +272,12 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page
 
 func (s *Server) renderMsg(w http.ResponseWriter, r *http.Request, status int, page, msg string, data any) {
 	sess := sessionFrom(r)
-	var prefs store.Prefs
+	prefs := store.DefaultPrefs
 	if sess != nil && s.store != nil {
-		var err error
-		if prefs, err = s.store.Prefs(r.Context(), sess.Username); err != nil {
+		if p, err := s.store.Prefs(r.Context(), sess.Username); err != nil {
 			s.log.Error("reading preferences", "user", sess.Username, "err", err)
+		} else {
+			prefs = p
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -402,7 +403,7 @@ func safeNext(next, fallback string) string {
 
 func (s *Server) saveAccount(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r)
-	p := store.Prefs{ShowLabels: r.PostForm.Get("show_labels") == "on"}
+	p := store.Prefs{ShowLabels: r.PostForm.Get("show_labels") == "on", ConfirmActions: r.PostForm.Get("confirm_actions") == "on"}
 	if err := s.store.SetPrefs(r.Context(), sess.Username, p); err != nil {
 		s.internalError(w, r, err)
 		return

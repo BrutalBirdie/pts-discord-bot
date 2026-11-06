@@ -657,10 +657,6 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if r.PostForm.Get("confirm") != t.Name {
-		s.fail(w, r, http.StatusBadRequest, "Type the name of the task to delete it.")
-		return
-	}
 	s.run.Unschedule(t.ID)
 	if err := s.store.DeleteTask(r.Context(), t.ID); err != nil {
 		s.internalError(w, r, err)

@@ -95,4 +95,5 @@ CREATE TABLE IF NOT EXISTS preview_volume (
     media_id bigint NOT NULL,
     volume integer NOT NULL CHECK (volume BETWEEN 0 AND 100),
     PRIMARY KEY (username, media_id)
-);`
+);
+ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS confirm_actions boolean NOT NULL DEFAULT true;`

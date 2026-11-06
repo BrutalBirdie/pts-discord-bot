@@ -129,8 +129,7 @@
     <h3>{{icon "trash-2"}}Delete message</h3>
     {{if $e.UsedBy}}<p class="small">Used by {{join $e.UsedBy ", "}}. Remove it from their steps first.</p>
     {{else}}<p class="small">The files stay in the media library.</p>
-    {{template "confirmfield" $m.Name}}
-    <div class="btns"><button type="submit" class="ib danger solid with-label needs-confirm">{{icon "trash-2"}}<span class="lbl">Delete message</span></button></div>{{end}}
+    <div class="btns"><button type="submit" class="ib danger" aria-label="Delete message" data-tip="Delete message" data-confirm-desc="Moves the message to the Trash.">{{icon "trash-2"}}<span class="lbl">Delete message</span></button></div>{{end}}
   </form>
   {{end}}
 </aside>

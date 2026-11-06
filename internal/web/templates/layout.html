@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="/static/logo.png">
 </head>
-<body>
+<body{{if and .Session (not .Prefs.ConfirmActions)}} data-confirm="off"{{end}}>
 {{template "icons"}}
 <header class="topbar">
   <div class="wrap">
@@ -50,6 +50,11 @@
       <section>
         <span class="eyebrow">Display</span>
         <label class="switch-row"><span>Show labels on buttons<small>Text next to every icon.</small></span><input type="checkbox" class="switch" name="show_labels"{{if $.Prefs.ShowLabels}} checked{{end}}></label>
+      </section>
+      <section>
+        <span class="eyebrow">Safety</span>
+        <label class="switch-row"><span>Confirm actions<small>Ask once before moving something to the Trash or restoring it. Turn off if you know your way around; Undo still works.</small></span><input type="checkbox" class="switch" name="confirm_actions"{{if $.Prefs.ConfirmActions}} checked{{end}}></label>
+        <p class="hint">Deleting for good and emptying the Trash always ask.</p>
         <div class="btns no-js"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>
       </section>
     </form>

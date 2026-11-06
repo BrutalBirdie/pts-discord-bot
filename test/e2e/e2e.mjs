@@ -68,8 +68,19 @@ const steps = {
         check('image uploaded', t.includes('Uploaded.') && t.includes('friday_card.png') && t.includes('1 × 1'), t.slice(0, 500));
         const img = await page.request.get(BASE + (await page.locator('img[src^="/media/"]').first().getAttribute('src')));
         check('image served inline', img.ok() && img.headers()['content-type'] === 'image/png');
-        const audio = await page.request.get(BASE + (await page.locator('audio').first().getAttribute('src')), { headers: { Range: 'bytes=0-3' } });
+        const tile = page.locator('button.preview-tile').first();
+        const audio = await page.request.get(BASE + '/media/' + await tile.getAttribute('data-preview-media') + '/file', { headers: { Range: 'bytes=0-3' } });
         check('sound supports range requests', audio.status() === 206 && (await audio.body()).toString() === 'OggS');
+        check('sound rows have a preview tile, no player', await page.locator('audio').count() === 0 && await tile.getAttribute('aria-pressed') === 'false');
+        const soundRow = page.locator('main .list > li', { has: tile });
+        await tile.click();
+        const tileSlider = soundRow.locator('.pv-vol input[type=range]');
+        check('preview tile plays and shows the volume', await tile.getAttribute('aria-pressed') === 'true' && await tile.getAttribute('aria-label') === 'Stop beep.ogg'
+            && await tileSlider.isVisible() && await soundRow.locator('[data-preview-detail]').isHidden()
+            && await soundRow.locator('.pv-vol output').innerText() === '100%' && await soundRow.getByLabel('Preview volume').count() === 1);
+        await tile.click();
+        check('preview tile stops and restores the detail', await tile.getAttribute('aria-pressed') === 'false' && await tileSlider.count() === 0
+            && await soundRow.locator('[data-preview-detail]').isVisible());
 
         await page.goto(BASE + '/messages/new');
         await page.fill('input[name=name]', 'Friday reminder');
@@ -144,6 +155,49 @@ const steps = {
 
         const res = await page.request.post(BASE + '/tasks/new', { form: { op: 'save', name: 'x' } });
         check('post without csrf token rejected', res.status() === 403);
+
+        const throwaway = async (name) => {
+            await page.goto(BASE + '/messages/new');
+            await page.fill('input[name=name]', name);
+            await page.fill('textarea[name=content]', 'x');
+            await page.click('main .btns button[value=save]');
+            return page.locator('form[action$="/delete"] button[data-confirm-desc]');
+        };
+        let del = await throwaway('Throwaway one');
+        check('delete button follows the labels preference', await del.locator('.lbl').isHidden() && await page.locator('input[name=confirm]').count() === 0);
+        await del.click();
+        const line = page.locator('.confirm-line[role=status]');
+        await line.getByText('Click again to confirm.').waitFor();
+        check('first click arms the delete button', /\/messages\/\d+/.test(page.url()) && await del.evaluate((b) => b.classList.contains('armed'))
+            && await del.locator('.lbl').isVisible() && await del.locator('.lbl').innerText() === 'Delete message?'
+            && (await line.innerText()).includes('Moves the message to the Trash. Click again to confirm.'), await line.innerText());
+        await page.keyboard.press('Escape');
+        check('escape disarms', await line.count() === 0 && await del.locator('.lbl').isHidden() && await del.locator('.lbl').textContent() === 'Delete message');
+        await del.click();
+        await line.getByRole('button', { name: 'Cancel' }).click();
+        check('cancel disarms', await line.count() === 0 && !(await del.evaluate((b) => b.classList.contains('armed'))));
+        await del.click();
+        await del.click();
+        await page.waitForURL('**/messages?done=deleted');
+        check('second click deletes', !(await text(page)).includes('Throwaway one'));
+
+        const toggleConfirm = async () => {
+            await page.click('.topbar .avatar');
+            const saved = page.waitForResponse((r) => r.url().endsWith('/account'));
+            await page.locator('#sheet-account input[name=confirm_actions]').click();
+            check('account preference saved', (await saved).status() === 204);
+            await page.keyboard.press('Escape');
+        };
+        await toggleConfirm();
+        await page.reload();
+        check('confirm actions off is kept', await page.evaluate(() => document.body.dataset.confirm) === 'off'
+            && !(await page.locator('#sheet-account input[name=confirm_actions]').isChecked()));
+        del = await throwaway('Throwaway two');
+        await del.click();
+        await page.waitForURL('**/messages?done=deleted');
+        check('with confirm actions off one click deletes', !(await text(page)).includes('Throwaway two'));
+        await toggleConfirm();
+        check('confirm actions on again', await page.evaluate(() => document.body.dataset.confirm) === undefined);
 
         await page.goto(BASE + '/admin/audit');
         t = await text(page);
@@ -278,9 +332,11 @@ const steps = {
         check('total of a sequence', /^Total 0:0[34] \/ 10:00$/.test(await total()), await total());
         await page.check('input[name="s1.order"][value=random]', { force: true });
         check('total of a random pick', /^Total 0:0[12] \/ 10:00$/.test(await total()), await total());
-        await sounds.locator('.tok .pv').first().click();
+        const pv = sounds.locator('.tok .pv').first();
+        await pv.click();
         const slider = sounds.locator('.tok input[type=range]');
-        check('preview shows the volume slider', await slider.count() === 1 && await slider.inputValue() === '100');
+        check('preview shows the volume slider', await slider.count() === 1 && await slider.inputValue() === '100' && await pv.getAttribute('aria-pressed') === 'true'
+            && await sounds.locator('.tok .nm').first().isHidden());
         const saved = page.waitForResponse((r) => r.url().endsWith('/prefs/preview-volume'));
         await slider.fill('35');
         check('preview volume saved', (await saved).status() === 204);
@@ -290,7 +346,7 @@ const steps = {
         check('play step saved', (await text(page)).includes('Saved.'), (await text(page)).slice(0, 300));
         ids = await soundToks();
         check('sounds and preview volume after reload', ids.length === 2 && await page.locator('input[name="s1.order"][value=random]').isChecked()
-            && await sounds.locator('.tok').first().getAttribute('data-vol') === '35', ids.join());
+            && await sounds.locator('.tok .pv').first().getAttribute('data-vol') === '35', ids.join());
         const hits = await (await page.request.get(BASE + '/sounds?q=beep')).json();
         check('sound search answers JSON', hits.length === 1 && hits[0].name === 'beep.ogg' && hits[0].volume === 35 && hits[0].duration_ms > 1000, JSON.stringify(hits));
         await page.goto(BASE + '/media');

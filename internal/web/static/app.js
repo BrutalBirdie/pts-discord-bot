@@ -31,19 +31,6 @@
                 });
             });
         }
-        // destructive buttons stay disabled until the name is typed
-        root.querySelectorAll('input[data-confirm]').forEach(function (input) {
-            const button = input.form.querySelector('button.needs-confirm');
-            if (!button) return;
-            const update = () => { button.disabled = input.value !== input.dataset.confirm; };
-            input.addEventListener('input', update);
-            update();
-        });
-        root.querySelectorAll('button[data-confirm-click]').forEach(function (button) {
-            button.addEventListener('click', function (event) {
-                if (!confirm(button.dataset.confirmClick)) event.preventDefault();
-            });
-        });
     }
 
     window.botpanel = { init, toast };
@@ -93,27 +80,99 @@
         total.classList.toggle('over', ms > cap);
     }
 
-    // sound previews: one at a time, the name turns into a volume slider while playing
+    // buttons with data-confirm-desc ask once: the first click arms them, the second one goes through
+    let armed = null;
+    function disarm(focus) {
+        if (!armed) return;
+        const a = armed;
+        armed = null;
+        clearTimeout(a.timer);
+        a.btn.classList.remove('armed');
+        if (a.created) a.lbl.remove(); else a.lbl.textContent = a.text;
+        a.btn.removeAttribute('aria-describedby');
+        a.line.remove();
+        if (focus) a.btn.focus();
+    }
+    function arm(btn) {
+        let lbl = btn.querySelector('.lbl'), created = false;
+        if (!lbl) {
+            lbl = document.createElement('span');
+            lbl.className = 'lbl';
+            btn.append(lbl);
+            created = true;
+        }
+        const text = lbl.textContent;
+        lbl.textContent = btn.dataset.armedLabel || (text ? text + '?' : 'Confirm?');
+        btn.classList.add('armed');
+        const line = document.createElement('div');
+        line.className = 'confirm-line';
+        line.id = 'confirm-line';
+        line.setAttribute('role', 'status');
+        const msg = document.createElement('span');
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'ib quiet with-label cancel';
+        const cancelLbl = document.createElement('span');
+        cancelLbl.className = 'lbl';
+        cancelLbl.textContent = 'Cancel';
+        cancel.append(svgIcon('x'), cancelLbl);
+        line.append(msg, cancel);
+        (btn.closest('.btns') || btn.closest('li') || btn).after(line);
+        btn.setAttribute('aria-describedby', line.id);
+        // filled after insertion, screen readers announce changes of a status region, not new ones
+        setTimeout(function () { msg.textContent = btn.dataset.confirmDesc + ' Click again to confirm.'; }, 50);
+        const timer = btn.hasAttribute('data-irreversible') ? 0 : setTimeout(() => disarm(false), 4000);
+        armed = { btn, lbl, text, created, line, timer };
+    }
+    // capture phase, so an unconfirmed click never reaches the handlers of the button itself
+    document.addEventListener('click', function (event) {
+        const btn = event.target.closest('button[data-confirm-desc]');
+        if (armed && armed.btn !== btn) disarm(Boolean(event.target.closest('.confirm-line .cancel')));
+        if (!btn || btn.disabled) return;
+        if (armed) {
+            disarm(false);
+            return;
+        }
+        if (document.body.dataset.confirm === 'off' && !btn.hasAttribute('data-irreversible')) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        arm(btn);
+    }, true);
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && armed) disarm(true);
+    });
+
+    // sound previews, one at a time: a [data-preview-media] button toggles playback and a volume
+    // slider replaces the [data-preview-detail] of its row while playing
     let preview = null, volTimer;
+    function setPreviewButton(btn, playing) {
+        const text = (playing ? 'Stop ' : 'Preview ') + btn.dataset.name;
+        btn.setAttribute('aria-pressed', String(playing));
+        btn.setAttribute('aria-label', text);
+        if (btn.dataset.tip !== undefined) btn.dataset.tip = text;
+        btn.querySelector('use').setAttribute('href', playing ? '#i-square' : '#i-music');
+    }
     function stopPreview() {
         if (!preview) return;
         const p = preview;
         preview = null;
         p.audio.pause();
         p.audio.removeAttribute('src');
-        p.slider.remove();
-        p.tok.querySelector('.nm').hidden = false;
-        const btn = p.tok.querySelector('.pv');
-        btn.querySelector('use').setAttribute('href', '#i-play');
-        btn.setAttribute('aria-pressed', 'false');
+        p.vol.remove();
+        if (p.detail) p.detail.hidden = false;
+        setPreviewButton(p.btn, false);
     }
-    function saveVolume(tok, volume) {
-        const form = tok.closest('form');
+    function stopPreviewIn(el) {
+        if (preview && el.contains(preview.btn)) stopPreview();
+    }
+    function saveVolume(id, volume) {
+        const csrf = document.querySelector('input[name=csrf]');
+        if (!csrf) return;
         clearTimeout(volTimer);
         volTimer = setTimeout(function () {
             fetch('/prefs/preview-volume', {
                 method: 'POST',
-                body: new URLSearchParams({ csrf: form.elements.csrf.value, media_id: tok.dataset.media, volume }),
+                body: new URLSearchParams({ csrf: csrf.value, media_id: id, volume }),
                 headers: { Accept: 'application/json' },
             }).then(
                 (r) => { if (!r.ok) toast('Volume not saved, reload the page and try again'); },
@@ -121,27 +180,41 @@
             );
         }, 500);
     }
-    function startPreview(tok) {
-        const nm = tok.querySelector('.nm');
-        const audio = new Audio('/media/' + tok.dataset.media + '/file');
+    function startPreview(btn) {
+        const id = btn.dataset.previewMedia;
+        const row = btn.closest('[data-preview-row], .tok, li');
+        const detail = row && row.querySelector('[data-preview-detail]');
+        const audio = new Audio('/media/' + id + '/file');
+        const vol = document.createElement('span');
+        vol.className = 'pv-vol';
+        const label = document.createElement('label');
+        const text = document.createElement('span');
+        text.className = 'vh';
+        text.textContent = 'Preview volume';
         const slider = document.createElement('input');
         slider.type = 'range';
         slider.min = '0';
         slider.max = '100';
-        slider.value = tok.dataset.vol || '100';
-        slider.setAttribute('aria-label', 'Preview volume of ' + nm.firstChild.textContent.trim());
+        slider.value = btn.dataset.vol || '100';
+        const out = document.createElement('output');
+        out.textContent = slider.value + '%';
+        label.append(text, slider);
+        vol.append(label, out);
         audio.volume = Number(slider.value) / 100;
         slider.addEventListener('input', function () {
             audio.volume = Number(slider.value) / 100;
-            document.querySelectorAll('.tok[data-media="' + tok.dataset.media + '"]').forEach((t) => { t.dataset.vol = slider.value; });
-            saveVolume(tok, slider.value);
+            out.textContent = slider.value + '%';
+            document.querySelectorAll('[data-preview-media="' + id + '"]').forEach((b) => { b.dataset.vol = slider.value; });
+            saveVolume(id, slider.value);
         });
-        nm.hidden = true;
-        nm.after(slider);
-        const btn = tok.querySelector('.pv');
-        btn.querySelector('use').setAttribute('href', '#i-square');
-        btn.setAttribute('aria-pressed', 'true');
-        preview = { audio, tok, slider };
+        if (detail) {
+            detail.hidden = true;
+            detail.after(vol);
+        } else {
+            btn.after(vol);
+        }
+        setPreviewButton(btn, true);
+        preview = { audio, btn, vol, detail };
         audio.addEventListener('ended', function () { if (preview && preview.audio === audio) stopPreview(); });
         audio.play().catch(function () {
             if (preview && preview.audio === audio) stopPreview();
@@ -149,13 +222,12 @@
         });
     }
     document.addEventListener('click', function (event) {
-        const btn = event.target.closest('.tok .pv');
+        const btn = event.target.closest('button[data-preview-media]');
         if (!btn) return;
         event.preventDefault();
-        const tok = btn.closest('.tok');
-        const same = preview && preview.tok === tok;
+        const same = preview && preview.btn === btn;
         stopPreview();
-        if (!same) startPreview(tok);
+        if (!same) startPreview(btn);
     });
 
     // pickers: suggestions while typing, from /members or the data-source of a token field
@@ -183,7 +255,7 @@
             updateTotal(tokens);
         }
         function removeToken(tok) {
-            if (preview && preview.tok === tok) stopPreview();
+            stopPreviewIn(tok);
             tok.remove();
             tokensChanged();
         }
@@ -198,19 +270,21 @@
                 av.textContent = (h.name.trim()[0] || '?').toUpperCase();
                 tok.append(av);
             } else {
-                tok.dataset.media = h.id;
-                tok.dataset.vol = h.volume ?? 100;
                 tok.dataset.ms = h.duration_ms || 0;
                 const pv = document.createElement('button');
                 pv.type = 'button';
                 pv.className = 'pv';
+                pv.dataset.previewMedia = h.id;
+                pv.dataset.vol = h.volume ?? 100;
+                pv.dataset.name = h.name;
                 pv.setAttribute('aria-label', 'Preview ' + h.name);
                 pv.setAttribute('aria-pressed', 'false');
-                pv.append(svgIcon('play'));
+                pv.append(svgIcon('music'));
                 tok.append(pv);
             }
             const nm = document.createElement('span');
             nm.className = 'nm';
+            if (h.username === undefined) nm.dataset.previewDetail = '';
             const un = document.createElement('span');
             un.className = 'un';
             un.textContent = subText(h);
@@ -374,6 +448,9 @@
     if (account) {
         account.addEventListener('change', function (event) {
             if (event.target.name === 'show_labels') document.documentElement.classList.toggle('labels', event.target.checked);
+            if (event.target.name === 'confirm_actions') {
+                if (event.target.checked) delete document.body.dataset.confirm; else document.body.dataset.confirm = 'off';
+            }
             fetch(account.action, {
                 method: 'POST',
                 body: new URLSearchParams(new FormData(account)),
