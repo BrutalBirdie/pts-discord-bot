@@ -136,8 +136,6 @@ const steps = {
         check('moved step renumbered', await page.locator('.step').nth(1).locator('button[data-move="-1"]').getAttribute('value') === 'up:1'
             && await page.locator('.step').nth(1).locator('.num').innerText() === '2'
             && await page.locator('.step').nth(0).locator('button[data-move="-1"]').isDisabled());
-        // keep the drag away from the edge autoscroll of the step list
-        await page.locator('.step').nth(0).evaluate((el) => el.scrollIntoView({ block: 'center' }));
         const handle = page.locator('.step').nth(2).locator('.handle');
         const target = await page.locator('.step').nth(0).boundingBox();
         const from = await handle.boundingBox();

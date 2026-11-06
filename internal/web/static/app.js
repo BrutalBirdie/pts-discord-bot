@@ -530,7 +530,8 @@
             li.classList.add('dragging');
             list.classList.add('drag-active');
         });
-        list.addEventListener('pointermove', function (event) {
+        // moving the step in the DOM drops its pointer capture, so the drag listens on the document
+        document.addEventListener('pointermove', function (event) {
             if (!drag) return;
             const li = drag.li;
             for (const other of items()) {
@@ -554,8 +555,8 @@
             if (items().indexOf(li) !== drag.start) moved(li);
             drag = null;
         }
-        list.addEventListener('pointerup', drop);
-        list.addEventListener('pointercancel', drop);
+        document.addEventListener('pointerup', drop);
+        document.addEventListener('pointercancel', drop);
     });
 
     // editor buttons that post the form come back to the same scroll position
