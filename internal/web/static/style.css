@@ -338,7 +338,11 @@ button.link { background: none; border: 0; color: var(--accent); font: inherit; 
 .sched:has(input[name=kind][value=manual]:checked) .k-timed { display: none; }
 
 .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.step { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 10px 10px 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
+.step { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0 12px; align-items: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
+.step > .row-main { display: contents; }
+.step > .row-main > * { grid-column: 1 / -1; }
+.step > .row-main > .row-title { grid-column: 2; grid-row: 1; }
+.step > .btns { grid-column: 3; grid-row: 1; }
 .step .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }
 .step .handle { display: grid; justify-items: center; gap: 2px; }
 .js .step .handle { cursor: grab; touch-action: none; user-select: none; }
@@ -394,7 +398,7 @@ button.choice:hover { border-color: var(--accent); }
   .grid2, .field-row { grid-template-columns: minmax(0, 1fr); }
   .dfields { grid-template-columns: minmax(0, 1fr); }
   .step { grid-template-columns: auto minmax(0, 1fr); }
-  .step > .btns { grid-column: 1 / -1; justify-content: flex-end; }
+  .step > .btns { grid-column: 1 / -1; grid-row: auto; justify-content: flex-end; }
 }
 /* first submit button of a form, so Enter saves instead of triggering an editor button */
 .default-submit { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }

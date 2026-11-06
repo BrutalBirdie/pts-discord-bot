@@ -98,7 +98,7 @@
     <ol class="steps" data-steps>
       {{range $i, $s := $t.Steps}}{{$p := print "s" $i "."}}
       <li class="step{{if and (eq $s.Type "play") ($e.Play $i).Over}} bad{{else if and (eq $s.Type "profile") ($e.Avatar $i).Problem}} bad{{else if $e.StepIssues $i}} bad{{end}}">
-        <span class="handle"><span class="num">{{add $i 1}}</span><span class="grip js-only" data-tip="Drag to move" aria-hidden="true">{{icon "grip-vertical"}}</span></span>
+        <span class="handle"><span class="num">{{add $i 1}}</span></span>
         <div class="row-main">
           <input type="hidden" name="{{$p}}type" value="{{$s.Type}}">
           <div class="row-title">{{icon $s.Type.Icon}}{{$s.Type.Label}}</div>
@@ -175,6 +175,7 @@
           {{end}}
         </div>
         <div class="btns">
+          <span class="handle js-only"><span class="grip" data-tip="Drag to move" aria-hidden="true">{{icon "grip-vertical"}}</span></span>
           <button type="submit" name="op" value="up:{{$i}}" class="ib sm quiet" data-move="-1" aria-label="Move step {{add $i 1}} up" data-tip="Move up"{{if eq $i 0}} disabled{{end}}>{{icon "arrow-up"}}</button>
           <button type="submit" name="op" value="down:{{$i}}" class="ib sm quiet" data-move="1" aria-label="Move step {{add $i 1}} down" data-tip="Move down"{{if eq (add $i 1) (len $t.Steps)}} disabled{{end}}>{{icon "arrow-down"}}</button>
           <button type="submit" name="op" value="del:{{$i}}" class="ib sm quiet danger" aria-label="Remove step {{add $i 1}}" data-tip="Remove">{{icon "trash-2"}}</button>
