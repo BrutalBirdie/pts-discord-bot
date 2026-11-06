@@ -1,3 +1,6 @@
+[0.4.1]
+* Update golang:1.27.3-trixie Docker digest to af1bfc2
+
 [0.4.0]
 * Tasks can start on Discord events: a member joins or leaves a voice channel, a new member joins, a message contains a keyword
 * Event tasks can be limited to specific members
