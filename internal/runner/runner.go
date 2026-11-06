@@ -28,6 +28,62 @@ import (
 // busyWait is how long a run waits for another voice run in the same server.
 const busyWait = 30 * time.Minute
 
+const (
+	runSlack    = 2 * time.Minute
+	maxRunLimit = tasks.MaxWait + time.Hour
+	// joinTime and startTime are the bounds of bot.Join and of the first frame in bot.Play.
+	joinTime  = 25 * time.Second
+	startTime = 15 * time.Second
+)
+
+var errRunLimit = errors.New("the run took longer than its estimate")
+
+// runLimit estimates how long a run may take. soundTime returns 0 for a
+// sound of unknown length, which counts as maxPlay.
+func runLimit(steps []tasks.Step, soundTime func(tasks.SoundRef) time.Duration, maxPlay time.Duration) time.Duration {
+	total := runSlack
+	for _, s := range steps {
+		switch s.Type {
+		case tasks.Join:
+			total += joinTime
+		case tasks.Wait:
+			total += s.WaitDuration()
+		case tasks.Profile:
+			total += 2 * tasks.ProfileMaxWait
+		case tasks.Play:
+			var play time.Duration
+			for _, ref := range s.Sounds() {
+				d := soundTime(ref)
+				if d <= 0 {
+					d = maxPlay
+				}
+				d += startTime
+				if s.Order == tasks.OrderRandom {
+					play = max(play, d)
+				} else {
+					play += d
+				}
+			}
+			total += min(play, maxPlay)
+		}
+	}
+	return min(total, maxRunLimit)
+}
+
+// soundTime is the length of a sound for runLimit, 0 when unknown.
+func (r *Runner) soundTime(ctx context.Context) func(tasks.SoundRef) time.Duration {
+	return func(ref tasks.SoundRef) time.Duration {
+		if ref.Tag != "" {
+			return 0
+		}
+		m, err := r.st.Media(ctx, ref.MediaID)
+		if err != nil {
+			return 0
+		}
+		return time.Duration(m.DurationMS) * time.Millisecond
+	}
+}
+
 type Runner struct {
 	st    *store.Store
 	bot   *bot.Bot
@@ -298,9 +354,25 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 	if err != nil {
 		settings = store.DefaultSettings
 	}
+	limit := runLimit(t.Steps, r.soundTime(ctx), time.Duration(settings.MaxPlayMinutes)*time.Minute)
+	rctx, cancel := context.WithTimeoutCause(ctx, limit, errRunLimit)
+	defer cancel()
 	for i, s := range t.Steps {
-		if err := r.step(ctx, t, s, settings, ev); err != nil {
+		if err := r.step(rctx, t, s, settings, ev); err != nil {
 			n := i + 1
+			if context.Cause(rctx) == errRunLimit {
+				msg := fmt.Sprintf("The run took longer than its estimated %s, stopped.", tasks.FormatDuration(limit))
+				r.finish(log, runID, store.RunFailed, &n, msg)
+				if guildID, ok := bot.ParseID(t.GuildID); ok && t.UsesVoice() {
+					lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+					if err := r.bot.Leave(lctx, guildID); err != nil {
+						log.Error("leaving voice after the run limit", "err", err)
+					}
+					cancel()
+				}
+				r.afterFailure(t, n, s, errRunLimit, msg, settings)
+				return fmt.Errorf("step %d, %s: %s", n, strings.ToLower(s.Type.Label()), msg)
+			}
 			var stop *stopRun
 			if errors.As(err, &stop) {
 				r.finish(log, runID, store.RunSkipped, nil, fmt.Sprintf("Step %d: %s", n, stop.msg))
@@ -439,7 +511,11 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 		defer cancel()
 		for _, m := range list {
 			info := bot.Playing{Name: m.Name, By: t.Name, Duration: time.Duration(m.DurationMS) * time.Millisecond}
-			if err := r.bot.Play(pctx, guildID, r.media.Path(m.ID), info, s.Volume); err != nil {
+			err := r.bot.Play(pctx, guildID, r.media.Path(m.ID), info, s.Volume)
+			if errors.Is(err, bot.ErrChannelEmpty) {
+				return nil
+			}
+			if err != nil {
 				return err
 			}
 		}

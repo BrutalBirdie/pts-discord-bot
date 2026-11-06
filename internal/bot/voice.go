@@ -14,6 +14,8 @@ import (
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/snowflake/v2"
+
+	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
 )
 
 // Playing is a sound that is playing right now.
@@ -89,6 +91,10 @@ func (b *Bot) Join(ctx context.Context, guildID, channelID snowflake.ID) error {
 // means audio reaches the channel.
 const startTimeout = 15 * time.Second
 
+// stallTimeout ends a playback whose frames stopped being pulled, disgo stops
+// pulling while the DAVE session is not ready.
+const stallTimeout = 10 * time.Second
+
 func (b *Bot) Leave(ctx context.Context, guildID snowflake.ID) error {
 	c, err := b.get()
 	if err != nil {
@@ -136,8 +142,17 @@ func (b *Bot) playingIn(guildID snowflake.ID) *Playing {
 
 var ErrStopped = errors.New("playback was stopped")
 
+// ErrChannelEmpty ends a playback because no member is left in the channel.
+var ErrChannelEmpty = errors.New("the voice channel is empty")
+
+// stalled reports whether frames stopped being pulled after the first one.
+func stalled(frames int64, last, now time.Time) bool {
+	return frames > 0 && now.Sub(last) >= stallTimeout
+}
+
 // Play streams a file into the voice channel the bot is in and returns when it
-// has finished. volume is in percent.
+// has finished. volume is in percent. It returns ErrChannelEmpty without
+// playing on when no member is in the channel.
 func (b *Bot) Play(ctx context.Context, guildID snowflake.ID, path string, info Playing, volume int) error {
 	c, err := b.get()
 	if err != nil {
@@ -147,9 +162,20 @@ func (b *Bot) Play(ctx context.Context, guildID snowflake.ID, path string, info 
 	if conn == nil || conn.ChannelID() == nil {
 		return errors.New("the bot is not in a voice channel of this server, add a Join step first")
 	}
-	info.ChannelID = conn.ChannelID().String()
-	if ch, ok := c.Caches.Channel(*conn.ChannelID()); ok {
+	channelID := *conn.ChannelID()
+	info.ChannelID = channelID.String()
+	if ch, ok := c.Caches.Channel(channelID); ok {
 		info.Channel = ch.Name()
+	}
+	empty := b.VoiceCond(guildID, tasks.UntilEmpty, 0, channelID)
+	wake := b.waiters.add(guildID)
+	defer b.waiters.remove(guildID, wake)
+	stopEmpty := func() error {
+		b.log.Info("stopped playback, channel empty", "guild", guildID, "channel", channelID, "sound", info.Name)
+		return ErrChannelEmpty
+	}
+	if empty() {
+		return stopEmpty()
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -191,19 +217,35 @@ func (b *Bot) Play(ctx context.Context, guildID snowflake.ID, path string, info 
 
 	provider := newFrameProvider(newOggOpusReader(stdout))
 	conn.SetOpusFrameProvider(provider)
-	select {
-	case <-provider.started:
-	case <-provider.done:
-	case <-ctx.Done():
-	case <-time.After(startTimeout):
-		provider.Close()
-		b.log.Warn("no audio sent", "guild", guildID, "gateway_status", conn.Gateway().Status(), "dave_ready", conn.DAVE().Ready())
-		return errors.New("no audio reached Discord within " + startTimeout.String() + ", the voice connection is not ready")
-	}
-	select {
-	case <-provider.done:
-	case <-ctx.Done():
-		provider.Close()
+	started, startBy := provider.started, time.After(startTimeout)
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+wait:
+	for {
+		select {
+		case <-started:
+			started, startBy = nil, nil
+		case <-startBy:
+			provider.Close()
+			b.log.Warn("no audio sent", "guild", guildID, "gateway_status", conn.Gateway().Status(), "dave_ready", conn.DAVE().Ready())
+			return errors.New("no audio reached Discord within " + startTimeout.String() + ", the voice connection is not ready")
+		case <-provider.done:
+			break wait
+		case <-ctx.Done():
+			provider.Close()
+			break wait
+		case <-wake:
+			if empty() {
+				provider.Close()
+				return stopEmpty()
+			}
+		case now := <-tick.C:
+			if stalled(provider.frames.Load(), provider.lastFrame(), now) {
+				provider.Close()
+				b.log.Warn("playback stalled", "guild", guildID, "gateway_status", conn.Gateway().Status(), "dave_ready", conn.DAVE().Ready())
+				return errors.New("playback stalled, no audio was sent for " + stallTimeout.String())
+			}
+		}
 	}
 	// lets the audio sender flush its trailing silence frames
 	time.Sleep(200 * time.Millisecond)
@@ -235,6 +277,7 @@ type frameProvider struct {
 	started chan struct{}
 	once    sync.Once
 	frames  atomic.Int64
+	last    atomic.Int64 // unix nanoseconds of the last frame
 	err     error
 }
 
@@ -256,11 +299,14 @@ func (f *frameProvider) ProvideOpusFrame() ([]byte, error) {
 		f.Close()
 		return nil, io.EOF
 	}
+	f.last.Store(time.Now().UnixNano())
 	if f.frames.Add(1) == 1 {
 		close(f.started)
 	}
 	return frame, nil
 }
+
+func (f *frameProvider) lastFrame() time.Time { return time.Unix(0, f.last.Load()) }
 
 func (f *frameProvider) Close() {
 	f.once.Do(func() { close(f.done) })

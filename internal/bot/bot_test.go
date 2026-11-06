@@ -130,6 +130,48 @@ func TestVoiceCondMet(t *testing.T) {
 	}
 }
 
+func TestPlaybackChannelEmpty(t *testing.T) {
+	lobby, other := snowflake.ID(2), snowflake.ID(3)
+	self, otherBot, jane := snowflake.ID(8), snowflake.ID(9), snowflake.ID(7)
+	isBot := func(id snowflake.ID) bool { return id == self || id == otherBot }
+	vs := func(user, ch snowflake.ID) discord.VoiceState {
+		return discord.VoiceState{GuildID: 1, UserID: user, ChannelID: &ch}
+	}
+	for name, c := range map[string]struct {
+		states []discord.VoiceState
+		want   bool
+	}{
+		"member stays":         {[]discord.VoiceState{vs(self, lobby), vs(jane, lobby)}, false},
+		"member left":          {[]discord.VoiceState{vs(self, lobby)}, true},
+		"member moved":         {[]discord.VoiceState{vs(self, lobby), vs(jane, other)}, true},
+		"only bots":            {[]discord.VoiceState{vs(self, lobby), vs(otherBot, lobby)}, true},
+		"left with no channel": {[]discord.VoiceState{vs(self, lobby), {GuildID: 1, UserID: jane}}, true},
+	} {
+		if got := voiceCondMet(tasks.UntilEmpty, 0, lobby, c.states, isBot); got != c.want {
+			t.Errorf("%s: got %v, want %v", name, got, c.want)
+		}
+	}
+}
+
+func TestStalled(t *testing.T) {
+	now := time.Now()
+	for name, c := range map[string]struct {
+		frames int64
+		last   time.Time
+		want   bool
+	}{
+		"not started":       {0, time.Time{}, false},
+		"frame just sent":   {50, now.Add(-20 * time.Millisecond), false},
+		"short gap":         {50, now.Add(-9 * time.Second), false},
+		"no frame for 10 s": {50, now.Add(-stallTimeout), true},
+		"no frame for long": {50, now.Add(-time.Minute), true},
+	} {
+		if got := stalled(c.frames, c.last, now); got != c.want {
+			t.Errorf("%s: got %v, want %v", name, got, c.want)
+		}
+	}
+}
+
 func TestWaitVoice(t *testing.T) {
 	b := &Bot{}
 	var ready atomic.Bool
