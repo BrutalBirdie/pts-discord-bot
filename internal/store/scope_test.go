@@ -35,6 +35,31 @@ func TestScope(t *testing.T) {
 	}
 }
 
+func TestRunScope(t *testing.T) {
+	for _, c := range []struct {
+		name, guild, updated, created string
+		shared, own, other            bool
+	}{
+		{"saved by a Cloudron user", "A", "carol", "carol", true, true, false},
+		{"edited by a Discord user", "A", "discord:9", "carol", false, true, false},
+		{"created by a Discord user", "A", "discord:9", "discord:9", false, true, false},
+		{"edited by a Cloudron user", "A", "carol", "discord:9", true, true, false},
+		{"no updated_by, created by Discord", "A", "", "discord:9", false, true, false},
+		{"no updated_by, created by Cloudron", "A", "", "carol", true, true, false},
+		{"not saved, a /play or send now", "A", "", "", true, true, false},
+		{"Discord user, no server", "", "discord:9", "", false, false, false},
+		{"Cloudron user, no server", "", "carol", "", true, false, false},
+	} {
+		sc := RunScope(c.guild, c.updated, c.created)
+		if sc.Has("") != c.shared || sc.Has("A") != c.own || sc.Has("B") != c.other {
+			t.Errorf("%s: shared %v, own %v, other %v", c.name, sc.Has(""), sc.Has("A"), sc.Has("B"))
+		}
+	}
+	if p := GuildScope(false, "").param(); len(p) != 0 {
+		t.Errorf("an empty server id matches shared rows: %q", p)
+	}
+}
+
 func names[T any](list []T, name func(T) string) []string {
 	out := []string{}
 	for _, x := range list {
@@ -175,6 +200,30 @@ func TestScopedLists(t *testing.T) {
 		if m.ID != ma {
 			t.Fatalf("random sound outside A: %+v", m)
 		}
+	}
+	byDiscord, err := s.CreateTask(ctx, tasks.Task{Name: "TD", GuildID: "A", Busy: tasks.BusyWait, Steps: play(ma)}, "discord:9")
+	must(err)
+	must(s.SetTaskEnabled(ctx, byDiscord, false, "paused", "system"))
+	td, err := s.Task(ctx, byDiscord)
+	must(err)
+	if td.UpdatedBy != "discord:9" {
+		t.Errorf("a system pause changed updated_by: %q", td.UpdatedBy)
+	}
+	for range 10 {
+		m, err := s.RandomSound(ctx, RunScope(td.GuildID, td.UpdatedBy, td.CreatedBy), "fun")
+		must(err)
+		if m.ID != ma {
+			t.Fatalf("random sound of a Discord-saved task outside A: %+v", m)
+		}
+	}
+	seen := map[int64]bool{}
+	for range 50 {
+		m, err := s.RandomSound(ctx, RunScope("A", "carol", "discord:9"), "fun")
+		must(err)
+		seen[m.ID] = true
+	}
+	if !seen[shared] || !seen[ma] || len(seen) != 2 {
+		t.Errorf("random sounds of a Cloudron-saved task: %v", seen)
 	}
 
 	runs, err := s.ListRuns(ctx, RunQuery{Scope: GuildScope(false, "B"), Limit: 10})

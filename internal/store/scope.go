@@ -1,6 +1,10 @@
 package store
 
-import "slices"
+import (
+	"cmp"
+	"slices"
+	"strings"
+)
 
 // Scope limits queries to rows of some servers. Messages and media without a
 // server are shared, they are in scope only when Shared is set. The zero
@@ -16,7 +20,19 @@ var All = Scope{all: true}
 
 // GuildScope matches rows of the servers, and shared rows when shared is set.
 func GuildScope(shared bool, guilds ...string) Scope {
-	return Scope{shared: shared, guilds: slices.Clone(guilds)}
+	// "" would match shared rows in SQL even without shared
+	return Scope{shared: shared, guilds: slices.DeleteFunc(slices.Clone(guilds), func(g string) bool { return g == "" })}
+}
+
+// RunScope is what a task or message of guildID may use when it runs: like
+// Session.ItemScope for whoever saved it last, shared items only when that
+// was not a Discord user. createdBy counts when updatedBy is empty.
+func RunScope(guildID, updatedBy, createdBy string) Scope {
+	by := cmp.Or(updatedBy, createdBy)
+	if strings.HasPrefix(by, DiscordSubject("")) {
+		return GuildScope(false, guildID)
+	}
+	return GuildScope(true, guildID)
 }
 
 // Has tells whether a row owned by guildID is in scope, "" being shared.

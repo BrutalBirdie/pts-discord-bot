@@ -21,8 +21,18 @@ import (
 	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
 )
 
+// commandStore is the part of the store the commands use.
+type commandStore interface {
+	Media(ctx context.Context, id int64) (store.Media, error)
+	MediaByName(ctx context.Context, sc store.Scope, name string) (store.Media, error)
+	ListMedia(ctx context.Context, sc store.Scope, kind string) ([]store.Media, error)
+	Tags(ctx context.Context, sc store.Scope) ([]string, error)
+	ListTasks(ctx context.Context, sc store.Scope) ([]tasks.Task, error)
+	Audit(ctx context.Context, e store.AuditEntry) error
+}
+
 type Handler struct {
-	st  *store.Store
+	st  commandStore
 	bot *bot.Bot
 	run *runner.Runner
 	log *slog.Logger
@@ -104,24 +114,28 @@ func (h *Handler) OnCommand(e *events.ApplicationCommandInteractionCreate) {
 	}
 }
 
+// playScope is what /play offers in a server: shared files and the server's own.
+func playScope(gid snowflake.ID) store.Scope { return store.GuildScope(true, gid.String()) }
+
 // soundValue resolves the sound option: "id:5", "tag:greeting" or a typed name.
-func (h *Handler) soundValue(ctx context.Context, value string) (tasks.Step, string, bool) {
+func (h *Handler) soundValue(ctx context.Context, gid snowflake.ID, value string) (tasks.Step, string, bool) {
+	sc := playScope(gid)
 	if tag, ok := strings.CutPrefix(value, "tag:"); ok {
 		return tasks.Step{Tag: tag}, "a random sound tagged " + tag, true
 	}
 	if id, err := strconv.ParseInt(strings.TrimPrefix(value, "id:"), 10, 64); err == nil {
-		if m, err := h.st.Media(ctx, id); err == nil && media.HasAudio(m) {
+		if m, err := h.st.Media(ctx, id); err == nil && sc.Has(m.GuildID) && media.HasAudio(m) {
 			return tasks.Step{MediaIDs: []int64{m.ID}}, m.Name, true
 		}
 	}
-	if m, err := h.st.MediaByName(ctx, store.All, value); err == nil && media.HasAudio(m) {
+	if m, err := h.st.MediaByName(ctx, sc, value); err == nil && media.HasAudio(m) {
 		return tasks.Step{MediaIDs: []int64{m.ID}}, m.Name, true
 	}
 	return tasks.Step{}, "", false
 }
 
 func (h *Handler) play(ctx context.Context, e *events.ApplicationCommandInteractionCreate, gid snowflake.ID, ev bot.Event, value string) {
-	step, what, ok := h.soundValue(ctx, value)
+	step, what, ok := h.soundValue(ctx, gid, value)
 	if !ok {
 		bot.Reply(e, "No sound with that name. Pick one from the suggestions.")
 		return
@@ -163,13 +177,13 @@ func (h *Handler) task(ctx context.Context, e *events.ApplicationCommandInteract
 }
 
 func (h *Handler) slashTasks(ctx context.Context, gid snowflake.ID) ([]tasks.Task, error) {
-	all, err := h.st.ListTasks(ctx, store.All)
+	all, err := h.st.ListTasks(ctx, store.GuildScope(false, gid.String()))
 	if err != nil {
 		return nil, err
 	}
 	var out []tasks.Task
 	for _, t := range all {
-		if t.Slash && t.GuildID == gid.String() {
+		if t.Slash {
 			out = append(out, t)
 		}
 	}
@@ -186,18 +200,26 @@ func choiceName(s string) string {
 func (h *Handler) OnAutocomplete(e *events.AutocompleteInteractionCreate) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	focused := e.Data.Focused()
-	q := strings.ToLower(strings.TrimSpace(focused.String()))
-	var choices []discord.AutocompleteChoice
+	choices := h.choices(ctx, e.Data.CommandName, e.GuildID(), e.Data.Focused().String())
+	if err := e.AutocompleteResult(choices); err != nil {
+		h.log.Warn("answering autocomplete", "err", err)
+	}
+}
+
+func (h *Handler) choices(ctx context.Context, command string, gid *snowflake.ID, typed string) []discord.AutocompleteChoice {
+	q := strings.ToLower(strings.TrimSpace(typed))
+	choices := []discord.AutocompleteChoice{}
 	add := func(name, value string) {
 		if len(choices) < maxChoices && (q == "" || strings.Contains(strings.ToLower(name), q)) {
 			choices = append(choices, discord.AutocompleteChoiceString{Name: choiceName(name), Value: value})
 		}
 	}
-	gid := e.GuildID()
-	switch {
-	case e.Data.CommandName == "play":
-		all, err := h.st.ListMedia(ctx, store.All, "")
+	if gid == nil {
+		return choices
+	}
+	switch command {
+	case "play":
+		all, err := h.st.ListMedia(ctx, playScope(*gid), "")
 		if err != nil {
 			h.log.Error("autocomplete sounds", "err", err)
 			break
@@ -208,12 +230,12 @@ func (h *Handler) OnAutocomplete(e *events.AutocompleteInteractionCreate) {
 				add(m.Name, "id:"+strconv.FormatInt(m.ID, 10))
 			}
 		}
-		if tags, err := h.st.Tags(ctx, store.All); err == nil {
+		if tags, err := h.st.Tags(ctx, playScope(*gid)); err == nil {
 			for _, t := range tags {
 				add("Random: "+t, "tag:"+t)
 			}
 		}
-	case e.Data.CommandName == "task" && gid != nil:
+	case "task":
 		list, err := h.slashTasks(ctx, *gid)
 		if err != nil {
 			h.log.Error("autocomplete tasks", "err", err)
@@ -223,10 +245,5 @@ func (h *Handler) OnAutocomplete(e *events.AutocompleteInteractionCreate) {
 			add(t.Name, strconv.FormatInt(t.ID, 10))
 		}
 	}
-	if choices == nil {
-		choices = []discord.AutocompleteChoice{}
-	}
-	if err := e.AutocompleteResult(choices); err != nil {
-		h.log.Warn("answering autocomplete", "err", err)
-	}
+	return choices
 }

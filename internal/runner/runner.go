@@ -367,20 +367,30 @@ type stopRun struct{ msg string }
 
 func (e *stopRun) Error() string { return e.msg }
 
+// taskScope is what a task may use when it runs.
+func taskScope(t tasks.Task) store.Scope {
+	return store.RunScope(t.GuildID, t.UpdatedBy, t.CreatedBy)
+}
+
+// mediaIn loads a file in scope, gone is the error for a missing one.
+func (r *Runner) mediaIn(ctx context.Context, sc store.Scope, id int64, gone string) (store.Media, error) {
+	m, err := r.st.Media(ctx, id)
+	if errors.Is(err, store.ErrNotFound) || err == nil && !sc.Has(m.GuildID) {
+		return store.Media{}, &bot.PermanentError{Msg: gone}
+	}
+	return m, err
+}
+
 // sound loads one entry of a play step, a tag entry as a random sound with the tag.
-func (r *Runner) sound(ctx context.Context, guildID string, ref tasks.SoundRef) (store.Media, error) {
+func (r *Runner) sound(ctx context.Context, sc store.Scope, ref tasks.SoundRef) (store.Media, error) {
 	if ref.Tag != "" {
-		m, err := r.st.RandomSound(ctx, store.GuildScope(true, guildID), ref.Tag)
+		m, err := r.st.RandomSound(ctx, sc, ref.Tag)
 		if errors.Is(err, store.ErrNotFound) {
 			return m, &bot.PermanentError{Msg: "No sound has the tag " + ref.Tag + "."}
 		}
 		return m, err
 	}
-	m, err := r.st.Media(ctx, ref.MediaID)
-	if errors.Is(err, store.ErrNotFound) {
-		return m, &bot.PermanentError{Msg: "A sound was deleted from the media library."}
-	}
-	return m, err
+	return r.mediaIn(ctx, sc, ref.MediaID, "A sound was deleted from the media library or belongs to another server.")
 }
 
 func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings store.Settings, ev *bot.Event) error {
@@ -419,7 +429,7 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 		// resolved before playing, so a deleted sound does not cut a sequence in half
 		list := make([]store.Media, 0, len(refs))
 		for _, ref := range refs {
-			m, err := r.sound(ctx, t.GuildID, ref)
+			m, err := r.sound(ctx, taskScope(t), ref)
 			if err != nil {
 				return err
 			}
@@ -471,8 +481,8 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 		msg := messages.Message{Content: s.Text}
 		if s.MessageID != 0 {
 			var err error
-			if msg, err = r.st.Message(ctx, s.MessageID); errors.Is(err, store.ErrNotFound) {
-				return &bot.PermanentError{Msg: "The saved message was deleted."}
+			if msg, err = r.st.Message(ctx, s.MessageID); errors.Is(err, store.ErrNotFound) || err == nil && !taskScope(t).Has(msg.GuildID) {
+				return &bot.PermanentError{Msg: "The saved message was deleted or belongs to another server."}
 			} else if err != nil {
 				return err
 			}
@@ -549,10 +559,7 @@ func (r *Runner) profile(ctx context.Context, t tasks.Task, s tasks.Step, settin
 	case s.ResetAvatar:
 		p.ResetAvatar = true
 	case s.AvatarMediaID != 0:
-		m, err := r.st.Media(ctx, s.AvatarMediaID)
-		if errors.Is(err, store.ErrNotFound) {
-			return &bot.PermanentError{Msg: "The avatar image was deleted from the media library."}
-		}
+		m, err := r.mediaIn(ctx, taskScope(t), s.AvatarMediaID, "The avatar image was deleted from the media library or belongs to another server.")
 		if err != nil {
 			return err
 		}
@@ -609,6 +616,7 @@ func (r *Runner) profile(ctx context.Context, t tasks.Task, s tasks.Step, settin
 }
 
 // Build turns a saved message into a Discord message with its files opened.
+// The files must be in the scope of the message, whoever saved the task.
 func (r *Runner) Build(ctx context.Context, m messages.Message, vars messages.Vars) (discord.MessageCreate, func(), error) {
 	var opened []io.Closer
 	closeAll := func() {
@@ -623,10 +631,7 @@ func (r *Runner) Build(ctx context.Context, m messages.Message, vars messages.Va
 		if name, ok := attached[id]; ok {
 			return name, nil
 		}
-		md, err := r.st.Media(ctx, id)
-		if errors.Is(err, store.ErrNotFound) {
-			return "", &bot.PermanentError{Msg: fmt.Sprintf("File %d was deleted from the media library.", id)}
-		}
+		md, err := r.mediaIn(ctx, store.RunScope(m.GuildID, m.UpdatedBy, ""), id, fmt.Sprintf("File %d was deleted from the media library or belongs to another server.", id))
 		if err != nil {
 			return "", err
 		}
