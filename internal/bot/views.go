@@ -101,7 +101,7 @@ func (b *Bot) GuildName(id string) string {
 	return id
 }
 
-func (b *Bot) guildView(c *disgobot.Client, g discord.Guild) Guild {
+func (b *Bot) guildView(c *disgobot.Client, g discord.CacheGuild) Guild {
 	v := Guild{ID: g.ID.String(), Name: g.Name, MemberCount: g.MemberCount, Cached: c.Caches.MembersLen(g.ID)}
 	for _, ch := range b.Channels(g.ID.String()) {
 		if ch.Voice {

@@ -325,7 +325,11 @@ func (r *Runner) finish(log *slog.Logger, runID int64, status string, failedStep
 	if status == store.RunDone {
 		log.Info("run finished")
 	} else {
-		log.Warn("run "+status, "step", failedStep, "err", errText)
+		args := []any{"err", errText}
+		if failedStep != nil {
+			args = append(args, "step", *failedStep)
+		}
+		log.Warn("run "+status, args...)
 	}
 	if err := r.st.FinishRun(context.WithoutCancel(r.ctx), runID, status, failedStep, errText); err != nil {
 		log.Error("recording run result", "err", err)

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/disgoorg/disgo/discord"
@@ -82,6 +83,11 @@ func (b *Bot) Join(ctx context.Context, guildID, channelID snowflake.ID) error {
 	}
 	return nil
 }
+
+// startTimeout bounds the wait for the first frame. disgo pulls frames only
+// once the voice gateway and the DAVE session are ready, so a frame pulled
+// means audio reaches the channel.
+const startTimeout = 15 * time.Second
 
 func (b *Bot) Leave(ctx context.Context, guildID snowflake.ID) error {
 	c, err := b.get()
@@ -186,6 +192,15 @@ func (b *Bot) Play(ctx context.Context, guildID snowflake.ID, path string, info 
 	provider := newFrameProvider(newOggOpusReader(stdout))
 	conn.SetOpusFrameProvider(provider)
 	select {
+	case <-provider.started:
+	case <-provider.done:
+	case <-ctx.Done():
+	case <-time.After(startTimeout):
+		provider.Close()
+		b.log.Warn("no audio sent", "guild", guildID, "gateway_status", conn.Gateway().Status(), "dave_ready", conn.DAVE().Ready())
+		return errors.New("no audio reached Discord within " + startTimeout.String() + ", the voice connection is not ready")
+	}
+	select {
 	case <-provider.done:
 	case <-ctx.Done():
 		provider.Close()
@@ -199,7 +214,7 @@ func (b *Bot) Play(ctx context.Context, guildID snowflake.ID, path string, info 
 		}
 		return ErrStopped
 	}
-	if provider.frames == 0 {
+	if provider.frames.Load() == 0 {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
 			return fmt.Errorf("ffmpeg: %s", msg)
 		}
@@ -215,15 +230,16 @@ func (b *Bot) Play(ctx context.Context, guildID snowflake.ID, path string, info 
 // read error as end of stream, because the disgo audio sender would otherwise
 // retry a failing provider every 20ms forever.
 type frameProvider struct {
-	r      *oggOpusReader
-	done   chan struct{}
-	once   sync.Once
-	frames int
-	err    error
+	r       *oggOpusReader
+	done    chan struct{}
+	started chan struct{}
+	once    sync.Once
+	frames  atomic.Int64
+	err     error
 }
 
 func newFrameProvider(r *oggOpusReader) *frameProvider {
-	return &frameProvider{r: r, done: make(chan struct{})}
+	return &frameProvider{r: r, done: make(chan struct{}), started: make(chan struct{})}
 }
 
 func (f *frameProvider) ProvideOpusFrame() ([]byte, error) {
@@ -240,7 +256,9 @@ func (f *frameProvider) ProvideOpusFrame() ([]byte, error) {
 		f.Close()
 		return nil, io.EOF
 	}
-	f.frames++
+	if f.frames.Add(1) == 1 {
+		close(f.started)
+	}
 	return frame, nil
 }
 
