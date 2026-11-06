@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
 	"time"
@@ -83,7 +84,7 @@ func TestManualHasNoSchedule(t *testing.T) {
 
 func TestProblems(t *testing.T) {
 	task := Task{Name: "Adhan", GuildID: "1", Trigger: Trigger{Kind: Daily, Times: []string{"05:00"}, Timezone: "Europe/Berlin"},
-		Steps: []Step{{Type: Join, ChannelID: "2"}, {Type: Play, MediaID: 1, Volume: 100}, {Type: Leave}}}
+		Steps: []Step{{Type: Join, ChannelID: "2"}, {Type: Play, MediaIDs: []int64{1}, Volume: 100}, {Type: Leave}}}
 	if p := task.Problems(); len(p) != 0 {
 		t.Errorf("valid task: %v", p)
 	}
@@ -230,5 +231,34 @@ func TestWaitStep(t *testing.T) {
 	s = Step{Type: Wait, Until: UntilLeftVoice, ToTrigger: true, ChannelID: "2"}
 	if got := s.UntilText("", "Lobby"); got != "until the member who started the run has left Lobby" {
 		t.Errorf("until text %q", got)
+	}
+}
+
+func TestPlayStep(t *testing.T) {
+	var steps []Step
+	if err := json.Unmarshal([]byte(`[{"type":"play","media_id":5,"volume":80},{"type":"play","tag":"intro","volume":100},{"type":"play","media_ids":[3,3,4],"order":"random","volume":100}]`), &steps); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(steps[0].MediaIDs, []int64{5}) || steps[0].MediaID != 0 || steps[1].Tag != "intro" || steps[2].Order != OrderRandom {
+		t.Errorf("loaded %+v", steps)
+	}
+	if got := steps[1].Sounds(); len(got) != 1 || got[0].Tag != "intro" {
+		t.Errorf("tag entries %+v", got)
+	}
+	if got := steps[2].Sounds(); len(got) != 3 || got[1].MediaID != 3 {
+		t.Errorf("entries %+v", got)
+	}
+	for i, s := range steps {
+		if err := s.Validate(); err != nil {
+			t.Errorf("step %d: %v", i, err)
+		}
+	}
+	b, _ := json.Marshal(steps[0])
+	if string(b) != `{"type":"play","media_ids":[5],"volume":80}` {
+		t.Errorf("saved as %s", b)
+	}
+	if (Step{Type: Play, Volume: 100}).Validate() == nil || (Step{Type: Play, Volume: 100, MediaIDs: make([]int64, MaxSounds+1)}).Validate() == nil ||
+		(Step{Type: Play, Volume: 100, MediaIDs: []int64{1}, Order: "shuffle"}).Validate() == nil {
+		t.Error("invalid play steps accepted")
 	}
 }

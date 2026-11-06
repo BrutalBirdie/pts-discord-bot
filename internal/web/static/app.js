@@ -57,8 +57,109 @@
         });
     });
 
-    // member pickers: suggestions from /members while typing
-    document.querySelectorAll('input[data-members]').forEach(function (input) {
+    function svgIcon(name) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'i');
+        svg.setAttribute('aria-hidden', 'true');
+        const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+        use.setAttribute('href', '#i-' + name);
+        svg.append(use);
+        return svg;
+    }
+    function clock(ms) {
+        const s = Math.floor(ms / 1000), pad = (n) => String(n).padStart(2, '0');
+        return s >= 3600 ? Math.floor(s / 3600) + ':' + pad(Math.floor(s / 60) % 60) + ':' + pad(s % 60) : Math.floor(s / 60) + ':' + pad(s % 60);
+    }
+    // members have a username, sounds a length
+    function subText(h) {
+        if (h.username !== undefined) return '@' + h.username;
+        return h.duration_ms ? clock(h.duration_ms) : 'length unknown';
+    }
+
+    // play steps: the sum of the sounds, or the longest when one is picked at random
+    function updateTotal(tokens) {
+        const step = tokens.closest('.step');
+        const total = step && step.querySelector('[data-total]');
+        if (!total) return;
+        const random = step.querySelector('input[type=radio][value=random]:checked');
+        let ms = 0, unknown = false;
+        tokens.querySelectorAll('.tok').forEach(function (tok) {
+            const n = Number(tok.dataset.ms) || 0;
+            if (!n) unknown = true;
+            ms = random ? Math.max(ms, n) : ms + n;
+        });
+        const cap = Number(total.dataset.cap);
+        total.textContent = 'Total ' + clock(ms) + ' / ' + clock(cap) + (unknown ? ', some lengths unknown' : '');
+        total.classList.toggle('over', ms > cap);
+    }
+
+    // sound previews: one at a time, the name turns into a volume slider while playing
+    let preview = null, volTimer;
+    function stopPreview() {
+        if (!preview) return;
+        const p = preview;
+        preview = null;
+        p.audio.pause();
+        p.audio.removeAttribute('src');
+        p.slider.remove();
+        p.tok.querySelector('.nm').hidden = false;
+        const btn = p.tok.querySelector('.pv');
+        btn.querySelector('use').setAttribute('href', '#i-play');
+        btn.setAttribute('aria-pressed', 'false');
+    }
+    function saveVolume(tok, volume) {
+        const form = tok.closest('form');
+        clearTimeout(volTimer);
+        volTimer = setTimeout(function () {
+            fetch('/prefs/preview-volume', {
+                method: 'POST',
+                body: new URLSearchParams({ csrf: form.elements.csrf.value, media_id: tok.dataset.media, volume }),
+                headers: { Accept: 'application/json' },
+            }).then(
+                (r) => { if (!r.ok) toast('Volume not saved, reload the page and try again'); },
+                () => toast('Volume not saved, check your connection'),
+            );
+        }, 500);
+    }
+    function startPreview(tok) {
+        const nm = tok.querySelector('.nm');
+        const audio = new Audio('/media/' + tok.dataset.media + '/file');
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = '100';
+        slider.value = tok.dataset.vol || '100';
+        slider.setAttribute('aria-label', 'Preview volume of ' + nm.firstChild.textContent.trim());
+        audio.volume = Number(slider.value) / 100;
+        slider.addEventListener('input', function () {
+            audio.volume = Number(slider.value) / 100;
+            document.querySelectorAll('.tok[data-media="' + tok.dataset.media + '"]').forEach((t) => { t.dataset.vol = slider.value; });
+            saveVolume(tok, slider.value);
+        });
+        nm.hidden = true;
+        nm.after(slider);
+        const btn = tok.querySelector('.pv');
+        btn.querySelector('use').setAttribute('href', '#i-square');
+        btn.setAttribute('aria-pressed', 'true');
+        preview = { audio, tok, slider };
+        audio.addEventListener('ended', function () { if (preview && preview.audio === audio) stopPreview(); });
+        audio.play().catch(function () {
+            if (preview && preview.audio === audio) stopPreview();
+            toast('The preview could not be played');
+        });
+    }
+    document.addEventListener('click', function (event) {
+        const btn = event.target.closest('.tok .pv');
+        if (!btn) return;
+        event.preventDefault();
+        const tok = btn.closest('.tok');
+        const same = preview && preview.tok === tok;
+        stopPreview();
+        if (!same) startPreview(tok);
+    });
+
+    // pickers: suggestions while typing, from /members or the data-source of a token field
+    document.querySelectorAll('input[data-members], [data-source] input[type=search]').forEach(function (input) {
         const list = document.createElement('ul');
         list.className = 'suggestions';
         list.hidden = true;
@@ -66,6 +167,7 @@
         // token fields scroll, so the list goes outside the scrolling box
         const tokens = input.closest('[data-tokens]');
         if (tokens) tokens.append(list); else input.after(list);
+        const source = (tokens && tokens.dataset.source) || '/members';
         input.setAttribute('role', 'combobox');
         input.setAttribute('aria-expanded', 'false');
         let hits = [], active = -1, timer, seq = 0;
@@ -77,21 +179,41 @@
             const n = tokens.querySelectorAll('.tok').length, max = Number(tokens.dataset.max);
             input.hidden = n >= max;
             const count = tokens.parentElement.querySelector('[data-count]');
-            if (count) count.textContent = n ? n + ' of ' + max : 'Any member';
+            if (count) count.textContent = n ? n + ' of ' + max : tokens.dataset.empty;
+            updateTotal(tokens);
+        }
+        function removeToken(tok) {
+            if (preview && preview.tok === tok) stopPreview();
+            tok.remove();
+            tokensChanged();
         }
         function addToken(h) {
             const tok = document.createElement('span');
             tok.className = 'tok';
-            tok.title = h.label;
-            const av = document.createElement('span');
-            av.className = 'av';
-            av.setAttribute('aria-hidden', 'true');
-            av.textContent = (h.name.trim()[0] || '?').toUpperCase();
+            tok.title = h.label || h.name;
+            if (h.username !== undefined) {
+                const av = document.createElement('span');
+                av.className = 'av';
+                av.setAttribute('aria-hidden', 'true');
+                av.textContent = (h.name.trim()[0] || '?').toUpperCase();
+                tok.append(av);
+            } else {
+                tok.dataset.media = h.id;
+                tok.dataset.vol = h.volume ?? 100;
+                tok.dataset.ms = h.duration_ms || 0;
+                const pv = document.createElement('button');
+                pv.type = 'button';
+                pv.className = 'pv';
+                pv.setAttribute('aria-label', 'Preview ' + h.name);
+                pv.setAttribute('aria-pressed', 'false');
+                pv.append(svgIcon('play'));
+                tok.append(pv);
+            }
             const nm = document.createElement('span');
             nm.className = 'nm';
             const un = document.createElement('span');
             un.className = 'un';
-            un.textContent = '@' + h.username;
+            un.textContent = subText(h);
             nm.append(h.name + ' ', un);
             const hidden = document.createElement('input');
             hidden.type = 'hidden';
@@ -99,15 +221,10 @@
             hidden.value = h.id;
             const btn = document.createElement('button');
             btn.type = 'button';
+            btn.className = 'rm';
             btn.setAttribute('aria-label', 'Remove ' + h.name);
-            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.setAttribute('class', 'i');
-            svg.setAttribute('aria-hidden', 'true');
-            const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-            use.setAttribute('href', '#i-x');
-            svg.append(use);
-            btn.append(svg);
-            tok.append(av, nm, hidden, btn);
+            btn.append(svgIcon('x'));
+            tok.append(nm, hidden, btn);
             input.before(tok);
             input.value = '';
             tokensChanged();
@@ -116,15 +233,18 @@
         }
         if (tokens) {
             tokens.addEventListener('click', function (event) {
-                const btn = event.target.closest('.tok button');
+                const btn = event.target.closest('.tok button.rm');
                 if (btn) {
                     event.preventDefault();
-                    btn.closest('.tok').remove();
-                    tokensChanged();
+                    removeToken(btn.closest('.tok'));
                     input.focus();
                 } else if (event.target.classList.contains('box')) {
                     input.focus();
                 }
+            });
+            const step = tokens.closest('.step');
+            if (step) step.addEventListener('change', function (event) {
+                if (event.target.type === 'radio') updateTotal(tokens);
             });
         }
 
@@ -139,7 +259,7 @@
                 li.setAttribute('role', 'option');
                 li.textContent = h.name;
                 const small = document.createElement('small');
-                small.textContent = '@' + h.username;
+                small.textContent = subText(h);
                 li.append(small);
                 li.classList.toggle('active', i === active);
                 li.addEventListener('mousedown', function (event) {
@@ -173,10 +293,11 @@
             if (q === '') { close(); return; }
             timer = setTimeout(function () {
                 const mine = ++seq;
-                const params = new URLSearchParams({ q, guild: input.dataset.members });
-                fetch('/members?' + params).then((r) => r.ok ? r.json() : []).then(function (data) {
+                const params = new URLSearchParams({ q });
+                if (input.dataset.members !== undefined) params.set('guild', input.dataset.members);
+                fetch(source + '?' + params).then((r) => r.ok ? r.json() : []).then(function (data) {
                     if (mine !== seq) return;
-                    hits = tokens ? data.filter((h) => !picked().includes(h.id)) : data;
+                    hits = tokens && tokens.dataset.dupes === undefined ? data.filter((h) => !picked().includes(String(h.id))) : data;
                     active = hits.length ? 0 : -1;
                     show();
                 }).catch(() => {});
@@ -185,7 +306,7 @@
         input.addEventListener('keydown', function (event) {
             if (tokens && event.key === 'Backspace' && input.value === '') {
                 const last = Array.from(tokens.querySelectorAll('.tok')).pop();
-                if (last) { last.remove(); tokensChanged(); }
+                if (last) removeToken(last);
                 return;
             }
             if (list.hidden) return;

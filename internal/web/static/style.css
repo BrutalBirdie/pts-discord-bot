@@ -390,6 +390,11 @@ html:not(.js) .js-only { display: none; }
 .tok .i { width: 16px; height: 16px; }
 .tokens-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .tokens-foot .count { font-variant-numeric: tabular-nums; }
+.step .fields > .field.wide { flex-basis: 100%; }
+.tok .pv { color: var(--accent); }
+.tok input[type=range] { width: 8rem; min-height: 0; height: 24px; padding: 0; border: 0; background: none; accent-color: var(--accent); }
+.total { align-self: center; font-variant-numeric: tabular-nums; }
+.total.over { color: var(--danger); font-weight: 700; }
 .step:has(select.dm-to option[value=trigger]:checked) .picker.dm-member { display: none; }
 .step:has(option[value=trigger]:checked) .picker.follow { display: none; }
 .step:has(select.wait-until option[value=""]:checked) :is(.wait-to, .wait-member, .wait-channel, .wait-max, .wait-timeout) { display: none; }

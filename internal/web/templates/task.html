@@ -72,15 +72,7 @@
       <label class="field ev-keyword"><span>Keyword</span><input type="text" name="keyword" value="{{$t.Trigger.Keyword}}" maxlength="100"><span class="help">Upper and lower case do not matter, the message only has to contain the keyword.</span></label>
       {{if not .Bot.MessageIntent}}<div class="callout warn ev-keyword">{{icon "triangle-alert"}}<span>The bot cannot read messages: Discord refused the Message Content intent, or it is off in <span class="mono">/app/data/env.sh</span>. Switch on <strong>Message Content Intent</strong> under Bot in the Discord Developer Portal and restart the app.</span></div>{{end}}
       {{if not .Bot.MembersIntent}}<div class="callout warn ev-members">{{icon "triangle-alert"}}<span>New members are only reported with the Server Members intent. Switch it on in the Discord Developer Portal and restart the app.</span></div>{{end}}
-      <div class="field"><span id="ev-members">Only these members</span>
-        <div class="tokens" data-tokens="ev_member" data-max="25">
-          <div class="box">
-            {{range $i, $m := $e.EvMembers}}<span class="tok" title="{{$m.Name}}{{with $m.Username}} (@{{.}}){{end}}"><span class="av" aria-hidden="true">{{initial $m.Name}}</span><span class="nm">{{$m.Name}}{{with $m.Username}} <span class="un">@{{.}}</span>{{end}}</span><input type="hidden" name="ev_member" value="{{$m.ID}}"><button type="submit" name="op" value="evdel:{{$i}}" aria-label="Remove {{$m.Name}}">{{icon "x"}}</button></span>{{end}}
-            <input type="search" name="ev_member" placeholder="Search members" aria-labelledby="ev-members" autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other" data-members="{{$t.GuildID}}"{{if ge (len $e.EvMembers) 25}} hidden{{end}}>
-          </div>
-        </div>
-        <div class="tokens-foot"><span class="help">Empty: any member starts the task.</span><span class="help count" data-count>{{with len $e.EvMembers}}{{.}} of 25{{else}}Any member{{end}}</span></div>
-      </div>
+      {{template "tokens" $e.MemberTokens}}
       <label class="field"><span>Cooldown, seconds</span><input type="number" name="cooldown" value="{{if eq $t.Trigger.Kind "event"}}{{$t.Trigger.Cooldown}}{{else}}30{{end}}" min="0" max="86400"><span class="help">The same member starts the task at most once in this time. Bots never start tasks.</span></label>
       <p class="hint">Steps can use the member who started the run: Join voice channel and Direct message have an option for it, and <span class="mono">{member}</span> mentions them in texts.</p>
     </div>
@@ -100,7 +92,7 @@
     <div class="sec-head"><h2 class="with-icon">{{icon "list"}}Steps</h2><span class="hint">One after the other. A failing step stops the run.</span></div>
     <ol class="steps">
       {{range $i, $s := $t.Steps}}{{$p := print "s" $i "."}}
-      <li class="step">
+      <li class="step{{if and (eq $s.Type "play") ($e.Play $i).Over}} bad{{end}}">
         <span class="num">{{add $i 1}}</span>
         <div class="row-main">
           <input type="hidden" name="{{$p}}type" value="{{$s.Type}}">
@@ -116,12 +108,13 @@
             </select>
             {{template "memberpick" (dict "Name" (print $p "follow") "Value" (index $e.Labels $s.FollowUserID) "Guild" $e.Task.GuildID "Class" "follow" "Label" "Member to follow")}}
           {{else if eq $s.Type "play"}}
-            <select name="{{$p}}media" aria-label="Sound">
-              {{if not (or $s.MediaID $s.Tag)}}<option value="" selected>Pick a sound</option>{{end}}
-              {{with $e.Tags}}<optgroup label="Random sound with the tag">{{range .}}<option value="tag:{{.}}"{{if eq . $s.Tag}} selected{{end}}>Random: {{.}}</option>{{end}}</optgroup>{{end}}
-              {{if and $s.Tag (not (hasString $e.Tags $s.Tag))}}<option value="tag:{{$s.Tag}}" selected>Random: {{$s.Tag}} (no sound has it)</option>{{end}}
-              {{range $e.Sounds}}<option value="{{.ID}}"{{if eq .ID $s.MediaID}} selected{{end}}>{{.Name}}{{if .DurationMS}} · {{clock .DurationMS}}{{end}}</option>{{end}}
-            </select>
+            {{$pv := $e.Play $i}}
+            {{template "tokens" $pv.Tokens}}
+            <div class="presets" role="radiogroup" aria-label="Order of the sounds">
+              <label><input type="radio" name="{{$p}}order" value="sequence"{{if ne $s.Order "random"}} checked{{end}}>Play in order</label>
+              <label><input type="radio" name="{{$p}}order" value="random"{{if eq $s.Order "random"}} checked{{end}}>Pick one at random</label>
+            </div>
+            <span class="hint total{{if $pv.Over}} over{{end}}" data-total data-cap="{{$pv.Cap}}">Total {{clock $pv.Total}} / {{clock $pv.Cap}}{{if $pv.Unknown}}, some lengths unknown{{end}}</span>
             <label class="inline small"><span>Volume</span><input type="number" name="{{$p}}volume" value="{{$s.Volume}}" min="1" max="200" aria-label="Volume in percent"><span>%</span></label>
           {{else if eq $s.Type "message"}}
             <select name="{{$p}}channel" aria-label="Text channel">

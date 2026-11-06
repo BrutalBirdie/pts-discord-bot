@@ -111,11 +111,11 @@ func (h *Handler) soundValue(ctx context.Context, value string) (tasks.Step, str
 	}
 	if id, err := strconv.ParseInt(strings.TrimPrefix(value, "id:"), 10, 64); err == nil {
 		if m, err := h.st.Media(ctx, id); err == nil && media.HasAudio(m) {
-			return tasks.Step{MediaID: m.ID}, m.Name, true
+			return tasks.Step{MediaIDs: []int64{m.ID}}, m.Name, true
 		}
 	}
 	if m, err := h.st.MediaByName(ctx, value); err == nil && media.HasAudio(m) {
-		return tasks.Step{MediaID: m.ID}, m.Name, true
+		return tasks.Step{MediaIDs: []int64{m.ID}}, m.Name, true
 	}
 	return tasks.Step{}, "", false
 }

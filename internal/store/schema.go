@@ -89,4 +89,10 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS groups text[] NOT NULL DEFAULT '{}
 ALTER TABLE media ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slash boolean NOT NULL DEFAULT false;
 ALTER TABLE runs DROP CONSTRAINT IF EXISTS runs_source_check;
-ALTER TABLE runs ADD CONSTRAINT runs_source_check CHECK (source IN ('schedule', 'manual', 'event', 'discord'));`
+ALTER TABLE runs ADD CONSTRAINT runs_source_check CHECK (source IN ('schedule', 'manual', 'event', 'discord'));
+CREATE TABLE IF NOT EXISTS preview_volume (
+    username text NOT NULL,
+    media_id bigint NOT NULL,
+    volume integer NOT NULL CHECK (volume BETWEEN 0 AND 100),
+    PRIMARY KEY (username, media_id)
+);`

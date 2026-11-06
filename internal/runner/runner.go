@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"strconv"
 	"strings"
@@ -231,7 +232,7 @@ func PlayTask(guildID, channelID, title string, play tasks.Step, leave bool) tas
 }
 
 func (r *Runner) PlayNow(guildID, channelID string, m store.Media, leave bool, actor string) {
-	r.RunNow(PlayTask(guildID, channelID, "Play "+m.Name, tasks.Step{MediaID: m.ID}, leave), actor)
+	r.RunNow(PlayTask(guildID, channelID, "Play "+m.Name, tasks.Step{MediaIDs: []int64{m.ID}}, leave), actor)
 }
 
 // JoinNow connects the bot to a voice channel in the background.
@@ -361,6 +362,22 @@ type stopRun struct{ msg string }
 
 func (e *stopRun) Error() string { return e.msg }
 
+// sound loads one entry of a play step, a tag entry as a random sound with the tag.
+func (r *Runner) sound(ctx context.Context, ref tasks.SoundRef) (store.Media, error) {
+	if ref.Tag != "" {
+		m, err := r.st.RandomSound(ctx, ref.Tag)
+		if errors.Is(err, store.ErrNotFound) {
+			return m, &bot.PermanentError{Msg: "No sound has the tag " + ref.Tag + "."}
+		}
+		return m, err
+	}
+	m, err := r.st.Media(ctx, ref.MediaID)
+	if errors.Is(err, store.ErrNotFound) {
+		return m, &bot.PermanentError{Msg: "A sound was deleted from the media library."}
+	}
+	return m, err
+}
+
 func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings store.Settings, ev *bot.Event) error {
 	if s.ToTrigger {
 		if ev == nil || ev.UserID == "" {
@@ -387,22 +404,31 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 		return r.bot.Join(ctx, guildID, channelID)
 
 	case tasks.Play:
-		var m store.Media
-		var err error
-		if s.Tag != "" {
-			if m, err = r.st.RandomSound(ctx, s.Tag); errors.Is(err, store.ErrNotFound) {
-				return &bot.PermanentError{Msg: "No sound has the tag " + s.Tag + "."}
-			}
-		} else if m, err = r.st.Media(ctx, s.MediaID); errors.Is(err, store.ErrNotFound) {
-			return &bot.PermanentError{Msg: "The sound was deleted from the media library."}
+		refs := s.Sounds()
+		if len(refs) == 0 {
+			return &bot.PermanentError{Msg: "No sound picked."}
 		}
-		if err != nil {
-			return err
+		if s.Order == tasks.OrderRandom {
+			refs = []tasks.SoundRef{refs[rand.IntN(len(refs))]}
+		}
+		// resolved before playing, so a deleted sound does not cut a sequence in half
+		list := make([]store.Media, 0, len(refs))
+		for _, ref := range refs {
+			m, err := r.sound(ctx, ref)
+			if err != nil {
+				return err
+			}
+			list = append(list, m)
 		}
 		pctx, cancel := context.WithTimeout(ctx, time.Duration(settings.MaxPlayMinutes)*time.Minute)
 		defer cancel()
-		info := bot.Playing{Name: m.Name, By: t.Name, Duration: time.Duration(m.DurationMS) * time.Millisecond}
-		return r.bot.Play(pctx, guildID, r.media.Path(m.ID), info, s.Volume)
+		for _, m := range list {
+			info := bot.Playing{Name: m.Name, By: t.Name, Duration: time.Duration(m.DurationMS) * time.Millisecond}
+			if err := r.bot.Play(pctx, guildID, r.media.Path(m.ID), info, s.Volume); err != nil {
+				return err
+			}
+		}
+		return nil
 
 	case tasks.Leave:
 		return r.bot.Leave(ctx, guildID)

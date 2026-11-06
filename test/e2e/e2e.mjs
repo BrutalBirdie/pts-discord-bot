@@ -263,6 +263,38 @@ const steps = {
         await page.goto(BASE + '/tasks');
         await page.getByRole('link', { name: 'Greeting', exact: true }).click();
         check('member tokens saved', await toks() === '111111111111111111', await toks());
+
+        await page.click('button[value="add:play"]');
+        const sounds = page.locator('[data-tokens="s1.media"]');
+        const soundToks = () => sounds.locator('.tok input[type=hidden]').evaluateAll((els) => els.map((e) => e.value));
+        const total = () => page.locator('[data-total]').innerText();
+        for (let i = 0; i < 2; i++) {
+            await sounds.locator('input[type=search]').pressSequentially('bee');
+            await sounds.locator('.suggestions li').first().waitFor();
+            await page.keyboard.press('Enter');
+        }
+        let ids = await soundToks();
+        check('sound picked twice', ids.length === 2 && ids[0] === ids[1] && await sounds.locator('xpath=..').locator('[data-count]').innerText() === '2 of 25', ids.join());
+        check('total of a sequence', /^Total 0:0[34] \/ 10:00$/.test(await total()), await total());
+        await page.check('input[name="s1.order"][value=random]', { force: true });
+        check('total of a random pick', /^Total 0:0[12] \/ 10:00$/.test(await total()), await total());
+        await sounds.locator('.tok .pv').first().click();
+        const slider = sounds.locator('.tok input[type=range]');
+        check('preview shows the volume slider', await slider.count() === 1 && await slider.inputValue() === '100');
+        const saved = page.waitForResponse((r) => r.url().endsWith('/prefs/preview-volume'));
+        await slider.fill('35');
+        check('preview volume saved', (await saved).status() === 204);
+        await slider.waitFor({ state: 'detached' });
+        check('the end of the preview restores the name', await sounds.locator('.tok .nm').first().isVisible());
+        await page.click('main .btns button[value=save]');
+        check('play step saved', (await text(page)).includes('Saved.'), (await text(page)).slice(0, 300));
+        ids = await soundToks();
+        check('sounds and preview volume after reload', ids.length === 2 && await page.locator('input[name="s1.order"][value=random]').isChecked()
+            && await sounds.locator('.tok').first().getAttribute('data-vol') === '35', ids.join());
+        const hits = await (await page.request.get(BASE + '/sounds?q=beep')).json();
+        check('sound search answers JSON', hits.length === 1 && hits[0].name === 'beep.ogg' && hits[0].volume === 35 && hits[0].duration_ms > 1000, JSON.stringify(hits));
+        await page.goto(BASE + '/media');
+        check('media shows multi sound usage', (await text(page)).includes('used by task Greeting'));
     },
 };
 

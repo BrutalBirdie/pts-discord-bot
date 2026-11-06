@@ -34,12 +34,7 @@ func loc() *time.Location {
 }
 
 var viewFuncs = template.FuncMap{
-	"initial": func(s string) string {
-		for _, r := range strings.TrimSpace(s) {
-			return strings.ToUpper(string(r))
-		}
-		return "?"
-	},
+	"initial": initial,
 	"icon": func(name string) template.HTML {
 		return template.HTML(`<svg class="i" aria-hidden="true"><use href="#i-` + template.HTMLEscapeString(name) + `"/></svg>`)
 	},
@@ -88,6 +83,13 @@ var viewFuncs = template.FuncMap{
 		}
 		return strconv.Itoa(n) + " " + many
 	},
+}
+
+func initial(s string) string {
+	for _, r := range strings.TrimSpace(s) {
+		return strings.ToUpper(string(r))
+	}
+	return "?"
 }
 
 func initials(name string) string {

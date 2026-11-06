@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -24,14 +25,24 @@ var StepTypes = []StepType{Join, Play, Message, DM, Wait, Leave}
 const (
 	MaxSteps  = 30
 	MaxVolume = 200
+	MaxSounds = 25
+)
+
+// Order of the sounds of a play step.
+const (
+	OrderSequence = "sequence"
+	OrderRandom   = "random"
 )
 
 type Step struct {
 	Type         StepType `json:"type"`
 	ChannelID    string   `json:"channel_id,omitempty"`     // join, message, wait
 	FollowUserID string   `json:"follow_user_id,omitempty"` // join: the voice channel this member is in
-	MediaID      int64    `json:"media_id,omitempty"`       // play
-	Tag          string   `json:"tag,omitempty"`            // play: a random sound with this tag instead of MediaID
+	MediaID      int64    `json:"media_id,omitempty"`       // play: legacy single sound, folded into MediaIDs when loaded
+	MediaIDs     []int64  `json:"media_ids,omitempty"`      // play
+	Tag          string   `json:"tag,omitempty"`            // play: legacy, a random sound with this tag
+	Order        string   `json:"order,omitempty"`          // play: OrderSequence or OrderRandom
+	Find         string   `json:"-"`                        // play: sound name typed in the editor without JavaScript
 	ToTrigger    bool     `json:"to_trigger,omitempty"`     // join, dm, wait: the member who started the run
 	Volume       int      `json:"volume,omitempty"`         // play, percent
 	UserID       string   `json:"user_id,omitempty"`        // dm, wait
@@ -51,8 +62,15 @@ func (s Step) Validate() error {
 			return errors.New("pick a voice channel")
 		}
 	case Play:
-		if s.MediaID == 0 && s.Tag == "" {
+		n := len(s.Sounds())
+		if n == 0 {
 			return errors.New("pick a sound")
+		}
+		if n > MaxSounds {
+			return fmt.Errorf("at most %d sounds", MaxSounds)
+		}
+		if s.Order != "" && s.Order != OrderSequence && s.Order != OrderRandom {
+			return fmt.Errorf("unknown order %q", s.Order)
 		}
 		if s.Volume < 1 || s.Volume > MaxVolume {
 			return fmt.Errorf("volume must be between 1 and %d %%", MaxVolume)
@@ -77,6 +95,36 @@ func (s Step) Validate() error {
 		return fmt.Errorf("unknown step %q", s.Type)
 	}
 	return nil
+}
+
+func (s *Step) UnmarshalJSON(b []byte) error {
+	type plain Step
+	if err := json.Unmarshal(b, (*plain)(s)); err != nil {
+		return err
+	}
+	if s.MediaID != 0 {
+		s.MediaIDs = append([]int64{s.MediaID}, s.MediaIDs...)
+		s.MediaID = 0
+	}
+	return nil
+}
+
+// SoundRef is one entry of a play step: a sound, or a random sound with a legacy tag.
+type SoundRef struct {
+	MediaID int64
+	Tag     string
+}
+
+// Sounds lists the entries of a play step, a legacy tag first.
+func (s Step) Sounds() []SoundRef {
+	var out []SoundRef
+	if s.Tag != "" {
+		out = append(out, SoundRef{Tag: s.Tag})
+	}
+	for _, id := range s.MediaIDs {
+		out = append(out, SoundRef{MediaID: id})
+	}
+	return out
 }
 
 func (t StepType) Label() string {

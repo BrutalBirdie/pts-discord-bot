@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -40,7 +41,7 @@ func TestPagesRender(t *testing.T) {
 	}
 	adhan := tasks.Task{ID: 3, Name: "Adhan", GuildID: "1", Enabled: true, Busy: tasks.BusyWait,
 		Trigger: tasks.Trigger{Kind: tasks.Daily, Times: []string{"05:00", "16:35"}, Timezone: "Europe/Berlin"},
-		Steps: []tasks.Step{{Type: tasks.Join, ChannelID: "2"}, {Type: tasks.Play, MediaID: 5, Volume: 80}, {Type: tasks.Message, ChannelID: "4", Text: "Adhan at {time}"},
+		Steps: []tasks.Step{{Type: tasks.Join, ChannelID: "2"}, {Type: tasks.Play, MediaIDs: []int64{5}, Volume: 80}, {Type: tasks.Message, ChannelID: "4", Text: "Adhan at {time}"},
 			{Type: tasks.DM, UserID: "9"}, {Type: tasks.Wait, Seconds: 5}, {Type: tasks.Leave}}}
 	sound := store.Media{ID: 5, Name: "muezzin.ogg", Kind: store.KindSound, SizeBytes: 2 << 20, DurationMS: 225000, UsedBy: []string{"task Adhan"}}
 	img := store.Media{ID: 6, Name: "friday.jpg", Kind: store.KindImage, SizeBytes: 1 << 20, Width: 1600, Height: 900}
@@ -68,7 +69,7 @@ func TestPagesRender(t *testing.T) {
 		{"task", taskEditor{Task: adhan, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, TimesText: "05:00 16:35",
 			Voice: []bot.Channel{{ID: "2", Name: "prayer", Voice: true}}, Text: []bot.Channel{{ID: "44", Name: "general"}}, Labels: map[string]string{"9": "Amira (@amira)"},
 			Sounds: []store.Media{sound}, Messages: []messages.Message{msg}, Next: adhan.Trigger.Next(now, 3), Runs: runs, RunCount: 2, Page: 1, Pages: 1},
-			[]string{`name="s0.target"`, `value="2" selected`, `name="s0.follow" value=""`, `data-members="1"`, `value="5" selected`, `name="s1.volume" value="80"`, `value="add:wait"`, `value="daily" checked`, "Unknown channel 4", `name="s3.user" value="Amira (@amira)"`, `name="s4.wait" value="5s"`, `action="/tasks/3/delete"`, "As cron"}},
+			[]string{`name="s0.target"`, `value="2" selected`, `name="s0.follow" value=""`, `data-members="1"`, `<input type="hidden" name="s1.media" value="5">`, `data-media="5" data-vol="100"`, "Total 3:45 / 10:00", `name="s1.volume" value="80"`, `value="add:wait"`, `value="daily" checked`, "Unknown channel 4", `name="s3.user" value="Amira (@amira)"`, `name="s4.wait" value="5s"`, `action="/tasks/3/delete"`, "As cron"}},
 		{"task", taskEditor{Task: tasks.Task{Trigger: tasks.Trigger{Kind: tasks.Manual}}, New: true, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Problems: []string{"Give the task a name."}},
 			[]string{"Create task", "Give the task a name.", `action="/tasks/new"`}},
 		{"messages", []messageRow{{Message: msg, UsedBy: []string{"Adhan"}}}, []string{`href="/messages/7"`, "1 embed", "1 file"}},
@@ -109,7 +110,7 @@ func TestParseTask(t *testing.T) {
 		"name": {" Adhan "}, "guild": {"1"}, "enabled": {"on"}, "busy": {"skip"}, "kind": {"weekly"}, "times": {"16:35, 5:00"}, "weekday": {"5", "1", "5"},
 		"timezone": {"Europe/Berlin"}, "cron": {"0 1 * * *"}, "steps": {"5"},
 		"s0.type": {"join"}, "s0.target": {"member"}, "s0.follow": {" Amira (@amira) "},
-		"s1.type": {"play"}, "s1.media": {"5"}, "s1.volume": {"80"},
+		"s1.type": {"play"}, "s1.media": {"3", "5"}, "s1.order": {"random"}, "s1.volume": {"80"},
 		"s2.type": {"dm"}, "s2.user": {"<@123>"}, "s2.message": {"0"}, "s2.text": {"hi"}, "s2.channel": {"4"},
 		"s3.type": {"wait"}, "s3.wait": {"1.5s"}, "s3.user": {"Jane"}, "s3.channel": {"2"},
 		"s4.type": {"bogus"},
@@ -130,6 +131,13 @@ func TestParseTask(t *testing.T) {
 	if len(task.Steps) != 4 || task.Steps[0].FollowUserID != "Amira (@amira)" || task.Steps[2].UserID != "<@123>" || task.Steps[2].ChannelID != "" ||
 		task.Steps[3].WaitMS != 1500 || task.Steps[3].UserID != "" || task.Steps[3].ChannelID != "" {
 		t.Errorf("steps: %+v", task.Steps)
+	}
+	if p := task.Steps[1]; !slices.Equal(p.MediaIDs, []int64{3, 5}) || p.Order != tasks.OrderRandom || p.Volume != 80 {
+		t.Errorf("play: %+v", p)
+	}
+	applyOp(&task, "tokdel:s1.media:0")
+	if p := task.Steps[1]; !slices.Equal(p.MediaIDs, []int64{5}) {
+		t.Errorf("tokdel: %+v", p)
 	}
 	applyOp(&task, "up:1")
 	if task.Steps[0].Type != tasks.Play {
@@ -203,15 +211,19 @@ func TestParseEventTask(t *testing.T) {
 	if !task.Slash || tr.Kind != tasks.Event || tr.Event != tasks.MessageIn || tr.ChannelID != "5" || tr.Keyword != "adhan" || tr.Cooldown != 60 || len(tr.Times) != 0 || strings.Join(tr.UserIDs, "|") != "Amira (@amira)|Bilal" {
 		t.Errorf("trigger: %+v slash=%v", tr, task.Slash)
 	}
-	if !task.Steps[0].ToTrigger || task.Steps[1].Tag != "greeting" || task.Steps[1].MediaID != 0 || !task.Steps[2].ToTrigger || task.Steps[2].UserID != "" {
+	if !task.Steps[0].ToTrigger || task.Steps[1].Tag != "greeting" || len(task.Steps[1].MediaIDs) != 0 || !task.Steps[2].ToTrigger || task.Steps[2].UserID != "" {
 		t.Errorf("steps: %+v", task.Steps)
 	}
 	if p := task.Problems(); len(p) != 0 {
 		t.Errorf("problems: %v", p)
 	}
-	applyOp(&task, "evdel:0")
+	applyOp(&task, "tokdel:ev_member:0")
 	if strings.Join(task.Trigger.UserIDs, "|") != "Bilal" {
-		t.Errorf("evdel: %v", task.Trigger.UserIDs)
+		t.Errorf("tokdel: %v", task.Trigger.UserIDs)
+	}
+	applyOp(&task, "tokdel:s1.media:0")
+	if task.Steps[1].Tag != "" {
+		t.Errorf("tokdel tag: %+v", task.Steps[1])
 	}
 }
 
@@ -236,8 +248,8 @@ func TestEventEditorRenders(t *testing.T) {
 	s.render(rec, req, http.StatusOK, "task", e)
 	body := rec.Body.String()
 	for _, want := range []string{`value="event" checked`, `<option value="voice_join" selected>A member joins a voice channel`, `<option value="2" selected>lounge`,
-		`name="cooldown" value="45"`, `<input type="hidden" name="ev_member" value="9">`, `value="evdel:0"`, `<span class="av" aria-hidden="true">A</span>`, "1 of 25", `name="slash" checked`, `<option value="trigger" selected>The channel of the member who started the run`,
-		`<option value="tag:greeting" selected>Random: greeting`, `<option value="trigger" selected>To the member who started the run`, "Runs when the event happens."} {
+		`name="cooldown" value="45"`, `<input type="hidden" name="ev_member" value="9">`, `value="tokdel:ev_member:0"`, `<span class="av" aria-hidden="true">A</span>`, "1 of 25", `name="slash" checked`, `<option value="trigger" selected>The channel of the member who started the run`,
+		`<input type="hidden" name="s1.media" value="tag:greeting">`, "random sound tagged greeting", `<option value="trigger" selected>To the member who started the run`, "Runs when the event happens."} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -300,5 +312,59 @@ func TestWaitUntil(t *testing.T) {
 	}
 	if strings.Contains(body, " style=") {
 		t.Error("inline style attribute, blocked by the CSP")
+	}
+}
+
+func TestPlayEditorRenders(t *testing.T) {
+	s := testServer(t)
+	sess := &store.Session{Username: "ann", CSRFToken: "tok"}
+	sounds := []store.Media{{ID: 3, Name: "intro.ogg", Kind: store.KindSound, DurationMS: 330000, Tags: []string{"intro"}}, {ID: 5, Name: "outro.ogg", Kind: store.KindSound, DurationMS: 0}}
+	task := tasks.Task{ID: 4, Name: "Jingles", GuildID: "1", Busy: tasks.BusyWait, Trigger: tasks.Trigger{Kind: tasks.Manual},
+		Steps: []tasks.Step{{Type: tasks.Play, Tag: "intro", MediaIDs: []int64{3, 5, 3}, Order: tasks.OrderSequence, Volume: 100}, {Type: tasks.Play, MediaIDs: []int64{3, 3}, Order: tasks.OrderRandom, Volume: 50}}}
+	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Sounds: sounds, PreviewVol: map[int64]int{3: 40}, MaxPlayMinutes: 10, Page: 1, Pages: 1}
+	req := httptest.NewRequest("GET", "/tasks/4", nil)
+	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
+	rec := httptest.NewRecorder()
+	s.render(rec, req, http.StatusOK, "task", e)
+	body := rec.Body.String()
+	for _, want := range []string{`data-tokens="s0.media" data-max="25" data-empty="No sound" data-source="/sounds" data-dupes`, `<input type="hidden" name="s0.media" value="tag:intro">`,
+		"random sound tagged intro <span class=\"un\">5:30</span>", `data-media="3" data-vol="40" data-ms="330000"`, `aria-label="Preview intro.ogg"`, `value="tokdel:s0.media:3"`,
+		"outro.ogg <span class=\"un\">length unknown</span>", "4 of 25", `name="s0.find" value=""`, `<li class="step bad">`, "Total 16:30 / 10:00, some lengths unknown",
+		`name="s1.order" value="random" checked`, "Total 5:30 / 10:00</span>", `name="s0.order" value="sequence" checked`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(body, " style=") {
+		t.Error("inline style attribute, blocked by the CSP")
+	}
+}
+
+func TestPlayProblems(t *testing.T) {
+	sounds := []store.Media{{ID: 1, Name: "a", DurationMS: 4 * 60000, Tags: []string{"x"}}, {ID: 2, Name: "b", DurationMS: 7 * 60000, Tags: []string{"x"}}, {ID: 3, Name: "c"}}
+	play := func(order, tag string, ids ...int64) tasks.Task {
+		return tasks.Task{Steps: []tasks.Step{{Type: tasks.Leave}, {Type: tasks.Play, MediaIDs: ids, Tag: tag, Order: order, Volume: 100}}}
+	}
+	for _, c := range []struct {
+		task tasks.Task
+		want string
+	}{
+		{play("", "", 1, 2), "Step 2: sounds add up to 11:00, longest playback is 10 min."},
+		{play(tasks.OrderRandom, "", 1, 2, 3), ""},
+		{play("", "", 1, 1, 3), ""},
+		{play("", "x", 1), "Step 2: sounds add up to 11:00, longest playback is 10 min."},
+		{play(tasks.OrderRandom, "x", 3), ""},
+		{play("", "", 9), "Step 2: a picked sound was deleted from the media library, remove it."},
+	} {
+		got := strings.Join(playProblems(c.task, sounds, 10), " ")
+		if got != c.want {
+			t.Errorf("%+v: got %q, want %q", c.task.Steps[1], got, c.want)
+		}
+	}
+	if ms, unknown := playLength(play(tasks.OrderRandom, "", 1, 3).Steps[1], sounds); ms != 4*60000 || !unknown {
+		t.Errorf("random length %d %v", ms, unknown)
+	}
+	if ms, unknown := playLength(play("", "", 1, 2).Steps[1], sounds); ms != 11*60000 || unknown {
+		t.Errorf("sequence length %d %v", ms, unknown)
 	}
 }

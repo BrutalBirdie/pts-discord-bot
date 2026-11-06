@@ -40,11 +40,21 @@ func (s *Server) describeSteps(t tasks.Task, mediaNames map[int64]string) string
 				parts = append(parts, "join "+s.bot.ChannelName(st.ChannelID))
 			}
 		case tasks.Play:
-			name := mediaNames[st.MediaID]
-			if name == "" {
-				name = "a deleted sound"
+			var names []string
+			for _, ref := range st.Sounds() {
+				name := mediaNames[ref.MediaID]
+				if ref.Tag != "" {
+					name = "a random sound tagged " + ref.Tag
+				} else if name == "" {
+					name = "a deleted sound"
+				}
+				names = append(names, name)
 			}
-			parts = append(parts, "play "+name)
+			sep := " then "
+			if st.Order == tasks.OrderRandom {
+				sep = " or "
+			}
+			parts = append(parts, "play "+strings.Join(names, sep))
 		case tasks.Leave:
 			parts = append(parts, "leave")
 		case tasks.Message:
@@ -155,6 +165,10 @@ type taskEditor struct {
 	Kinds     []tasks.TriggerKind
 	Events    []string
 	Tags      []string
+
+	// play steps: per account preview volume of the picked sounds, and the longest playback
+	PreviewVol     map[int64]int
+	MaxPlayMinutes int
 }
 
 var commonTimezones = []string{"Europe/Berlin", "Europe/Vienna", "Europe/Zurich", "Europe/London", "Europe/Paris", "Europe/Istanbul",
@@ -199,6 +213,18 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 		if media.HasAudio(m) {
 			e.Sounds = append(e.Sounds, m)
 		}
+	}
+	settings, err := s.store.Settings(ctx)
+	if err != nil {
+		return e, err
+	}
+	e.MaxPlayMinutes = settings.MaxPlayMinutes
+	var picked []int64
+	for _, st := range t.Steps {
+		picked = append(picked, st.MediaIDs...)
+	}
+	if e.PreviewVol, err = s.store.PreviewVolumes(ctx, sessionFrom(r).Username, picked); err != nil {
+		return e, err
 	}
 	if e.Messages, err = s.store.ListMessages(ctx); err != nil {
 		return e, err
@@ -349,10 +375,17 @@ func parseTask(r *http.Request) (tasks.Task, []string) {
 				st.ChannelID = target
 			}
 		case tasks.Play:
-			if tag, ok := strings.CutPrefix(f.Get(p+"media"), "tag:"); ok {
-				st.Tag = tag
-			} else {
-				st.MediaID, _ = strconv.ParseInt(f.Get(p+"media"), 10, 64)
+			for _, v := range f[p+"media"] {
+				if tag, ok := strings.CutPrefix(v, "tag:"); ok {
+					st.Tag = tag
+				} else if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
+					st.MediaIDs = append(st.MediaIDs, id)
+				}
+			}
+			// the search text of the sound picker, resolved in resolveSounds
+			st.Find = strings.TrimSpace(f.Get(p + "find"))
+			if f.Get(p+"order") == tasks.OrderRandom {
+				st.Order = tasks.OrderRandom
 			}
 			st.Volume, err = strconv.Atoi(f.Get(p + "volume"))
 			if err != nil {
@@ -445,10 +478,8 @@ func applyOp(t *tasks.Task, op string) {
 		if i >= 0 && i < len(t.Steps)-1 {
 			t.Steps[i+1], t.Steps[i] = t.Steps[i], t.Steps[i+1]
 		}
-	case "evdel":
-		if i >= 0 && i < len(t.Trigger.UserIDs) {
-			t.Trigger.UserIDs = slices.Delete(t.Trigger.UserIDs, i, i+1)
-		}
+	case "tokdel":
+		removeToken(t, arg)
 	case "del":
 		if i >= 0 && i < len(t.Steps) {
 			t.Steps = slices.Delete(t.Steps, i, i+1)
@@ -505,6 +536,12 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 	t, bad := parseTask(r)
 	t.ID, t.PausedReason = old.ID, old.PausedReason
 	bad = append(bad, s.resolveMembers(&t)...)
+	badSounds, err := s.resolveSounds(ctx, &t)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	bad = append(bad, badSounds...)
 	op := r.PostForm.Get("op")
 	if op != "save" {
 		applyOp(&t, op)
@@ -514,6 +551,17 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.bot.Guild(t.GuildID); !ok && t.GuildID != old.GuildID {
 		bad = append(bad, "Pick a server the bot is in.")
 	}
+	sounds, err := s.store.ListMedia(ctx, "")
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	settings, err := s.store.Settings(ctx)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	bad = append(bad, playProblems(t, slices.DeleteFunc(sounds, func(m store.Media) bool { return !media.HasAudio(m) }), settings.MaxPlayMinutes)...)
 	if problems := append(bad, t.Problems()...); len(problems) > 0 {
 		s.renderEditor(w, r, http.StatusUnprocessableEntity, t, isNew, problems, true)
 		return

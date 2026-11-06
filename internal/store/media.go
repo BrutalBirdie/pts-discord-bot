@@ -97,6 +97,7 @@ func (s *Store) MediaByName(ctx context.Context, name string) (Media, error) {
 func (s *Store) ListMedia(ctx context.Context, kind string) ([]Media, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+mediaCols+`,
   ARRAY(SELECT 'task ' || t.name FROM tasks t WHERE t.steps @> jsonb_build_array(jsonb_build_object('media_id', m.id))
+           OR t.steps @> jsonb_build_array(jsonb_build_object('media_ids', jsonb_build_array(m.id)))
            OR EXISTS (SELECT FROM jsonb_array_elements(t.steps) st WHERE st->>'tag' = ANY (m.tags))
         UNION ALL
         SELECT 'message ' || g.name FROM messages g
@@ -115,7 +116,43 @@ FROM media m WHERE $1 = '' OR kind = $1 ORDER BY kind, lower(name)`, kind)
 }
 
 func (s *Store) DeleteMedia(ctx context.Context, id int64) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM media WHERE id = $1`, id)
+	_, err := s.pool.Exec(ctx, `WITH v AS (DELETE FROM preview_volume WHERE media_id = $1) DELETE FROM media WHERE id = $1`, id)
+	return err
+}
+
+// SearchSounds finds sounds and videos by name, names starting with q first.
+func (s *Store) SearchSounds(ctx context.Context, q string, limit int) ([]Media, error) {
+	q = likeEscaper.Replace(q)
+	rows, err := s.pool.Query(ctx, `SELECT `+mediaCols+` FROM media WHERE kind IN ('sound', 'video') AND name ILIKE '%' || $1 || '%'
+ORDER BY name NOT ILIKE $1 || '%', lower(name) LIMIT $2`, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Media, error) { return scanMedia(r) })
+}
+
+// PreviewVolumes returns the saved preview volumes of a user, sounds without one are missing.
+func (s *Store) PreviewVolumes(ctx context.Context, username string, ids []int64) (map[int64]int, error) {
+	out := map[int64]int{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.pool.Query(ctx, `SELECT media_id, volume FROM preview_volume WHERE username = $1 AND media_id = ANY ($2)`, username, ids)
+	if err != nil {
+		return nil, err
+	}
+	var id int64
+	var vol int
+	_, err = pgx.ForEachRow(rows, []any{&id, &vol}, func() error {
+		out[id] = vol
+		return nil
+	})
+	return out, err
+}
+
+func (s *Store) SetPreviewVolume(ctx context.Context, username string, mediaID int64, volume int) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO preview_volume (username, media_id, volume) SELECT $1, id, $3 FROM media WHERE id = $2
+ON CONFLICT (username, media_id) DO UPDATE SET volume = EXCLUDED.volume`, username, mediaID, volume)
 	return err
 }
 

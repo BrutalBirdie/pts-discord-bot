@@ -116,6 +116,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /media", s.requireLoginStream(s.upload))
 	mux.Handle("POST /media/url", s.requireLogin(s.fetchMedia))
 	mux.Handle("GET /media/{id}/file", s.requireLogin(s.mediaFile))
+	mux.Handle("GET /sounds", s.requireLogin(s.searchSounds))
+	mux.Handle("POST /prefs/preview-volume", s.requireLogin(s.savePreviewVolume))
 	mux.Handle("POST /media/{id}", s.requireLogin(s.updateMedia))
 	mux.Handle("POST /media/{id}/play", s.requireLogin(s.playMedia))
 	mux.Handle("POST /media/{id}/delete", s.requireLogin(s.deleteMedia))
