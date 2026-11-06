@@ -233,6 +233,8 @@ blockquote.note { margin: 0; padding: 6px 12px; border-radius: var(--r-sm); back
 .picks label { display: flex; gap: 12px; align-items: center; min-height: 52px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
 .picks label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .picks label[hidden], .picks .pager[hidden] { display: none; }
+.person > input.pick { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.bulk { margin-bottom: 12px; }
 .picks input[type=checkbox] { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
 .stack-sm { display: grid; gap: 4px; }
 .card.blocked { border-color: var(--danger); }

@@ -149,7 +149,11 @@ INSERT INTO tasks (name, guild_id, enabled, trigger, steps, created_by, updated_
   ('Guild two task', '2', false, '{\"kind\":\"manual\",\"timezone\":\"UTC\"}', '[{\"type\":\"leave\"}]', 'e2e', 'e2e');
 INSERT INTO messages (name, guild_id, created_by, updated_by) VALUES ('Guild one msg', '1', 'e2e', 'e2e'), ('Guild two msg', '2', 'e2e', 'e2e');
 INSERT INTO messages (name, guild_id, created_by, updated_by, deleted_at, deleted_by) VALUES ('Trash one', '1', 'e2e', 'e2e', now(), 'e2e'), ('Trash two', '2', 'e2e', 'e2e', now(), 'e2e');
-INSERT INTO media (name, kind, size_bytes, uploaded_by, guild_id) VALUES ('guild-one.ogg', 'sound', 1, 'e2e', '1'), ('guild-two.ogg', 'sound', 1, 'e2e', '2')" >/dev/null
+INSERT INTO media (name, kind, size_bytes, uploaded_by, guild_id) VALUES ('guild-one.ogg', 'sound', 1, 'e2e', '1'), ('guild-two.ogg', 'sound', 1, 'e2e', '2');
+INSERT INTO media (name, kind, size_bytes, uploaded_by) VALUES ('shared-horn.ogg', 'sound', 1, 'e2e');
+INSERT INTO tasks (name, guild_id, enabled, trigger, steps, created_by, updated_by)
+  SELECT 'Shared horn task', '1', false, '{\"kind\":\"manual\",\"timezone\":\"UTC\"}', jsonb_build_array(jsonb_build_object('type', 'play', 'media_ids', jsonb_build_array(id), 'volume', 100)), 'e2e', 'e2e'
+  FROM media WHERE name = 'shared-horn.ogg'" >/dev/null
 docker exec "${app}" sed -i 's/^export DISCORD_CLIENT_SECRET=.*/export DISCORD_CLIENT_SECRET="e2e-secret"/' /app/data/env.sh
 docker restart "${app}" >/dev/null
 wait_healthy

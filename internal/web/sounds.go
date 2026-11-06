@@ -148,6 +148,8 @@ func (e taskEditor) Play(i int) playView {
 			k.Value, k.Name = "tag:"+ref.Tag, "random sound tagged "+ref.Tag
 		} else if m, ok := byID[ref.MediaID]; ok {
 			k.Value, k.Name, k.Media, k.Vol = strconv.FormatInt(m.ID, 10), m.Name, m.ID, previewVolume(e.PreviewVol, m.ID)
+		} else if m, ok := e.Outside.media[ref.MediaID]; ok {
+			k.Value, k.Name, k.Sub = strconv.FormatInt(m.ID, 10), e.Outside.label("sound", m.GuildID, m.Name), "not usable here"
 		} else {
 			k.Value, k.Name, k.Sub = strconv.FormatInt(ref.MediaID, 10), "Deleted sound", ""
 		}

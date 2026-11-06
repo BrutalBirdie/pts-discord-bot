@@ -455,6 +455,36 @@ const steps = {
             const href = await page.getByRole('link', { name }).first().getAttribute('href');
             check(`Discord user gets 404 for ${name}`, (await d.goto(BASE + href)).status() === 404, href);
         }
+
+        await d.goto(BASE + '/tasks?q=Shared+horn');
+        await d.getByRole('link', { name: 'Shared horn task' }).first().click();
+        const hornTask = d.url();
+        t = await d.locator('main').innerText();
+        check('Discord user sees a shared sound as shared, not deleted', t.includes('Shared sound, only an admin can use it. Ask an admin to move it to this server.')
+            && !t.includes('Deleted sound') && !(await d.content()).includes('shared-horn.ogg'), t.slice(0, 600));
+        await d.click('main .btns button[value=save]');
+        t = await d.locator('main').innerText();
+        check('Discord user cannot save a task with a shared sound', t.includes('Not saved.') && t.includes('Step 1: Shared sound'), t.slice(0, 600));
+        await page.goto(BASE + '/media?q=shared-horn');
+        const sheetID = await page.locator('main .list button[popovertarget^="sheet-move-"]').first().getAttribute('popovertarget');
+        await page.locator(`button[popovertarget="${sheetID}"]`).first().click();
+        const sheet = page.locator('#' + sheetID);
+        await sheet.locator('select[name=guild]').selectOption('1');
+        const move = sheet.locator('button[type=submit]');
+        check('moving a used sound warns', (await move.getAttribute('data-confirm-desc')).includes('task Shared horn task (1)'));
+        await move.click();
+        await move.click();
+        await page.waitForURL(/done=moved/);
+        t = await text(page);
+        check('Cloudron user moves a shared sound to server 1', t.includes('Moved.') && t.includes('shared-horn.ogg'), t.slice(0, 600));
+        await d.goto(hornTask);
+        t = await d.locator('main').innerText();
+        check('Discord user sees the moved sound in the task', (await d.content()).includes('shared-horn.ogg') && !t.includes('Shared sound'), t.slice(0, 600));
+        await d.click('main .btns button[value=save]');
+        check('Discord user saves the task after the move', (await d.locator('main').innerText()).includes('Saved.'));
+        await page.goto(BASE + '/admin/audit?category=media');
+        check('move in the audit log', (await text(page)).includes('media.move'));
+
         await page.goto(BASE + '/admin/access?state=approved');
         await submit('333333333333333334', 'revoke');
         check('revoke', (await text(page)).includes('Access revoked.'));

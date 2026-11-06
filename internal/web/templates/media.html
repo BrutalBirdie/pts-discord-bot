@@ -38,10 +38,19 @@
 </div>
 
 <section class="card">
+  {{if and $d.Move $d.Items}}
+  <form method="post" action="/media/move" id="move-bulk" class="btns bulk">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <input type="hidden" name="next" value="{{$p.Self}}">
+    <select name="guild" aria-label="Server to move the selected files to">{{template "moveopts" (dict "Targets" $d.Targets "Current" "-")}}</select>
+    <button type="submit" class="ib with-label" data-confirm-desc="{{$d.BulkWarn}}">{{icon "server"}}<span class="lbl">Move selected to server</span></button>
+  </form>
+  {{end}}
   <ul class="list">
     {{range $d.Items}}
     <li>
       <div class="person">
+        {{if $d.Move}}<input type="checkbox" class="pick" name="id" value="{{.ID}}" form="move-bulk" aria-label="Select {{.Name}}">{{end}}
         {{if eq .Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Name "Vol" ($d.Vol .ID))}}
         {{else}}<span class="thumb">{{if eq .Kind "image"}}<img src="/media/{{.ID}}/file" alt="" loading="lazy">{{else if eq .Kind "video"}}{{icon "film"}}{{else}}{{icon "file"}}{{end}}</span>{{end}}
         <div class="row-main">
@@ -55,6 +64,7 @@
         <button type="button" class="ib" popovertarget="sheet-play-{{.ID}}" aria-label="Play {{.Name}} in a voice channel" data-tip="Play in a voice channel">{{icon "volume-2"}}<span class="lbl">Play</span></button>
         {{end}}
         <button type="button" class="ib" popovertarget="sheet-edit-{{.ID}}" aria-label="Rename or tag {{.Name}}" data-tip="Name and tags">{{icon "pencil"}}<span class="lbl">Edit</span></button>
+        {{if $d.Move}}<button type="button" class="ib" popovertarget="sheet-move-{{.ID}}" aria-label="Move {{.Name}} to a server" data-tip="Move to server">{{icon "server"}}<span class="lbl">Move</span></button>{{end}}
         <a class="ib" href="/media/{{.ID}}/file?download=1" aria-label="Download {{.Name}}" data-tip="Download">{{icon "download"}}<span class="lbl">Download</span></a>
         <form method="post" action="/media/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$csrf}}">
           <button type="submit" class="ib danger" aria-label="Delete {{.Name}}" data-tip="Delete"{{if or .UsedBy .UsedElse}} disabled{{end}} data-confirm-desc="{{if $.TrashDays}}Moves {{.Name}} to the Trash.{{else}}Removes {{.Name}} right away. This cannot be undone.{{end}}"{{if not $.TrashDays}} data-irreversible{{end}}>{{icon "trash-2"}}<span class="lbl">Delete</span></button></form>
@@ -81,6 +91,21 @@
   </div>
 </div>
 {{end}}
+{{if $d.Move}}{{range $d.Items}}
+<div popover id="sheet-move-{{.ID}}" class="sheet" aria-labelledby="sheet-move-{{.ID}}-title">
+  {{template "sheethead" (dict "ID" (print "sheet-move-" .ID) "Icon" "server" "Title" "Move to server" "Name" .Name)}}
+  <div class="sheet-body">
+    <form method="post" action="/media/{{.ID}}/move" class="form">
+      <input type="hidden" name="csrf" value="{{$csrf}}">
+      <input type="hidden" name="next" value="{{$p.Self}}">
+      <label class="field"><span>Server</span><select name="guild">{{template "moveopts" (dict "Targets" $d.Targets "Current" .GuildID)}}</select>
+        <span class="help">Discord users see only the files of the servers they manage. Shared files are for Cloudron users only.</span></label>
+      {{with index $d.Warn .ID}}<p class="hint over">{{.}}</p>{{end}}
+      <div class="btns"><button type="submit" class="ib primary with-label"{{with index $d.Warn .ID}} data-confirm-desc="{{.}}"{{end}}>{{icon "server"}}<span class="lbl">Move</span></button></div>
+    </form>
+  </div>
+</div>
+{{end}}{{end}}
 <datalist id="media-tags">{{range $d.Tags}}<option value="{{.}}">{{end}}</datalist>
 {{range $d.Items}}{{if or (eq .Kind "sound") (eq .Kind "video")}}
 <div popover id="sheet-play-{{.ID}}" class="sheet" aria-labelledby="sheet-play-{{.ID}}-title">

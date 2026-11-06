@@ -7,6 +7,7 @@
   <div class="btns">
     <form method="post" action="/messages/{{$m.ID}}/duplicate"><input type="hidden" name="csrf" value="{{$csrf}}">
       <button type="submit" class="ib" aria-label="Duplicate" data-tip="Duplicate">{{icon "copy"}}<span class="lbl">Duplicate</span></button></form>
+    {{if $e.Move}}<button type="button" class="ib" popovertarget="sheet-move" aria-label="Move to server" data-tip="Move to server">{{icon "server"}}<span class="lbl">Move to server</span></button>{{end}}
   </div>
   {{end}}
 </div>
@@ -146,4 +147,18 @@
   {{end}}
 </aside>
 </div>
+{{if $e.Move}}
+<div popover id="sheet-move" class="sheet" aria-labelledby="sheet-move-title">
+  {{template "sheethead" (dict "ID" "sheet-move" "Icon" "server" "Title" "Move to server" "Name" $m.Name)}}
+  <div class="sheet-body">
+    <form method="post" action="/messages/{{$m.ID}}/move" class="form">
+      <input type="hidden" name="csrf" value="{{$csrf}}">
+      <label class="field"><span>Server</span><select name="guild">{{template "moveopts" (dict "Targets" $e.Targets "Current" $m.GuildID)}}</select>
+        <span class="help">Discord users see only the messages of the servers they manage. Its files have to be shared or of the chosen server. Unsaved changes here are lost.</span></label>
+      {{with $e.MoveWarn}}<p class="hint over">{{.}}</p>{{end}}
+      <div class="btns"><button type="submit" class="ib primary with-label"{{with $e.MoveWarn}} data-confirm-desc="{{.}}"{{end}}>{{icon "server"}}<span class="lbl">Move</span></button></div>
+    </form>
+  </div>
+</div>
+{{end}}
 {{end}}

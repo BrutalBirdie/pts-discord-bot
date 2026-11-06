@@ -65,6 +65,9 @@ type messageEditor struct {
 	FileBytes  int64
 	Limits     map[string]int
 	Embeddable map[int64]bool
+	Move       bool        // Cloudron users can move the message to another server
+	Targets    []bot.Guild // servers to move to
+	MoveWarn   string
 }
 
 func (s *Server) messageEditor(r *http.Request, m messages.Message, isNew bool) (messageEditor, error) {
@@ -87,6 +90,16 @@ func (s *Server) messageEditor(r *http.Request, m messages.Message, isNew bool) 
 		if e.UsedBy, e.UsedElse, err = s.store.MessageUsers(r.Context(), sess.Scope(), m.ID); err != nil {
 			return e, err
 		}
+	}
+	if e.Move = !isNew && !sess.Discord(); e.Move {
+		if e.Targets, err = s.moveTargets(r.Context()); err != nil {
+			return e, err
+		}
+		uses, err := s.store.MessageUses(r.Context(), m.ID)
+		if err != nil {
+			return e, err
+		}
+		e.MoveWarn = s.movingWarning(uses)
 	}
 	for _, g := range s.guilds(r) {
 		if m.GuildID != "" && g.ID != m.GuildID {

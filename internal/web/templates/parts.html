@@ -19,6 +19,9 @@
 </label>
 {{else}}{{range .Owners}}<input type="hidden" name="guild" value="{{.ID}}">{{end}}{{end}}{{end}}
 
+{{define "moveopts"}}{{range .Targets}}<option value="{{.ID}}"{{if eq .ID $.Current}} selected{{end}}>{{.Name}}</option>{{end}}
+<option value=""{{if eq .Current ""}} selected{{end}}>Shared, for Cloudron users only</option>{{end}}
+
 {{define "sheethead"}}
 <div class="sheet-head">
   {{icon .Icon}}

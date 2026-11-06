@@ -118,18 +118,7 @@ ORDER BY guild_id NULLS FIRST LIMIT 1`, name, sc.param()))
 // listMediaQuery fills UsedBy with the tasks and messages in scope that
 // reference a file and counts the others, whose names stay hidden.
 var listMediaQuery = `WITH users AS (
-  SELECT m.id AS media_id, 'task ' || t.name AS name, t.guild_id AS owner FROM media m JOIN tasks t ON t.deleted_at IS NULL
-    AND (t.steps @> jsonb_build_array(jsonb_build_object('media_id', m.id))
-      OR t.steps @> jsonb_build_array(jsonb_build_object('media_ids', jsonb_build_array(m.id)))
-      OR t.steps @> jsonb_build_array(jsonb_build_object('avatar_media_id', m.id))
-      OR EXISTS (SELECT FROM jsonb_array_elements(t.steps) st WHERE st->>'tag' = ANY (m.tags) AND coalesce(m.guild_id, t.guild_id) = t.guild_id))
-  WHERE m.deleted_at IS NULL
-  UNION ALL
-  SELECT m.id, 'message ' || g.name, g.guild_id FROM media m JOIN messages g ON g.deleted_at IS NULL
-    AND (m.id = ANY (g.files)
-      OR g.embeds @> jsonb_build_array(jsonb_build_object('image_media_id', m.id))
-      OR g.embeds @> jsonb_build_array(jsonb_build_object('thumb_media_id', m.id)))
-  WHERE m.deleted_at IS NULL
+  SELECT media_id, kind || ' ' || name AS name, owner FROM (` + mediaUsers("media") + `) u
 )
 SELECT ` + mediaCols + `,
   ARRAY(SELECT u.name FROM users u WHERE u.media_id = m.id AND ` + inScope("u.owner", "6") + ` ORDER BY u.name),

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -35,6 +36,12 @@ type mediaData struct {
 	Shared      bool          // uploads can be shared by all servers
 	Names       map[string]string
 	Paging      paging
+
+	// moving files between servers, for Cloudron users
+	Move     bool
+	Targets  []bot.Guild
+	Warn     map[int64]string // confirmation text per file in use
+	BulkWarn string
 }
 
 // Owner is the name of the server owning a file, empty for shared files.
@@ -103,7 +110,41 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
+	if d.Move = !sess.Discord(); d.Move {
+		if err := s.moveData(ctx, &d); err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+	}
 	s.render(w, r, http.StatusOK, "media", d)
+}
+
+func (s *Server) moveData(ctx context.Context, d *mediaData) error {
+	var err error
+	if d.Targets, err = s.moveTargets(ctx); err != nil {
+		return err
+	}
+	ids := make([]int64, len(d.Items))
+	for i, m := range d.Items {
+		ids[i] = m.ID
+	}
+	uses, err := s.store.MediaUses(ctx, ids)
+	if err != nil {
+		return err
+	}
+	d.Warn = map[int64]string{}
+	var used []string
+	for _, m := range d.Items {
+		if u := uses[m.ID]; len(u) > 0 {
+			d.Warn[m.ID] = s.movingWarning(u)
+			used = append(used, m.Name)
+		}
+	}
+	d.BulkWarn = "Moves the selected files."
+	if len(used) > 0 {
+		d.BulkWarn += " In use on this page: " + strings.Join(used, ", ") + ". Tasks and messages that cannot use the chosen server's files fail to run after the move, see Move on each file."
+	}
+	return nil
 }
 
 // upload streams the files of a multipart form into the media directory.

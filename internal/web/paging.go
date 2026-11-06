@@ -50,6 +50,7 @@ func (p paging) Filters() map[string]string {
 }
 
 func (p paging) Shown() bool  { return p.Page > 1 || p.More }
+func (p paging) Self() string { return p.link(p.filters, p.Page) }
 func (p paging) Prev() string { return p.link(p.filters, p.Page-1) }
 func (p paging) Next() string { return p.link(p.filters, p.Page+1) }
 

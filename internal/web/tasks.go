@@ -176,6 +176,9 @@ type taskEditor struct {
 	Kinds     []tasks.TriggerKind
 	Events    []string
 	Tags      []string
+	Outside   outside
+	Issues    [][]string // per step, what it references but may not use
+	Claim     claim      // shared items a Cloudron user can move to the task's server
 
 	// play steps: per account preview volume of the picked sounds, and the longest playback
 	PreviewVol     map[int64]int
@@ -246,6 +249,17 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 	}
 	if e.Tags, err = s.store.Tags(ctx, items); err != nil {
 		return e, err
+	}
+	if e.Outside, err = s.findOutside(ctx, sessionFrom(r), t); err != nil {
+		return e, err
+	}
+	for _, st := range t.Steps {
+		e.Issues = append(e.Issues, e.Outside.issues(st))
+	}
+	if !isNew && !sessionFrom(r).Discord() {
+		if e.Claim, err = s.taskClaim(ctx, t); err != nil {
+			return e, err
+		}
 	}
 	e.Next = t.Trigger.Next(time.Now(), 5)
 	if !isNew {
@@ -607,10 +621,23 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
+	out, err := s.findOutside(ctx, sess, t)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	// items outside get their own problem text below, not a "deleted" one
+	for _, m := range out.media {
+		sounds = append(sounds, m)
+	}
+	for _, m := range out.msgs {
+		msgs = append(msgs, m)
+	}
 	bad = append(bad, avatarProblems(t, sounds)...)
 	sounds = slices.DeleteFunc(sounds, func(m store.Media) bool { return !media.HasAudio(m) })
 	bad = append(bad, playProblems(t, sounds, settings.MaxPlayMinutes)...)
-	bad = append(bad, ownerProblems(t, sounds, msgs)...)
+	bad = append(bad, ownerProblems(t, sounds, msgs, out.tags)...)
+	bad = append(bad, out.problems(t)...)
 	if problems := append(bad, t.Problems()...); len(problems) > 0 {
 		s.renderEditor(w, r, http.StatusUnprocessableEntity, t, isNew, problems, true)
 		return
@@ -637,14 +664,14 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 
 // ownerProblems checks that saved messages and tagged sounds of the steps are
 // in the task's scope: shared or of the task's server, for Discord users only the latter.
-func ownerProblems(t tasks.Task, sounds []store.Media, msgs []messages.Message) []string {
+func ownerProblems(t tasks.Task, sounds []store.Media, msgs []messages.Message, sharedTags []string) []string {
 	var out []string
 	for i, st := range t.Steps {
 		if (st.Type == tasks.Message || st.Type == tasks.DM) && st.MessageID != 0 &&
 			!slices.ContainsFunc(msgs, func(m messages.Message) bool { return m.ID == st.MessageID }) {
 			out = append(out, fmt.Sprintf("Step %d: the saved message is deleted or belongs to another server, pick another.", i+1))
 		}
-		if st.Type == tasks.Play && st.Tag != "" && !slices.ContainsFunc(sounds, func(m store.Media) bool { return slices.Contains(m.Tags, st.Tag) }) {
+		if st.Type == tasks.Play && st.Tag != "" && !slices.Contains(sharedTags, st.Tag) && !slices.ContainsFunc(sounds, func(m store.Media) bool { return slices.Contains(m.Tags, st.Tag) }) {
 			out = append(out, fmt.Sprintf("Step %d: no sound available to this server has the tag %s.", i+1, st.Tag))
 		}
 	}
@@ -761,6 +788,21 @@ type avatarView struct {
 	Problem string
 }
 
+func (e taskEditor) StepIssues(i int) []string {
+	if i < len(e.Issues) {
+		return e.Issues[i]
+	}
+	return nil
+}
+
+// OutsideMessage labels a saved message of a step the task may not use, "" for others.
+func (e taskEditor) OutsideMessage(id int64) string {
+	if m, ok := e.Outside.msgs[id]; ok {
+		return e.Outside.label("message", m.GuildID, m.Name)
+	}
+	return ""
+}
+
 func (e taskEditor) Avatar(i int) avatarView {
 	st := e.Task.Steps[i]
 	var v avatarView
@@ -772,7 +814,11 @@ func (e taskEditor) Avatar(i int) avatarView {
 		}
 	}
 	if st.AvatarMediaID != 0 && v.Picked == "" && !slices.ContainsFunc(v.Images, func(m store.Media) bool { return m.ID == st.AvatarMediaID }) {
-		v.Picked, v.Problem = "Deleted image", "The image was deleted from the media library"
+		if m, ok := e.Outside.media[st.AvatarMediaID]; ok {
+			v.Picked = e.Outside.label("image", m.GuildID, m.Name)
+		} else {
+			v.Picked, v.Problem = "Deleted image", "The image was deleted from the media library"
+		}
 	}
 	return v
 }

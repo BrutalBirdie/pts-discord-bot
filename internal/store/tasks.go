@@ -50,8 +50,9 @@ func (s *Store) UpdateTask(ctx context.Context, t tasks.Task, by string) error {
 
 // SetTaskEnabled pauses or resumes a task. reason is shown on paused tasks.
 // The runner pausing a task as "system" keeps updated_by, RunScope reads it.
+// So does a Discord user, else resuming a task that uses shared items would break its runs.
 func (s *Store) SetTaskEnabled(ctx context.Context, id int64, enabled bool, reason, by string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE tasks SET enabled = $2, paused_reason = $3, updated_by = CASE WHEN $4 = 'system' THEN updated_by ELSE $4 END, updated_at = now()
+	tag, err := s.pool.Exec(ctx, `UPDATE tasks SET enabled = $2, paused_reason = $3, updated_by = CASE WHEN $4 = 'system' OR $4 LIKE 'discord:%' THEN updated_by ELSE $4 END, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL`, id, enabled, reason, by)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound

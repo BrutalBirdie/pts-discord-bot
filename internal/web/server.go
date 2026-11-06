@@ -112,6 +112,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /tasks/{id}/resume", s.requireLogin(s.resumeTask))
 	mux.Handle("POST /tasks/{id}/duplicate", s.requireLogin(s.duplicateTask))
 	mux.Handle("POST /tasks/{id}/delete", s.requireLogin(s.deleteTask))
+	mux.Handle("POST /tasks/{id}/claim", s.requireLogin(s.claimTask))
 
 	mux.Handle("GET /messages", s.requireLogin(s.messagesList))
 	mux.Handle("GET /messages/new", s.requireLogin(s.newMessage))
@@ -121,6 +122,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /messages/{id}/send", s.requireLogin(s.sendMessage))
 	mux.Handle("POST /messages/{id}/duplicate", s.requireLogin(s.duplicateMessage))
 	mux.Handle("POST /messages/{id}/delete", s.requireLogin(s.deleteMessage))
+	mux.Handle("POST /messages/{id}/move", s.requireLogin(s.moveMessage))
 
 	mux.Handle("GET /media", s.requireLogin(s.mediaPage))
 	mux.Handle("POST /media", s.requireLoginStream(s.upload))
@@ -131,6 +133,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /media/{id}", s.requireLogin(s.updateMedia))
 	mux.Handle("POST /media/{id}/play", s.requireLogin(s.playMedia))
 	mux.Handle("POST /media/{id}/delete", s.requireLogin(s.deleteMedia))
+	mux.Handle("POST /media/{id}/move", s.requireLogin(s.moveMedia))
+	mux.Handle("POST /media/move", s.requireLogin(s.moveMedia))
 
 	mux.Handle("GET /trash", s.requireLogin(s.trash))
 	mux.Handle("POST /trash/{kind}/{id}/restore", s.requireLogin(s.restoreTrash))
@@ -313,6 +317,7 @@ var notices = map[string]string{
 	"joining":       "Joining. The bot shows up in the channel in a moment.",
 	"refreshed":     "Members requested from Discord. Large servers take a few seconds.",
 	"copied":        "Copy created.",
+	"moved":         "Moved.",
 	"trashed":       "Moved to the Trash.",
 	"restored":      "Restored.",
 	"restored-task": "Restored. It stays paused until you resume it.",
