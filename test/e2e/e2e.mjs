@@ -116,6 +116,14 @@ const steps = {
         check('tags saved', t.includes('Saved.') && await page.locator('.list a.chip', { hasText: 'greeting' }).count() === 1);
         await page.click('.pills a:has-text("greeting")');
         check('tag filter', (await page.locator('main .list > li').count()) === 1);
+        await page.fill('main input[name=q]', 'zzz');
+        await page.press('main input[name=q]', 'Enter');
+        await page.waitForURL(/q=zzz/);
+        check('search keeps the tag filter', page.url().includes('tag=greeting') && (await text(page)).includes('Nothing matches "zzz".'), page.url());
+        await page.goto(BASE + '/media?q=BEEP');
+        t = await text(page);
+        check('media search', await page.locator('main .list > li').count() === 1 && t.includes('beep.ogg') && await page.inputValue('main input[name=q]') === 'BEEP', t.slice(0, 300));
+        check('filter pills keep the search', await page.locator('.pills a', { hasText: 'Sounds' }).getAttribute('href') === '/media?kind=sound&q=BEEP');
         await page.goto(BASE + '/media');
         await page.fill('input[name=url]', 'http://127.0.0.1:8000/healthz');
         await page.click('form[action="/media/url"] button[type=submit]');
@@ -354,6 +362,24 @@ const steps = {
         check('trash in the audit log', ['task.restore', 'media.restore', 'media.purge', 'trash.empty'].every((a) => t.includes(a)), t.slice(0, 500));
     },
 
+    async paging() {
+        const { page } = await session('ann');
+        const rows = () => page.locator('main .list > li');
+        await page.goto(BASE + '/messages');
+        check('first page has 25 messages and a pager', await rows().count() === 25 && await page.locator('.pager a[rel=next]').count() === 1
+            && await page.locator('.pager a[rel=prev]').count() === 0);
+        await page.click('.pager a[rel=next]');
+        check('next page', page.url().includes('page=2') && (await page.locator('.pager .hint').innerText()) === 'Page 2' && await page.locator('.pager a[rel=prev]').count() === 1);
+        await page.fill('main input[name=q]', 'bulk 1');
+        await page.press('main input[name=q]', 'Enter');
+        await page.waitForURL(/q=bulk/);
+        const t = await text(page);
+        check('search starts on page 1 and keeps the term', !page.url().includes('page=') && await page.inputValue('main input[name=q]') === 'bulk 1'
+            && await rows().count() === 10 && t.includes('Bulk 10') && !t.includes('Bulk 20') && await page.locator('.pager').count() === 0, t.slice(0, 300));
+        await page.goto(BASE + '/messages?q=no%20such%20thing');
+        check('empty search result', (await text(page)).includes('Nothing matches "no such thing".'));
+    },
+
     async promoted() {
         const { page } = await session('bob');
         await page.goto(BASE + '/admin');
@@ -398,6 +424,10 @@ const steps = {
         check('event task in the editor', await page.locator('input[name=kind][value=event]').isChecked() && await page.inputValue('input[name=cooldown]') === '45'
             && await page.locator('select[name="s0.to"]').inputValue() === 'trigger' && await page.locator('.picker.dm-member').isHidden());
         check('event task summary', (await page.locator('main').innerText()).includes('Runs when the event happens.'));
+        const greeting = page.url();
+        await page.goto(BASE + '/tasks?q=greet');
+        check('task search', await page.locator('main .list > li').count() === 1 && await page.getByRole('link', { name: 'Greeting', exact: true }).count() === 1);
+        await page.goto(greeting);
         const toks = () => page.locator('.tokens .tok input[type=hidden]').evaluateAll((els) => els.map((e) => e.value).join());
         const count = () => page.locator('[data-count]').innerText();
         check('member tokens rendered', await toks() === '333333333333333333' && await count() === '1 of 25');

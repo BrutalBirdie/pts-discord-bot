@@ -72,3 +72,21 @@
   <div class="tokens-foot">{{with .Help}}<span class="help">{{.}}</span>{{end}}<span class="help count" data-count>{{with len .Items}}{{.}} of {{$.Max}}{{else}}{{$.Empty}}{{end}}</span></div>
 </div>
 {{end}}
+
+{{define "search"}}
+<form class="search" method="get" action="{{.P.Path}}">
+  {{range $k, $v := .P.Filters}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
+  <input type="search" name="q" value="{{.P.Query}}" placeholder="{{.Placeholder}}" aria-label="{{.Label}}">
+  <button type="submit" class="ib" aria-label="Search" data-tip="Search">{{icon "search"}}<span class="lbl">Search</span></button>
+</form>
+{{end}}
+
+{{define "nomatch"}}<span class="muted">Nothing matches "{{.}}".</span>{{end}}
+
+{{define "pager"}}{{if .Shown}}
+<nav class="pager mt" aria-label="Pages">
+  {{if gt .Page 1}}<a class="ib with-label" href="{{.Prev}}" rel="prev">{{icon "chevron-left"}}<span class="lbl">{{if .Dated}}Newer{{else}}Previous{{end}}</span></a>{{else}}<span></span>{{end}}
+  <span class="hint">Page {{.Page}}</span>
+  {{if .More}}<a class="ib with-label" href="{{.Next}}" rel="next"><span class="lbl">{{if .Dated}}Older{{else}}Next{{end}}</span>{{icon "chevron-right"}}</a>{{else}}<span></span>{{end}}
+</nav>
+{{end}}{{end}}

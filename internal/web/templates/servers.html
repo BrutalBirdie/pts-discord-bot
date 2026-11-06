@@ -13,6 +13,7 @@
 <div class="callout warn">{{icon "triangle-alert"}}<span>Discord refused the Server Members intent, so member lists stay empty and tasks cannot follow members. Switch on <strong>Server Members Intent</strong> under Bot in the Discord Developer Portal, then restart the app.</span></div>
 {{end}}
 
+{{template "search" (dict "P" $d.Paging "Label" "Search servers" "Placeholder" "Server name or ID")}}
 <section class="card">
   <ul class="list">
     {{range $d.Guilds}}
@@ -34,9 +35,10 @@
       </a>
     </li>
     {{else}}
-    <li><span class="muted">{{if .Bot.Ready}}The bot is in no server yet. Add it with the invite link below.{{else}}The server list appears when the bot is connected.{{end}}</span></li>
+    <li>{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}<span class="muted">{{if .Bot.Ready}}The bot is in no server yet. Add it with the invite link below.{{else}}The server list appears when the bot is connected.{{end}}</span>{{end}}</li>
     {{end}}
   </ul>
+  {{template "pager" $d.Paging}}
 </section>
 
 <section class="card stack">

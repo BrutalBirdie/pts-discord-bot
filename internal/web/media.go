@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"mime"
 	"net/http"
 	"os"
@@ -31,6 +30,7 @@ type mediaData struct {
 	Voice       []voiceGroup
 	MaxUploadMB int
 	Vols        map[int64]int // preview volumes of the listed sounds
+	Paging      paging
 }
 
 func (d mediaData) Vol(id int64) int { return previewVolume(d.Vols, id) }
@@ -52,37 +52,34 @@ func (s *Server) voiceGroups() []voiceGroup {
 }
 
 func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
-	all, err := s.store.ListMedia(r.Context(), "")
+	ctx := r.Context()
+	sum, err := s.store.MediaSummary(ctx)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	settings, err := s.store.Settings(r.Context())
+	settings, err := s.store.Settings(ctx)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	d := mediaData{Kind: r.URL.Query().Get("kind"), Tag: r.URL.Query().Get("tag"), Counts: map[string]int{}, Voice: s.voiceGroups(), MaxUploadMB: settings.MaxUploadMB}
-	tags := map[string]bool{}
-	for _, m := range all {
-		d.Counts[""]++
-		d.Counts[m.Kind]++
-		d.TotalBytes += m.SizeBytes
-		for _, t := range m.Tags {
-			tags[t] = true
-		}
-		if (d.Kind == "" || d.Kind == m.Kind) && (d.Tag == "" || slices.Contains(m.Tags, d.Tag)) {
-			d.Items = append(d.Items, m)
-		}
+	q := r.URL.Query()
+	d := mediaData{Kind: q.Get("kind"), Tag: q.Get("tag"), Counts: sum.Counts, TotalBytes: sum.Bytes, Tags: sum.Tags, Voice: s.voiceGroups(), MaxUploadMB: settings.MaxUploadMB, Paging: newPaging(r)}
+	d.Paging.Keep("kind", d.Kind)
+	d.Paging.Keep("tag", d.Tag)
+	items, err := s.store.FindMedia(ctx, store.MediaQuery{Kind: d.Kind, Tag: d.Tag, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
+	if err != nil {
+		s.internalError(w, r, err)
+		return
 	}
-	d.Tags = slices.Sorted(maps.Keys(tags))
+	d.Items = cut(&d.Paging, items)
 	var sounds []int64
 	for _, m := range d.Items {
 		if m.Kind == store.KindSound {
 			sounds = append(sounds, m.ID)
 		}
 	}
-	if d.Vols, err = s.store.PreviewVolumes(r.Context(), sessionFrom(r).Username, sounds); err != nil {
+	if d.Vols, err = s.store.PreviewVolumes(ctx, sessionFrom(r).Username, sounds); err != nil {
 		s.internalError(w, r, err)
 		return
 	}

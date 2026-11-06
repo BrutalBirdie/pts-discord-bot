@@ -110,11 +110,23 @@ const listMediaQuery = `SELECT ` + mediaCols + `,
         WHERE g.deleted_at IS NULL AND (m.id = ANY (g.files)
            OR g.embeds @> jsonb_build_array(jsonb_build_object('image_media_id', m.id))
            OR g.embeds @> jsonb_build_array(jsonb_build_object('thumb_media_id', m.id))))
-FROM media m WHERE m.deleted_at IS NULL AND ($1 = '' OR kind = $1) ORDER BY kind, lower(name)`
+FROM media m WHERE m.deleted_at IS NULL AND ($1 = '' OR kind = $1) AND ($2 = '' OR $2 = ANY (tags))
+  AND ($3 = '' OR name ILIKE '%' || $3 || '%' OR array_to_string(tags, ' ') ILIKE '%' || $3 || '%')
+ORDER BY kind, lower(name), id LIMIT NULLIF($4, 0) OFFSET $5`
+
+// MediaQuery filters the media library. Search matches names and tags, a zero Limit lists all.
+type MediaQuery struct {
+	Kind, Tag, Search string
+	Limit, Offset     int
+}
 
 // ListMedia returns all media of a kind, every kind when kind is empty.
 func (s *Store) ListMedia(ctx context.Context, kind string) ([]Media, error) {
-	rows, err := s.pool.Query(ctx, listMediaQuery, kind)
+	return s.FindMedia(ctx, MediaQuery{Kind: kind})
+}
+
+func (s *Store) FindMedia(ctx context.Context, q MediaQuery) ([]Media, error) {
+	rows, err := s.pool.Query(ctx, listMediaQuery, q.Kind, q.Tag, likeEscaper.Replace(q.Search), q.Limit, q.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +176,38 @@ func (s *Store) SetPreviewVolume(ctx context.Context, username string, mediaID i
 	_, err := s.pool.Exec(ctx, `INSERT INTO preview_volume (username, media_id, volume) SELECT $1, id, $3 FROM media WHERE id = $2
 ON CONFLICT (username, media_id) DO UPDATE SET volume = EXCLUDED.volume`, username, mediaID, volume)
 	return err
+}
+
+// MediaSummary is the whole library at a glance: files per kind ("" for all), their size and every tag.
+type MediaSummary struct {
+	Counts map[string]int
+	Bytes  int64
+	Tags   []string
+}
+
+func (s *Store) MediaSummary(ctx context.Context) (MediaSummary, error) {
+	out := MediaSummary{Counts: map[string]int{}}
+	rows, err := s.pool.Query(ctx, `SELECT kind, count(*), coalesce(sum(size_bytes), 0) FROM media WHERE deleted_at IS NULL GROUP BY kind`)
+	if err != nil {
+		return out, err
+	}
+	var kind string
+	var n int
+	var size int64
+	if _, err = pgx.ForEachRow(rows, []any{&kind, &n, &size}, func() error {
+		out.Counts[kind] = n
+		out.Counts[""] += n
+		out.Bytes += size
+		return nil
+	}); err != nil {
+		return out, err
+	}
+	rows, err = s.pool.Query(ctx, `SELECT DISTINCT unnest(tags) AS t FROM media WHERE deleted_at IS NULL ORDER BY t`)
+	if err != nil {
+		return out, err
+	}
+	out.Tags, err = pgx.CollectRows(rows, pgx.RowTo[string])
+	return out, err
 }
 
 func (s *Store) MediaBytes(ctx context.Context) (count int, bytes int64, err error) {

@@ -82,14 +82,16 @@
 {{end}}
 
 {{if eq $d.Tab "tasks"}}
+{{template "search" (dict "P" $d.Paging "Label" "Search the tasks of this server" "Placeholder" "Task name")}}
 <section class="card">
   <ul class="list">
     {{range $d.Tasks}}
     <li class="link-row"><a class="rowlink with-lead" href="/tasks/{{.ID}}">{{if .UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}<span class="row-main"><span class="row-title">{{.Name}} {{if .Enabled}}<span class="chip ok">active</span>{{else if .PausedReason}}<span class="chip danger">paused after error</span>{{else}}<span class="chip">paused</span>{{end}}</span><span class="row-sub">{{.Trigger.Summary}}</span></span><span class="go" aria-hidden="true">{{icon "chevron-right"}}</span></a></li>
     {{else}}
-    <li><span class="muted">No tasks for this server. <a href="/tasks/new?guild={{$g.ID}}">Create one</a>.</span></li>
+    <li>{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}<span class="muted">No tasks for this server. <a href="/tasks/new?guild={{$g.ID}}">Create one</a>.</span>{{end}}</li>
     {{end}}
   </ul>
+  {{template "pager" $d.Paging}}
 </section>
 {{end}}
 {{end}}

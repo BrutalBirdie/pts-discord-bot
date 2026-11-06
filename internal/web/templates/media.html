@@ -24,13 +24,15 @@
   <div class="btns"><button type="submit" class="ib with-label">{{icon "download"}}<span class="lbl">Add</span></button><span class="hint">Direct links to files only, not video pages like YouTube.</span></div>
 </form>
 
+{{$p := $d.Paging}}
+{{template "search" (dict "P" $p "Label" "Search media" "Placeholder" "Name or tag")}}
 <div class="pills">
-  <a href="/media"{{if not (or $d.Kind $d.Tag)}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
-  <a href="/media?kind=sound"{{if eq $d.Kind "sound"}} aria-current="page"{{end}}>Sounds {{index $d.Counts "sound"}}</a>
-  <a href="/media?kind=image"{{if eq $d.Kind "image"}} aria-current="page"{{end}}>Images {{index $d.Counts "image"}}</a>
-  <a href="/media?kind=video"{{if eq $d.Kind "video"}} aria-current="page"{{end}}>Videos {{index $d.Counts "video"}}</a>
-  <a href="/media?kind=file"{{if eq $d.Kind "file"}} aria-current="page"{{end}}>Files {{index $d.Counts "file"}}</a>
-  {{range $d.Tags}}<a href="/media?tag={{.}}"{{if eq . $d.Tag}} aria-current="page"{{end}}>{{icon "hash"}}{{.}}</a>{{end}}
+  <a href="{{$p.With "" ""}}"{{if not (or $d.Kind $d.Tag)}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
+  <a href="{{$p.With "kind" "sound"}}"{{if eq $d.Kind "sound"}} aria-current="page"{{end}}>Sounds {{index $d.Counts "sound"}}</a>
+  <a href="{{$p.With "kind" "image"}}"{{if eq $d.Kind "image"}} aria-current="page"{{end}}>Images {{index $d.Counts "image"}}</a>
+  <a href="{{$p.With "kind" "video"}}"{{if eq $d.Kind "video"}} aria-current="page"{{end}}>Videos {{index $d.Counts "video"}}</a>
+  <a href="{{$p.With "kind" "file"}}"{{if eq $d.Kind "file"}} aria-current="page"{{end}}>Files {{index $d.Counts "file"}}</a>
+  {{range $d.Tags}}<a href="{{$p.With "tag" .}}"{{if eq . $d.Tag}} aria-current="page"{{end}}>{{icon "hash"}}{{.}}</a>{{end}}
 </div>
 
 <section class="card">
@@ -43,7 +45,7 @@
         <div class="row-main">
           <span class="row-title mono">{{.Name}}{{if gt .SizeBytes 20971520}} <span class="chip warn">{{icon "triangle-alert"}}over 20 MB for Discord messages</span>{{end}}</span>
           <span class="row-sub" data-preview-detail>{{if .DurationMS}}{{clock .DurationMS}} · {{end}}{{if .Width}}{{.Width}} × {{.Height}} · {{end}}{{bytes .SizeBytes}} · {{with .UsedBy}}used by {{join . ", "}}{{else}}not used{{end}}</span>
-          {{with .Tags}}<span class="meta">{{range .}}<a class="chip accent" href="/media?tag={{.}}">{{.}}</a>{{end}}</span>{{end}}
+          {{with .Tags}}<span class="meta">{{range .}}<a class="chip accent" href="{{$p.With "tag" .}}">{{.}}</a>{{end}}</span>{{end}}
         </div>
       </div>
       <div class="btns">
@@ -57,9 +59,10 @@
       </div>
     </li>
     {{else}}
-    <li><span class="muted">{{if $d.Kind}}Nothing of this kind.{{else}}No files yet. Upload sounds to play them in voice channels and images or files to send them in messages.{{end}}</span></li>
+    <li>{{if $p.Query}}{{template "nomatch" $p.Query}}{{else}}<span class="muted">{{if or $d.Kind $d.Tag}}Nothing of this kind.{{else}}No files yet. Upload sounds to play them in voice channels and images or files to send them in messages.{{end}}</span>{{end}}</li>
     {{end}}
   </ul>
+  {{template "pager" $p}}
 </section>
 <p class="hint">Files in use by a task or message can only be deleted after they are removed there.{{if $.TrashDays}} Deleted files stay in the <a href="/trash?kind=media">Trash</a> for {{plural $.TrashDays "day" "days"}}.{{end}}</p>
 

@@ -17,10 +17,19 @@ import (
 type serversData struct {
 	Guilds    []bot.Guild
 	InviteURL string
+	Paging    paging
 }
 
 func (s *Server) servers(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, http.StatusOK, "servers", serversData{Guilds: s.bot.Guilds(), InviteURL: s.bot.InviteURL()})
+	d := serversData{InviteURL: s.bot.InviteURL(), Paging: newPaging(r)}
+	var shown []bot.Guild
+	for _, g := range s.bot.Guilds() {
+		if d.Paging.Matches(g.Name, g.ID) {
+			shown = append(shown, g)
+		}
+	}
+	d.Guilds = window(&d.Paging, shown)
+	s.render(w, r, http.StatusOK, "servers", d)
 }
 
 func (s *Server) refreshServers(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +57,7 @@ type serverData struct {
 	Tasks    []tasks.Task
 	Sounds   []store.Media
 	Playing  []playingView
+	Paging   paging // of the tasks tab
 }
 
 func (s *Server) server(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +66,7 @@ func (s *Server) server(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	d := serverData{Guild: g, Tab: r.URL.Query().Get("tab")}
+	d := serverData{Guild: g, Tab: r.URL.Query().Get("tab"), Paging: newPaging(r)}
 	for _, p := range s.playingViews(r) {
 		if p.P.GuildID == g.ID {
 			d.Playing = append(d.Playing, p)
@@ -69,11 +79,13 @@ func (s *Server) server(w http.ResponseWriter, r *http.Request) {
 			s.internalError(w, r, err)
 			return
 		}
+		d.Paging.Keep("tab", d.Tab)
 		for _, t := range list {
-			if t.GuildID == g.ID {
+			if t.GuildID == g.ID && d.Paging.Matches(t.Name) {
 				d.Tasks = append(d.Tasks, t)
 			}
 		}
+		d.Tasks = window(&d.Paging, d.Tasks)
 	default:
 		d.Tab = "channels"
 		for _, c := range s.bot.Channels(g.ID) {

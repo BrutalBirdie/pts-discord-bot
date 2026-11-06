@@ -1,11 +1,13 @@
 {{define "content"}}
+{{$d := .Data}}
 <div class="page-head">
   <div><span class="eyebrow">Content</span><h1>Messages</h1></div>
   <div class="btns"><a class="ib primary with-label" href="/messages/new">{{icon "plus"}}<span class="lbl">New message</span></a></div>
 </div>
+{{template "search" (dict "P" $d.Paging "Label" "Search messages" "Placeholder" "Name or text")}}
 <section class="card">
   <ul class="list">
-    {{range .Data}}{{$m := .Message}}
+    {{range $d.Rows}}{{$m := .Message}}
     <li class="link-row">
       <a class="rowlink with-lead" href="/messages/{{$m.ID}}">
         {{icon "message-square"}}
@@ -22,8 +24,9 @@
       </a>
     </li>
     {{else}}
-    <li><span class="muted">No saved messages yet. A saved message has text, embeds and files, and can be sent by tasks or right away.</span></li>
+    <li>{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}<span class="muted">No saved messages yet. A saved message has text, embeds and files, and can be sent by tasks or right away.</span>{{end}}</li>
     {{end}}
   </ul>
+  {{template "pager" $d.Paging}}
 </section>
 {{end}}

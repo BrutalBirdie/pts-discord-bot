@@ -32,6 +32,17 @@ func (s *Store) ListMessages(ctx context.Context) ([]messages.Message, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (messages.Message, error) { return scanMessage(r) })
 }
 
+// FindMessages lists one page of messages whose name or text contains search.
+func (s *Store) FindMessages(ctx context.Context, search string, limit, offset int) ([]messages.Message, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+messageCols+` FROM messages WHERE deleted_at IS NULL
+  AND ($1 = '' OR name ILIKE '%' || $1 || '%' OR content ILIKE '%' || $1 || '%')
+ORDER BY lower(name), id LIMIT $2 OFFSET $3`, likeEscaper.Replace(search), limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (messages.Message, error) { return scanMessage(r) })
+}
+
 func (s *Store) CreateMessage(ctx context.Context, m messages.Message, by string) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `INSERT INTO messages (name, content, embeds, files, created_by, updated_by) VALUES ($1, $2, $3, $4, $5, $5) RETURNING id`,

@@ -24,9 +24,8 @@ type trashData struct {
 	Kind   string
 	Counts map[string]int
 	Days   int
-	Page   int
-	More   bool
 	Vols   map[int64]int
+	Paging paging
 }
 
 func (d trashData) Vol(id int64) int { return previewVolume(d.Vols, id) }
@@ -35,8 +34,6 @@ type trashRef struct {
 	Kind string
 	ID   int64
 }
-
-const trashPerPage = 50
 
 // parseTrashRef reads the "task.12" form used in ?undo= links.
 func parseTrashRef(v string) *trashRef {
@@ -68,24 +65,21 @@ func (s *Server) trash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	d := trashData{Kind: q.Get("kind"), Counts: map[string]int{}, Days: settings.TrashRetentionDays}
+	d := trashData{Kind: q.Get("kind"), Counts: map[string]int{}, Days: settings.TrashRetentionDays, Paging: newPaging(r)}
 	if _, ok := map[string]bool{"": true, store.TrashTask: true, store.TrashMessage: true, store.TrashMedia: true}[d.Kind]; !ok {
 		d.Kind = ""
 	}
+	d.Paging.Keep("kind", d.Kind)
+	d.Paging.Dated = true
 	var items []store.TrashItem
 	for _, it := range all {
 		d.Counts[""]++
 		d.Counts[it.Kind]++
-		if d.Kind == "" || d.Kind == it.Kind {
+		if (d.Kind == "" || d.Kind == it.Kind) && d.Paging.Matches(it.Name, it.DeletedBy) {
 			items = append(items, it)
 		}
 	}
-	d.Page, _ = strconv.Atoi(q.Get("page"))
-	d.Page = max(d.Page, 1)
-	from := min((d.Page-1)*trashPerPage, len(items))
-	to := min(from+trashPerPage, len(items))
-	d.More = to < len(items)
-	items = items[from:to]
+	items = window(&d.Paging, items)
 
 	var taken map[string]bool
 	now := time.Now()

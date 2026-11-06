@@ -93,8 +93,8 @@ type taskRow struct {
 type tasksData struct {
 	Rows   []taskRow
 	Filter string
-	Query  string
 	Counts map[string]int
+	Paging paging
 }
 
 func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
@@ -114,8 +114,9 @@ func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	d := tasksData{Filter: r.URL.Query().Get("filter"), Query: strings.TrimSpace(r.URL.Query().Get("q")), Counts: map[string]int{}}
-	now := time.Now()
+	d := tasksData{Filter: r.URL.Query().Get("filter"), Counts: map[string]int{}, Paging: newPaging(r)}
+	d.Paging.Keep("filter", d.Filter)
+	var shown []tasks.Task
 	for _, t := range list {
 		state := "paused"
 		if t.Enabled {
@@ -129,9 +130,12 @@ func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
 		if d.Filter != "" && d.Filter != state && !(d.Filter == "manual" && t.Trigger.Kind == tasks.Manual) {
 			continue
 		}
-		if d.Query != "" && !strings.Contains(strings.ToLower(t.Name), strings.ToLower(d.Query)) {
-			continue
+		if d.Paging.Matches(t.Name) {
+			shown = append(shown, t)
 		}
+	}
+	now := time.Now()
+	for _, t := range window(&d.Paging, shown) {
 		row := taskRow{Task: t, Guild: s.bot.GuildName(t.GuildID), What: s.describeSteps(t, names)}
 		if t.Enabled {
 			if next := t.Trigger.Next(now, 1); len(next) == 1 {

@@ -9,11 +9,13 @@
   </div>{{end}}
 </div>
 
+{{$p := $d.Paging}}
+{{template "search" (dict "P" $p "Label" "Search the trash" "Placeholder" "Name or who deleted it")}}
 <div class="pills">
-  <a href="/trash"{{if not $d.Kind}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
-  <a href="/trash?kind=task"{{if eq $d.Kind "task"}} aria-current="page"{{end}}>Tasks {{index $d.Counts "task"}}</a>
-  <a href="/trash?kind=message"{{if eq $d.Kind "message"}} aria-current="page"{{end}}>Messages {{index $d.Counts "message"}}</a>
-  <a href="/trash?kind=media"{{if eq $d.Kind "media"}} aria-current="page"{{end}}>Media {{index $d.Counts "media"}}</a>
+  <a href="{{$p.With "" ""}}"{{if not $d.Kind}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
+  <a href="{{$p.With "kind" "task"}}"{{if eq $d.Kind "task"}} aria-current="page"{{end}}>Tasks {{index $d.Counts "task"}}</a>
+  <a href="{{$p.With "kind" "message"}}"{{if eq $d.Kind "message"}} aria-current="page"{{end}}>Messages {{index $d.Counts "message"}}</a>
+  <a href="{{$p.With "kind" "media"}}"{{if eq $d.Kind "media"}} aria-current="page"{{end}}>Media {{index $d.Counts "media"}}</a>
 </div>
 
 <section class="card">
@@ -44,16 +46,10 @@
       </div>
     </li>
     {{else}}
-    <li><span class="muted">{{if $d.Kind}}Nothing of this kind in the trash.{{else}}The trash is empty. Deleted tasks, messages and media show up here.{{end}}</span></li>
+    <li>{{if $p.Query}}{{template "nomatch" $p.Query}}{{else}}<span class="muted">{{if $d.Kind}}Nothing of this kind in the trash.{{else}}The trash is empty. Deleted tasks, messages and media show up here.{{end}}</span>{{end}}</li>
     {{end}}
   </ul>
-  {{if or (gt $d.Page 1) $d.More}}
-  <div class="pager mt">
-    {{if gt $d.Page 1}}<a class="ib with-label" href="/trash?page={{add $d.Page -1}}&amp;kind={{$d.Kind}}"><span class="lbl">Newer</span></a>{{else}}<span></span>{{end}}
-    <span class="hint">Page {{$d.Page}}</span>
-    {{if $d.More}}<a class="ib with-label" href="/trash?page={{add $d.Page 1}}&amp;kind={{$d.Kind}}"><span class="lbl">Older</span></a>{{else}}<span></span>{{end}}
-  </div>
-  {{end}}
+  {{template "pager" $p}}
 </section>
 {{if not $admin}}<p class="hint">Only admins can delete items for good before their time is up.</p>{{end}}
 {{end}}

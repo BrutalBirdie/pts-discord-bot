@@ -72,7 +72,7 @@ func TestPagesRender(t *testing.T) {
 			[]string{`name="s0.target"`, `value="2" selected`, `name="s0.follow" value=""`, `data-members="1"`, `<input type="hidden" name="s1.media" value="5">`, `data-preview-media="5" data-vol="100"`, "Total 3:45 / 10:00", `name="s1.volume" value="80"`, `value="add:wait"`, `value="daily" checked`, "Unknown channel 4", `name="s3.user" value="Amira (@amira)"`, `name="s4.wait" value="5s"`, `action="/tasks/3/delete"`, "As cron"}},
 		{"task", taskEditor{Task: tasks.Task{Trigger: tasks.Trigger{Kind: tasks.Manual}}, New: true, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Problems: []string{"Give the task a name."}},
 			[]string{"Create task", "Give the task a name.", `action="/tasks/new"`}},
-		{"messages", []messageRow{{Message: msg, UsedBy: []string{"Adhan"}}}, []string{`href="/messages/7"`, "1 embed", "1 file"}},
+		{"messages", messagesData{Rows: []messageRow{{Message: msg, UsedBy: []string{"Adhan"}}}}, []string{`href="/messages/7"`, "1 embed", "1 file"}},
 		{"message", messageEditor{Message: msg, Media: []store.Media{sound, img}, ByID: map[int64]store.Media{5: sound, 6: img}, Embeddable: map[int64]bool{6: true},
 			Names: map[string]string{"123456789012345678": "Amira"}, Limits: map[string]int{"content": 2000, "embeds": 10, "embedTotal": 6000},
 			Channels: []guildChannels{{Guild: bot.Guild{Name: "PTS"}, Text: []bot.Channel{{ID: "4", Name: "general"}}}}},
@@ -495,7 +495,7 @@ func TestTrashRender(t *testing.T) {
 	daily := tasks.Task{ID: 3, Name: "Adhan", Trigger: tasks.Trigger{Kind: tasks.Daily, Times: []string{"05:00"}, Timezone: "UTC"}, Steps: []tasks.Step{{Type: tasks.Leave}}}
 	msg := messages.Message{ID: 7, Name: "Friday", Files: []int64{6}}
 	sound := store.Media{ID: 5, Name: "intro.ogg", Kind: store.KindSound, SizeBytes: 2048, DurationMS: 3000}
-	d := trashData{Days: 30, Page: 1, Counts: map[string]int{"": 3, "task": 1, "message": 1, "media": 1}, Rows: []trashRow{
+	d := trashData{Days: 30, Paging: paging{Page: 1, path: "/trash"}, Counts: map[string]int{"": 3, "task": 1, "message": 1, "media": 1}, Rows: []trashRow{
 		{TrashItem: store.TrashItem{Kind: store.TrashTask, ID: 3, Name: "Adhan", DeletedAt: now, DeletedBy: "ann", Task: &daily}, DaysLeft: 30},
 		{TrashItem: store.TrashItem{Kind: store.TrashMessage, ID: 7, Name: "Friday", DeletedAt: now.Add(-3 * time.Hour), DeletedBy: "bob", Message: &msg}, DaysLeft: 1},
 		{TrashItem: store.TrashItem{Kind: store.TrashMedia, ID: 5, Name: "intro.ogg", DeletedAt: now.Add(-30 * 24 * time.Hour), DeletedBy: "ann", Media: &sound}, RestoreAs: "intro (restored).ogg"},
@@ -528,7 +528,7 @@ func TestTrashRender(t *testing.T) {
 	req := httptest.NewRequest("GET", "/trash?kind=media", nil)
 	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, &store.Session{Username: "bob", CSRFToken: "tok"}))
 	rec := httptest.NewRecorder()
-	s.render(rec, req, http.StatusOK, "trash", trashData{Kind: "media", Page: 1, Counts: map[string]int{}})
+	s.render(rec, req, http.StatusOK, "trash", trashData{Kind: "media", Paging: paging{Page: 1}, Counts: map[string]int{}})
 	if body := rec.Body.String(); !strings.Contains(body, "Nothing of this kind in the trash.") || !strings.Contains(body, "removes items right away") {
 		t.Errorf("empty trash:\n%s", body)
 	}
@@ -559,5 +559,114 @@ func TestTrashHelpers(t *testing.T) {
 		if got := daysLeft(c.deleted, 30, now); got != c.want {
 			t.Errorf("daysLeft(%v) = %d, want %d", c.deleted, got, c.want)
 		}
+	}
+}
+
+func TestPaging(t *testing.T) {
+	p := newPaging(httptest.NewRequest("GET", "/media?kind=sound&q=+be%26ep+&page=2&undo=media.3", nil))
+	p.Keep("kind", "sound")
+	p.Keep("tag", "")
+	if p.Page != 2 || p.Query != "be&ep" || p.Offset() != perPage || p.Limit() != perPage+1 {
+		t.Fatalf("parsed: %+v", p)
+	}
+	for _, c := range [][2]string{
+		{p.Prev(), "/media?kind=sound&q=be%26ep"},
+		{p.Next(), "/media?kind=sound&page=3&q=be%26ep"},
+		{p.With("tag", "fun"), "/media?q=be%26ep&tag=fun"},
+		{p.With("", ""), "/media?q=be%26ep"},
+		{paging{path: "/x"}.Prev(), "/x"},
+	} {
+		if got, want := c[0], c[1]; got != want {
+			t.Errorf("link %q, want %q", got, want)
+		}
+	}
+	if !p.Matches("x", "BE&EP.ogg") || p.Matches("beep") || !(paging{}).Matches("anything") {
+		t.Error("Matches")
+	}
+
+	list := make([]int, 2*perPage+3)
+	for i := range list {
+		list[i] = i
+	}
+	if page := window(&p, list); len(page) != perPage || page[0] != perPage || !p.More {
+		t.Errorf("window page 2: %v more=%v", page, p.More)
+	}
+	p.Page = 3
+	if page := window(&p, list); len(page) != 3 || p.More {
+		t.Errorf("window page 3: %v more=%v", page, p.More)
+	}
+	p.Page = 9
+	if page := window(&p, list); len(page) != 0 || p.More {
+		t.Errorf("window past the end: %v", page)
+	}
+	if page := cut(&p, list[:perPage+1]); len(page) != perPage || !p.More {
+		t.Errorf("cut: %d more=%v", len(page), p.More)
+	}
+	if page := cut(&p, list[:3]); len(page) != 3 || p.More {
+		t.Errorf("cut short: %d more=%v", len(page), p.More)
+	}
+}
+
+func TestListSearchAndPager(t *testing.T) {
+	s := testServer(t)
+	sess := &store.Session{Username: "ann", IsAdmin: true, CSRFToken: "tok"}
+	paged := func(target string, keep ...string) paging {
+		r := httptest.NewRequest("GET", target, nil)
+		p := newPaging(r)
+		for i := 0; i < len(keep); i += 2 {
+			p.Keep(keep[i], keep[i+1])
+		}
+		return p
+	}
+	sound := store.Media{ID: 5, Name: "beep.ogg", Kind: store.KindSound, Tags: []string{"fun"}}
+	task := tasks.Task{ID: 3, Name: "Adhan", GuildID: "1", Trigger: tasks.Trigger{Kind: tasks.Manual}}
+	more := func(p paging) paging { p.More = true; return p }
+	cases := []struct {
+		name, target string
+		data         any
+		want         []string
+	}{
+		{"media", "/media?kind=sound&q=beep&page=2", mediaData{Kind: "sound", Items: []store.Media{sound}, Counts: map[string]int{"": 1}, Tags: []string{"fun"},
+			Paging: more(paged("/media?kind=sound&q=beep&page=2", "kind", "sound"))},
+			[]string{`<form class="search" method="get" action="/media">`, `<input type="hidden" name="kind" value="sound">`, `type="search" name="q" value="beep"`, `aria-label="Search media"`,
+				`href="/media?kind=sound&amp;q=beep" rel="prev"`, `href="/media?kind=sound&amp;page=3&amp;q=beep" rel="next"`, "Page 2",
+				`href="/media?kind=video&amp;q=beep"`, `href="/media?q=beep&amp;tag=fun"`, `href="/media?q=beep"`}},
+		{"media", "/media?q=nope", mediaData{Counts: map[string]int{}, Paging: paged("/media?q=nope")}, []string{`Nothing matches "nope".`}},
+		{"messages", "/messages?page=2", messagesData{Paging: paged("/messages?page=2")}, []string{`aria-label="Search messages"`, `href="/messages" rel="prev"`, "No saved messages yet."}},
+		{"messages", "/messages?q=fri", messagesData{Paging: paged("/messages?q=fri")}, []string{`Nothing matches "fri".`}},
+		{"tasks", "/tasks?filter=manual", tasksData{Filter: "manual", Counts: map[string]int{}, Rows: []taskRow{{Task: task}}, Paging: more(paged("/tasks?filter=manual", "filter", "manual"))},
+			[]string{`<input type="hidden" name="filter" value="manual">`, `href="/tasks?filter=manual&amp;page=2" rel="next"`, `href="/tasks?filter=paused"`, `>Next<`}},
+		{"tasks", "/tasks?q=zz", tasksData{Counts: map[string]int{}, Paging: paged("/tasks?q=zz")}, []string{`Nothing matches "zz".`}},
+		{"trash", "/trash?kind=task&q=ann&page=2", trashData{Kind: "task", Counts: map[string]int{}, Paging: func() paging {
+			p := paged("/trash?kind=task&q=ann&page=2", "kind", "task")
+			p.Dated = true
+			return p
+		}()},
+			[]string{`aria-label="Search the trash"`, `<input type="hidden" name="kind" value="task">`, `href="/trash?kind=task&amp;q=ann" rel="prev"`, `>Newer<`, `Nothing matches "ann".`}},
+		{"servers", "/servers?q=pts", serversData{Guilds: []bot.Guild{{ID: "1", Name: "PTS"}}, Paging: more(paged("/servers?q=pts"))},
+			[]string{`aria-label="Search servers"`, `href="/servers?page=2&amp;q=pts" rel="next"`}},
+		{"server", "/servers/1?tab=tasks&page=2", serverData{Guild: bot.Guild{ID: "1", Name: "PTS"}, Tab: "tasks", Tasks: []tasks.Task{task}, Paging: paged("/servers/1?tab=tasks&page=2", "tab", "tasks")},
+			[]string{`<input type="hidden" name="tab" value="tasks">`, `href="/servers/1?tab=tasks" rel="prev"`, `href="/tasks/3"`}},
+		{"dashboard", "/", dashboardData{Upcoming: []upcoming{{Task: task}}, MoreSoon: true}, []string{`href="/tasks?filter=active">Show all active tasks`}},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest("GET", c.target, nil)
+		req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
+		rec := httptest.NewRecorder()
+		s.render(rec, req, http.StatusOK, c.name, c.data)
+		body := rec.Body.String()
+		for _, w := range c.want {
+			if !strings.Contains(body, w) {
+				t.Errorf("%s %s: missing %q", c.name, c.target, w)
+			}
+		}
+	}
+
+	req := httptest.NewRequest("GET", "/media", nil)
+	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
+	rec := httptest.NewRecorder()
+	s.render(rec, req, http.StatusOK, "media", mediaData{Items: []store.Media{sound}, Counts: map[string]int{}, Paging: paged("/media")})
+	if strings.Contains(rec.Body.String(), `class="pager`) {
+		t.Error("media: pager on a single page")
 	}
 }

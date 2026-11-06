@@ -18,22 +18,27 @@ type messageRow struct {
 	UsedBy  []string
 }
 
+type messagesData struct {
+	Rows   []messageRow
+	Paging paging
+}
+
 func (s *Server) messagesList(w http.ResponseWriter, r *http.Request) {
-	list, err := s.store.ListMessages(r.Context())
+	d := messagesData{Paging: newPaging(r)}
+	list, err := s.store.FindMessages(r.Context(), d.Paging.Query, d.Paging.Limit(), d.Paging.Offset())
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	rows := make([]messageRow, 0, len(list))
-	for _, m := range list {
+	for _, m := range cut(&d.Paging, list) {
 		used, err := s.store.MessageUsers(r.Context(), m.ID)
 		if err != nil {
 			s.internalError(w, r, err)
 			return
 		}
-		rows = append(rows, messageRow{Message: m, UsedBy: used})
+		d.Rows = append(d.Rows, messageRow{Message: m, UsedBy: used})
 	}
-	s.render(w, r, http.StatusOK, "messages", rows)
+	s.render(w, r, http.StatusOK, "messages", d)
 }
 
 type guildChannels struct {

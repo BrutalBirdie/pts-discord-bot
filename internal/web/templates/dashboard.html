@@ -33,6 +33,7 @@
       <li><span class="muted">Nothing scheduled. <a href="/tasks/new">Create a task</a>.</span></li>
       {{end}}
     </ul>
+    {{if $d.MoreSoon}}<p class="mt"><a class="small" href="/tasks?filter=active">Show all active tasks</a></p>{{end}}
   </section>
   <section class="card" data-live="runs">
     <div class="sec-head"><h2>Recent runs</h2>{{if .Session.IsAdmin}}<a class="small" href="/admin/audit">Audit log</a>{{end}}</div>

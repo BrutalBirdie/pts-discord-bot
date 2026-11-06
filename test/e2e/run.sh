@@ -108,6 +108,8 @@ expect "missed runs recorded" "^(9|10)$" "${missed}"
 expect "event tasks are not counted as missed" "^0$" "$(psql "SELECT count(*) FROM runs r JOIN tasks t ON t.id = r.task_id WHERE t.name = 'Greeting'")"
 browser persisted
 browser trash
+psql "INSERT INTO messages (name, created_by, updated_by) SELECT 'Bulk ' || lpad(n::text, 2, '0'), 'e2e', 'e2e' FROM generate_series(1, 30) n" >/dev/null
+browser paging
 psql "INSERT INTO messages (name, created_by, updated_by, deleted_at, deleted_by) VALUES ('Old trash', 'e2e', 'e2e', now() - interval '31 days', 'e2e'), ('New trash', 'e2e', 'e2e', now(), 'e2e')" >/dev/null
 
 echo "==> Admin added to BOT_ADMINS applies to a running session"

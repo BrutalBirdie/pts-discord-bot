@@ -32,6 +32,7 @@ type dashboardData struct {
 	Paused    int
 	Next      *upcoming
 	Upcoming  []upcoming
+	MoreSoon  bool // more runs in the next 24 hours than the list shows
 	Runs      []store.Run
 	Failed24h int
 	Runs24h   int
@@ -82,7 +83,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	if len(d.Upcoming) > 0 {
 		d.Next = &d.Upcoming[0]
 	}
-	if len(d.Upcoming) > 8 {
+	if d.MoreSoon = len(d.Upcoming) > 8; d.MoreSoon {
 		d.Upcoming = d.Upcoming[:8]
 	}
 	if d.Runs, err = s.store.ListRuns(ctx, store.RunQuery{Limit: 8}); err != nil {
