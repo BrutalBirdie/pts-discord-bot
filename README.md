@@ -26,7 +26,7 @@ Every Cloudron user with access to the app can use it. Only admins see the Admin
 
 ## Discord login
 
-Optional. Members of the servers the bot is in log in with Discord and ask for access to some of those servers. An admin approves, denies or blocks them under **Admin > Access**. For now an approved member only sees which servers were approved, managing tasks follows later.
+Optional. Members of the servers the bot is in log in with Discord and ask for access to some of those servers. An admin approves, denies or blocks them under **Admin > Access**. An approved member manages the tasks, messages and media of the approved servers and plays sounds there. Messages and media without a server are shared and only Cloudron users see them. Admin pages and deleting from the Trash for good stay with Cloudron admins.
 
 1. In the [Discord Developer Portal](https://discord.com/developers/applications), open the bot's application, then **OAuth2**. Add the redirect `https://<app domain>/auth/discord/callback` and copy the **Client Secret**.
 2. Set `DISCORD_CLIENT_SECRET` in `/app/data/env.sh` and restart the app.

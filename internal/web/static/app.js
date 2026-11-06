@@ -368,7 +368,8 @@
             timer = setTimeout(function () {
                 const mine = ++seq;
                 const params = new URLSearchParams({ q });
-                if (input.dataset.members !== undefined) params.set('guild', input.dataset.members);
+                const guild = input.dataset.members ?? (tokens && tokens.dataset.guild);
+                if (guild !== undefined) params.set('guild', guild);
                 fetch(source + '?' + params).then((r) => r.ok ? r.json() : []).then(function (data) {
                     if (mine !== seq) return;
                     hits = tokens && tokens.dataset.dupes === undefined ? data.filter((h) => !picked().includes(String(h.id))) : data;

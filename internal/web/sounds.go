@@ -25,7 +25,7 @@ type soundHit struct {
 // searchSounds feeds the sound picker of play steps.
 func (s *Server) searchSounds(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	list, err := s.store.SearchSounds(ctx, strings.TrimSpace(r.URL.Query().Get("q")), 15)
+	list, err := s.store.SearchSounds(ctx, soundScope(sessionFrom(r), r.URL.Query().Get("guild")), strings.TrimSpace(r.URL.Query().Get("q")), 15)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -45,6 +45,15 @@ func (s *Server) searchSounds(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(hits)
+}
+
+// soundScope is what the sound picker of a task in guildID offers, all the
+// user may see when the picker names no server.
+func soundScope(sess *store.Session, guildID string) store.Scope {
+	if guildID == "" {
+		return sess.Scope()
+	}
+	return sess.ItemScope(guildID)
 }
 
 // savePreviewVolume stores the volume of the preview player in the editor, per user and sound.
@@ -127,7 +136,7 @@ func (e taskEditor) Play(i int) playView {
 	st := e.Task.Steps[i]
 	p := "s" + strconv.Itoa(i) + "."
 	v := playView{Tokens: tokenField{Field: p + "media", Find: p + "find", Label: "Sounds", Placeholder: "Search sounds", Empty: "No sound",
-		Source: "/sounds", Class: "wide", Max: tasks.MaxSounds, Dupes: true, Value: st.Find}}
+		Source: "/sounds", Guild: e.Task.GuildID, Class: "wide", Max: tasks.MaxSounds, Dupes: true, Value: st.Find}}
 	byID := soundsByID(e.Sounds)
 	for _, ref := range st.Sounds() {
 		ms, _ := refLength(ref, byID, e.Sounds)
@@ -206,7 +215,7 @@ func playProblems(t tasks.Task, sounds []store.Media, maxPlayMinutes int) []stri
 		}
 		for _, id := range st.MediaIDs {
 			if _, ok := byID[id]; !ok {
-				out = append(out, fmt.Sprintf("Step %d: a picked sound was deleted from the media library, remove it.", i+1))
+				out = append(out, fmt.Sprintf("Step %d: a picked sound was deleted from the media library or belongs to another server, remove it.", i+1))
 				break
 			}
 		}
@@ -224,14 +233,14 @@ func playProblems(t tasks.Task, sounds []store.Media, maxPlayMinutes int) []stri
 }
 
 // resolveSounds adds the sounds typed by name in the editor without JavaScript.
-func (s *Server) resolveSounds(ctx context.Context, t *tasks.Task) ([]string, error) {
+func (s *Server) resolveSounds(ctx context.Context, sc store.Scope, t *tasks.Task) ([]string, error) {
 	var bad []string
 	for i := range t.Steps {
 		st := &t.Steps[i]
 		if st.Find == "" {
 			continue
 		}
-		m, err := s.store.MediaByName(ctx, st.Find)
+		m, err := s.store.MediaByName(ctx, sc, st.Find)
 		if errors.Is(err, store.ErrNotFound) || err == nil && !media.HasAudio(m) {
 			bad = append(bad, fmt.Sprintf("Step %d: no sound is named %q. Pick one from the suggestions.", i+1, st.Find))
 			continue

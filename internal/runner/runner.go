@@ -60,7 +60,7 @@ func (r *Runner) Start(ctx context.Context) error {
 	if err := r.st.FailInterruptedRuns(ctx); err != nil {
 		return err
 	}
-	list, err := r.st.ListTasks(ctx)
+	list, err := r.st.ListTasks(ctx, store.All)
 	if err != nil {
 		return err
 	}
@@ -368,9 +368,9 @@ type stopRun struct{ msg string }
 func (e *stopRun) Error() string { return e.msg }
 
 // sound loads one entry of a play step, a tag entry as a random sound with the tag.
-func (r *Runner) sound(ctx context.Context, ref tasks.SoundRef) (store.Media, error) {
+func (r *Runner) sound(ctx context.Context, guildID string, ref tasks.SoundRef) (store.Media, error) {
 	if ref.Tag != "" {
-		m, err := r.st.RandomSound(ctx, ref.Tag)
+		m, err := r.st.RandomSound(ctx, store.GuildScope(true, guildID), ref.Tag)
 		if errors.Is(err, store.ErrNotFound) {
 			return m, &bot.PermanentError{Msg: "No sound has the tag " + ref.Tag + "."}
 		}
@@ -419,7 +419,7 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 		// resolved before playing, so a deleted sound does not cut a sequence in half
 		list := make([]store.Media, 0, len(refs))
 		for _, ref := range refs {
-			m, err := r.sound(ctx, ref)
+			m, err := r.sound(ctx, t.GuildID, ref)
 			if err != nil {
 				return err
 			}

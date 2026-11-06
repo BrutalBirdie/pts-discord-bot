@@ -327,7 +327,7 @@ func TestPlayEditorRenders(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.render(rec, req, http.StatusOK, "task", e)
 	body := rec.Body.String()
-	for _, want := range []string{`data-tokens="s0.media" data-max="25" data-empty="No sound" data-source="/sounds" data-dupes`, `<input type="hidden" name="s0.media" value="tag:intro">`,
+	for _, want := range []string{`data-tokens="s0.media" data-max="25" data-empty="No sound" data-source="/sounds" data-guild="1" data-dupes`, `<input type="hidden" name="s0.media" value="tag:intro">`,
 		"random sound tagged intro <span class=\"un\">5:30</span>", `<span class="tok" title="intro.ogg" data-ms="330000"><button type="button" class="pv js-only" data-preview-media="3" data-vol="40" data-name="intro.ogg" aria-label="Preview intro.ogg" aria-pressed="false">`, `<span class="nm" data-preview-detail>intro.ogg`, `value="tokdel:s0.media:3"`,
 		"outro.ogg <span class=\"un\">length unknown</span>", "4 of 25", `name="s0.find" value=""`, `<li class="step bad">`, "Total 16:30 / 10:00, some lengths unknown",
 		`name="s1.order" value="random" checked`, "Total 5:30 / 10:00</span>", `name="s0.order" value="sequence" checked`} {
@@ -371,7 +371,7 @@ func TestProfileStepEditor(t *testing.T) {
 	images := []store.Media{{ID: 7, Name: "cat.png", Kind: store.KindImage, ContentType: "image/png", SizeBytes: 1000},
 		{ID: 8, Name: "huge.png", Kind: store.KindImage, ContentType: "image/png", SizeBytes: tasks.MaxAvatarBytes + 1}}
 	task.Steps[3] = tasks.Step{Type: tasks.Profile, AvatarMediaID: 8}
-	want := []string{"Step 3: the avatar image was deleted from the media library, pick another.", "Step 4: huge.png has 8.0 MB, an avatar may have at most 8 MB."}
+	want := []string{"Step 3: the avatar image was deleted from the media library or belongs to another server, pick another.", "Step 4: huge.png has 8.0 MB, an avatar may have at most 8 MB."}
 	if got := avatarProblems(task, images); !slices.Equal(got, want) {
 		t.Errorf("avatar problems %q", got)
 	}
@@ -417,7 +417,7 @@ func TestPlayProblems(t *testing.T) {
 		{play("", "", 1, 1, 3), ""},
 		{play("", "x", 1), "Step 2: sounds add up to 11:00, longest playback is 10 min."},
 		{play(tasks.OrderRandom, "x", 3), ""},
-		{play("", "", 9), "Step 2: a picked sound was deleted from the media library, remove it."},
+		{play("", "", 9), "Step 2: a picked sound was deleted from the media library or belongs to another server, remove it."},
 	} {
 		got := strings.Join(playProblems(c.task, sounds, 10), " ")
 		if got != c.want {

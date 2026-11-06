@@ -68,9 +68,36 @@ type Session struct {
 	CSRFToken   string
 	Provider    string
 	GuildIDs    []string // Discord: servers shared with the bot at login
+	Granted     []string // Discord: approved servers of GuildIDs, set per request
 }
 
 func (s *Session) Discord() bool { return s.Provider == ProviderDiscord }
+
+// NoAccess is a Discord user without an approved server, who only sees the access page.
+func (s *Session) NoAccess() bool { return s.Discord() && len(s.Granted) == 0 }
+
+// Scope is what the user may see: everything for Cloudron users, the approved servers for Discord users.
+func (s *Session) Scope() Scope {
+	if s.Discord() {
+		return GuildScope(false, s.Granted...)
+	}
+	return All
+}
+
+func (s *Session) CanGuild(guildID string) bool {
+	return !s.Discord() || guildID != "" && s.Scope().Has(guildID)
+}
+
+// ItemScope is what a task or message of guildID may use: shared items only for Cloudron users.
+func (s *Session) ItemScope(guildID string) Scope {
+	if !s.Discord() {
+		return GuildScope(true, guildID)
+	}
+	if !s.CanGuild(guildID) {
+		return GuildScope(false)
+	}
+	return GuildScope(false, guildID)
+}
 
 // CreateSession stores only a hash of the token, a database leak does not expose live sessions.
 func (s *Store) CreateSession(ctx context.Context, token string, sess Session) error {

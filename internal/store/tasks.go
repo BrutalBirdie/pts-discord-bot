@@ -23,8 +23,8 @@ func (s *Store) Task(ctx context.Context, id int64) (tasks.Task, error) {
 	return t, noRows(err)
 }
 
-func (s *Store) ListTasks(ctx context.Context) ([]tasks.Task, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+taskCols+` FROM tasks WHERE deleted_at IS NULL ORDER BY lower(name), id`)
+func (s *Store) ListTasks(ctx context.Context, sc Scope) ([]tasks.Task, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+taskCols+` FROM tasks WHERE deleted_at IS NULL AND `+inScope("guild_id", "1")+` ORDER BY lower(name), id`, sc.param())
 	if err != nil {
 		return nil, err
 	}
@@ -156,16 +156,18 @@ func (s *Store) FailInterruptedRuns(ctx context.Context) error {
 
 // RunQuery filters runs. TaskID 0 means all tasks.
 type RunQuery struct {
+	Scope         Scope
 	TaskID        int64
 	Since         time.Time
 	Status        string
 	Limit, Offset int
 }
 
+const runWhere = `($1 = 0 OR task_id = $1) AND started_at >= $2 AND ($3 = '' OR status = $3) AND `
+
 func (s *Store) ListRuns(ctx context.Context, q RunQuery) ([]Run, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+runCols+` FROM runs
-WHERE ($1 = 0 OR task_id = $1) AND started_at >= $2 AND ($3 = '' OR status = $3)
-ORDER BY id DESC LIMIT $4 OFFSET $5`, q.TaskID, q.Since, q.Status, q.Limit, q.Offset)
+	rows, err := s.pool.Query(ctx, `SELECT `+runCols+` FROM runs WHERE `+runWhere+inScope("guild_id", "6")+`
+ORDER BY id DESC LIMIT $4 OFFSET $5`, q.TaskID, q.Since, q.Status, q.Limit, q.Offset, q.Scope.param())
 	if err != nil {
 		return nil, err
 	}
@@ -174,8 +176,8 @@ ORDER BY id DESC LIMIT $4 OFFSET $5`, q.TaskID, q.Since, q.Status, q.Limit, q.Of
 
 func (s *Store) CountRuns(ctx context.Context, q RunQuery) (int, error) {
 	var n int
-	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM runs WHERE ($1 = 0 OR task_id = $1) AND started_at >= $2 AND ($3 = '' OR status = $3)`,
-		q.TaskID, q.Since, q.Status).Scan(&n)
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM runs WHERE `+runWhere+inScope("guild_id", "4"),
+		q.TaskID, q.Since, q.Status, q.Scope.param()).Scan(&n)
 	return n, err
 }
 

@@ -114,7 +114,7 @@ func (h *Handler) soundValue(ctx context.Context, value string) (tasks.Step, str
 			return tasks.Step{MediaIDs: []int64{m.ID}}, m.Name, true
 		}
 	}
-	if m, err := h.st.MediaByName(ctx, value); err == nil && media.HasAudio(m) {
+	if m, err := h.st.MediaByName(ctx, store.All, value); err == nil && media.HasAudio(m) {
 		return tasks.Step{MediaIDs: []int64{m.ID}}, m.Name, true
 	}
 	return tasks.Step{}, "", false
@@ -163,7 +163,7 @@ func (h *Handler) task(ctx context.Context, e *events.ApplicationCommandInteract
 }
 
 func (h *Handler) slashTasks(ctx context.Context, gid snowflake.ID) ([]tasks.Task, error) {
-	all, err := h.st.ListTasks(ctx)
+	all, err := h.st.ListTasks(ctx, store.All)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ func (h *Handler) OnAutocomplete(e *events.AutocompleteInteractionCreate) {
 	gid := e.GuildID()
 	switch {
 	case e.Data.CommandName == "play":
-		all, err := h.st.ListMedia(ctx, "")
+		all, err := h.st.ListMedia(ctx, store.All, "")
 		if err != nil {
 			h.log.Error("autocomplete sounds", "err", err)
 			break
@@ -208,7 +208,7 @@ func (h *Handler) OnAutocomplete(e *events.AutocompleteInteractionCreate) {
 				add(m.Name, "id:"+strconv.FormatInt(m.ID, 10))
 			}
 		}
-		if tags, err := h.st.Tags(ctx); err == nil {
+		if tags, err := h.st.Tags(ctx, store.All); err == nil {
 			for _, t := range tags {
 				add("Random: "+t, "tag:"+t)
 			}

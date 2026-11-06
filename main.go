@@ -159,7 +159,7 @@ func importSounds(ctx context.Context, st *store.Store, dir media.Dir, soundsDir
 		if err != nil {
 			continue
 		}
-		if _, err := st.MediaByName(ctx, name); err == nil {
+		if _, err := st.MediaByName(ctx, store.GuildScope(true), name); err == nil {
 			continue
 		}
 		m, err := media.Probe(ctx, path, name)

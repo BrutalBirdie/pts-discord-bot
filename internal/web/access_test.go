@@ -17,6 +17,7 @@ import (
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/access"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
+	"github.com/BrutalBirdie/pts-discord-bot/internal/messages"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/store"
 )
 
@@ -150,19 +151,45 @@ func TestDiscordUserIsNeverAdmin(t *testing.T) {
 	}
 }
 
-func TestDiscordRoutesArePhaseOneOnly(t *testing.T) {
+func TestDiscordRoutes(t *testing.T) {
+	mux := testServer(t).routes()
+	pending := &store.Session{Username: "discord:9", Provider: store.ProviderDiscord, GuildIDs: []string{"1"}}
+	approved := &store.Session{Username: "discord:9", Provider: store.ProviderDiscord, GuildIDs: []string{"1"}, Granted: []string{"1"}}
 	for _, c := range []struct {
 		method, target string
-		ok             bool
+		pending, ok    bool
 	}{
-		{"GET", "/", true}, {"HEAD", "/", true}, {"GET", "/?again=1", true}, {"POST", "/logout", true}, {"POST", "/account", true},
-		{"POST", "/access/request", true}, {"POST", "/access/withdraw", true},
-		{"GET", "/tasks", false}, {"GET", "/servers/1", false}, {"GET", "/media/1/file", false}, {"GET", "/admin", false},
-		{"GET", "/admin/access", false}, {"POST", "/admin/access/1", false}, {"GET", "/members", false}, {"POST", "/", false}, {"GET", "/trash", false},
+		{"GET", "/", true, true}, {"HEAD", "/", true, true}, {"GET", "/?again=1", true, true}, {"POST", "/logout", true, true}, {"POST", "/account", true, true},
+		{"POST", "/access/request", true, true}, {"POST", "/access/withdraw", true, true},
+		{"GET", "/tasks", false, true}, {"GET", "/servers/1", false, true}, {"GET", "/media/1/file", false, true}, {"GET", "/members", false, true},
+		{"GET", "/trash", false, true}, {"POST", "/trash/task/1/restore", false, true}, {"POST", "/media", false, true}, {"POST", "/servers/1/play", false, true},
+		{"GET", "/admin", false, false}, {"GET", "/admin/access", false, false}, {"POST", "/admin/access/1", false, false}, {"POST", "/admin/settings", false, false},
+		{"POST", "/trash/task/1/purge", false, false}, {"POST", "/trash/empty", false, false}, {"POST", "/servers/refresh", false, false}, {"POST", "/", false, false},
 	} {
-		if got := discordAllowed(httptest.NewRequest(c.method, c.target, nil)); got != c.ok {
-			t.Errorf("%s %s: allowed=%v", c.method, c.target, got)
+		r := httptest.NewRequest(c.method, c.target, nil)
+		_, r.Pattern = mux.Handler(r)
+		if got := discordAllowed(r, pending); got != c.pending {
+			t.Errorf("pending %s %s (%s): allowed=%v", c.method, c.target, r.Pattern, got)
 		}
+		if got := discordAllowed(r, approved); got != c.ok {
+			t.Errorf("approved %s %s (%s): allowed=%v", c.method, c.target, r.Pattern, got)
+		}
+	}
+	for pattern := range discordRoutes {
+		method, path, _ := strings.Cut(pattern, " ")
+		path = strings.NewReplacer("{id}", "1", "{kind}", "task").Replace(path)
+		if _, got := mux.Handler(httptest.NewRequest(method, path, nil)); got != pattern {
+			t.Errorf("allowlisted %s is not a route (matched %q)", pattern, got)
+		}
+	}
+}
+
+func TestGrantedGuilds(t *testing.T) {
+	if got := grantedGuilds([]string{"1", "2", "3"}, []string{"3", "1", "9"}); !slices.Equal(got, []string{"1", "3"}) {
+		t.Errorf("granted: %v", got)
+	}
+	if got := grantedGuilds([]string{"1"}, nil); len(got) != 0 {
+		t.Errorf("left server still granted: %v", got)
 	}
 }
 
@@ -336,7 +363,7 @@ func TestAccessPageStates(t *testing.T) {
 		{accessPage{View: "denied", User: u}, []string{"Request denied", `href="/?again=1"`}, nil},
 		{accessPage{View: "revoked", User: u}, []string{"Access removed", `href="/?again=1"`}, nil},
 		{accessPage{View: "none", User: u}, []string{"No shared server"}, []string{`href="/?again=1"`}},
-		{accessPage{View: "approved", User: u, Active: []string{"PTS Gaming"}}, []string{"Access approved for: PTS Gaming. Managing tasks is coming soon."}, nil},
+		{accessPage{View: "approved", User: u, Active: []string{"PTS Gaming"}}, []string{"Access approved for: PTS Gaming.", "Open the dashboard"}, nil},
 	} {
 		body := renderAs(t, s, sess, "access", c.data)
 		for _, w := range c.want {
@@ -402,5 +429,47 @@ func TestPendingBadgeAndCSP(t *testing.T) {
 	securityHeaders(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "img-src 'self' https://cdn.discordapp.com;") {
 		t.Errorf("csp: %s", csp)
+	}
+}
+
+func TestPagesForApprovedDiscordUser(t *testing.T) {
+	s := testServer(t)
+	sess := &store.Session{Username: "discord:9", DisplayName: "Mira", Provider: store.ProviderDiscord, GuildIDs: []string{"1", "2"}, Granted: []string{"1"}, CSRFToken: "tok"}
+	cloudron := &store.Session{Username: "ann", DisplayName: "Ann", IsAdmin: true, CSRFToken: "tok"}
+	guilds := []bot.Guild{{ID: "1", Name: "PTS Gaming"}}
+	sound := store.Media{ID: 5, Name: "a.ogg", Kind: store.KindSound, GuildID: "1", UsedBy: []string{"task Intro"}, UsedElse: 2}
+	msg := messages.Message{ID: 7, Name: "Hello", GuildID: "1", Embeds: []messages.Embed{}}
+	for _, c := range []struct {
+		sess    *store.Session
+		page    string
+		data    any
+		want    []string
+		without []string
+	}{
+		{sess, "dashboard", dashboardData{}, []string{`href="/tasks"`, `href="/messages"`, `href="/media"`, `href="/trash"`, `href="/servers"`, "Dashboard"}, []string{`href="/admin"`, "administrator"}},
+		{sess, "servers", serversData{Guilds: guilds}, []string{`href="/servers/1"`}, []string{"/servers/refresh", "Open in Discord"}},
+		{sess, "media", mediaData{Items: []store.Media{sound}, Counts: map[string]int{"": 1}, Owners: guilds, Names: map[string]string{"1": "PTS Gaming"}},
+			[]string{`<input type="hidden" name="guild" value="1">`, "used by task Intro, 2 tasks or messages in other servers", `aria-label="Delete a.ogg" data-tip="Delete" disabled`, "PTS Gaming"},
+			[]string{"Shared, for Cloudron users only"}},
+		{cloudron, "media", mediaData{Counts: map[string]int{}, Owners: guilds, Shared: true},
+			[]string{`<option value="">Shared, for Cloudron users only</option>`, `<option value="1">PTS Gaming</option>`}, nil},
+		{sess, "messages", messagesData{Rows: []messageRow{{Message: msg, Guild: "PTS Gaming", UsedElse: 1}}}, []string{"PTS Gaming", "1 task in other servers"}, nil},
+		{sess, "message", messageEditor{Message: msg, Owners: guilds, ByID: map[int64]store.Media{}, Limits: map[string]int{"content": 2000, "embeds": 10, "embedTotal": 6000}},
+			[]string{`<input type="hidden" name="guild" value="1">`}, []string{"Shared, for Cloudron users only"}},
+		{cloudron, "message", messageEditor{Message: msg, Owners: guilds, Shared: true, ByID: map[int64]store.Media{}, Limits: map[string]int{"content": 2000, "embeds": 10, "embedTotal": 6000}},
+			[]string{`<select name="guild" data-reload`, `<option value="1" selected>PTS Gaming</option>`, `<option value="">Shared, for Cloudron users only</option>`}, nil},
+		{sess, "trash", trashData{Counts: map[string]int{}}, []string{"Only admins can delete items for good"}, []string{"/purge", "/trash/empty"}},
+	} {
+		body := renderAs(t, s, c.sess, c.page, c.data)
+		for _, w := range c.want {
+			if !strings.Contains(body, w) {
+				t.Errorf("%s as %s: missing %q", c.page, c.sess.Username, w)
+			}
+		}
+		for _, w := range c.without {
+			if strings.Contains(body, w) {
+				t.Errorf("%s as %s: should not contain %q", c.page, c.sess.Username, w)
+			}
+		}
 	}
 }

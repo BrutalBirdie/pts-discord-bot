@@ -75,7 +75,9 @@ func New(cfg Config, st *store.Store, b *bot.Bot, r *runner.Runner, log *slog.Lo
 	return s, nil
 }
 
-func (s *Server) Handler() http.Handler {
+func (s *Server) Handler() http.Handler { return securityHeaders(s.routes()) }
+
+func (s *Server) routes() *http.ServeMux {
 	static, _ := fs.Sub(assets, "static")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
@@ -139,7 +141,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /admin/{tab}", s.requireAdmin(s.admin))
 	mux.Handle("POST /admin/settings", s.requireAdmin(s.saveSettings))
 	mux.Handle("POST /admin/access/{user}", s.requireAdmin(s.decideAccess))
-	return securityHeaders(mux)
+	return mux
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -191,9 +193,22 @@ func (s *Server) authed(h http.HandlerFunc, stream bool) http.Handler {
 		// BOT_ADMINS and BOT_ADMIN_GROUP changes apply to existing sessions after a restart
 		sess.IsAdmin = s.isAdmin(sess)
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, sess))
-		if sess.Discord() && !discordAllowed(r) {
-			s.fail(w, r, http.StatusForbidden, "Discord accounts can only open the start page for now.")
-			return
+		if sess.Discord() {
+			// grants are read per request, a revoke or a server left applies right away
+			grants, err := s.store.GrantedGuilds(r.Context(), discordID(sess))
+			if err != nil {
+				s.internalError(w, r, err)
+				return
+			}
+			sess.Granted = grantedGuilds(grants, sess.GuildIDs)
+			if !discordAllowed(r, sess) {
+				msg := "Only Cloudron users can open this page."
+				if sess.NoAccess() {
+					msg = "No server is approved for your account yet. Ask for access on the start page."
+				}
+				s.fail(w, r, http.StatusForbidden, msg)
+				return
+			}
 		}
 		if r.Method == http.MethodPost && !(stream && s.validOrigin(r, sess) || !stream && s.validPost(w, r, sess)) {
 			s.fail(w, r, http.StatusForbidden, "The request could not be verified. Reload the page and try again.")
@@ -328,8 +343,8 @@ func (s *Server) renderMsg(w http.ResponseWriter, r *http.Request, status int, p
 			prefs = p
 		}
 		var err error
-		if !sess.Discord() {
-			if trash, err = s.store.CountTrash(r.Context()); err != nil {
+		if !sess.NoAccess() {
+			if trash, err = s.store.CountTrash(r.Context(), sess.Scope()); err != nil {
 				s.log.Error("counting the trash", "err", err)
 			}
 		}

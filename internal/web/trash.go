@@ -59,7 +59,8 @@ func (s *Server) trash(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	all, err := s.store.ListTrash(ctx)
+	sc := sessionFrom(r).Scope()
+	all, err := s.store.ListTrash(ctx, sc)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -87,19 +88,19 @@ func (s *Server) trash(w http.ResponseWriter, r *http.Request) {
 		row := trashRow{TrashItem: it, DaysLeft: daysLeft(it.DeletedAt, d.Days, now)}
 		if it.Kind == store.TrashMedia {
 			if taken == nil {
-				live, err := s.store.ListMedia(ctx, "")
+				live, err := s.store.ListMedia(ctx, sc, "")
 				if err != nil {
 					s.internalError(w, r, err)
 					return
 				}
 				taken = make(map[string]bool, len(live))
 				for _, m := range live {
-					taken[m.Name] = true
+					taken[m.GuildID+"/"+m.Name] = true
 				}
 			}
-			if taken[it.Name] {
+			if owner := it.GuildID + "/"; taken[owner+it.Name] {
 				for n := 1; ; n++ {
-					if name := store.RestoredName(it.Name, n); !taken[name] {
+					if name := store.RestoredName(it.Name, n); !taken[owner+name] {
 						row.RestoreAs = name
 						break
 					}
@@ -173,7 +174,10 @@ func (s *Server) trashedItem(w http.ResponseWriter, r *http.Request) (kind strin
 		s.notFound(w, r)
 		return
 	}
-	name, err := s.store.TrashedName(r.Context(), kind, id)
+	name, guildID, err := s.store.TrashedName(r.Context(), kind, id)
+	if err == nil && !sessionFrom(r).Scope().Has(guildID) {
+		err = store.ErrNotFound
+	}
 	if err != nil {
 		s.storeErr(w, r, err)
 		return kind, id, name, false

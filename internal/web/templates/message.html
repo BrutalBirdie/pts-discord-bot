@@ -10,7 +10,7 @@
   </div>
   {{end}}
 </div>
-{{if not $e.New}}<div class="meta">{{range $e.UsedBy}}<span class="chip accent">{{icon "calendar"}}used by {{.}}</span>{{end}}<span class="chip">changed by {{$m.UpdatedBy}}, {{when $m.UpdatedAt}}</span></div>{{end}}
+{{if not $e.New}}<div class="meta">{{range $e.UsedBy}}<span class="chip accent">{{icon "calendar"}}used by {{.}}</span>{{end}}{{with $e.UsedElse}}<span class="chip">{{icon "calendar"}}used by {{plural . "task" "tasks"}} in other servers</span>{{end}}<span class="chip">changed by {{$m.UpdatedBy}}, {{when $m.UpdatedAt}}</span></div>{{end}}
 {{with $e.SendError}}<div class="callout danger">{{icon "circle-x"}}<span>{{.}}</span></div>{{end}}
 {{if $e.Problems}}<div class="callout danger">{{icon "triangle-alert"}}<div><strong>Not saved.</strong><ul class="problems">{{range $e.Problems}}<li>{{.}}</li>{{end}}</ul></div></div>
 {{else if $e.Unsaved}}<div class="callout info">{{icon "info"}}<span>Changes are not saved yet.</span></div>{{end}}
@@ -23,6 +23,18 @@
 
   <section class="card form">
     <label class="field"><span>Name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="100" required><span class="help">Only shown here and in task steps.</span></label>
+    {{if or $e.Shared (gt (len $e.Owners) 1)}}
+    <div class="field"><span>Server</span>
+      <div class="inline">
+        <select name="guild" data-reload aria-label="Server" class="grow">
+          {{if $e.Shared}}<option value="">Shared, for Cloudron users only</option>{{end}}
+          {{range $e.Owners}}<option value="{{.ID}}"{{if eq .ID $m.GuildID}} selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+        <button type="submit" name="op" value="reload" class="ib no-js" aria-label="Load the files of this server" data-tip="Load files">{{icon "refresh-cw"}}</button>
+      </div>
+      <span class="help">Tasks of other servers cannot send it. Discord users see only the messages of the servers they manage.</span>
+    </div>
+    {{else}}<input type="hidden" name="guild" value="{{$m.GuildID}}">{{end}}
     <label class="field"><span>Text <span class="counter" data-count="content" data-max="{{index $e.Limits "content"}}">{{$m.ContentChars}} / {{index $e.Limits "content"}}</span></span>
       <textarea name="content" rows="5" class="prose" data-preview="content">{{$m.Content}}</textarea>
       <span class="help">Discord markdown works. Placeholders: <span class="mono">{date} {time} {server} {channel}</span>, and in runs started by a member <span class="mono">{member}</span> (a mention) and <span class="mono">{member_name}</span>. A member mention is written as <span class="mono">&lt;@id&gt;</span>.</span>
@@ -127,7 +139,7 @@
   <form method="post" action="/messages/{{$m.ID}}/delete" class="danger-box">
     <input type="hidden" name="csrf" value="{{$csrf}}">
     <h3>{{icon "trash-2"}}Delete message</h3>
-    {{if $e.UsedBy}}<p class="small">Used by {{join $e.UsedBy ", "}}. Remove it from their steps first.</p>
+    {{if or $e.UsedBy $e.UsedElse}}<p class="small">Used by {{join $e.UsedBy ", "}}{{if and $e.UsedBy $e.UsedElse}}, {{end}}{{with $e.UsedElse}}{{plural . "task" "tasks"}} in other servers{{end}}. Remove it from their steps first.</p>
     {{else}}<p class="small">{{if $.TrashDays}}Moves the message to the Trash for {{plural $.TrashDays "day" "days"}}, where it can be restored.{{else}}Removes the message right away.{{end}} The files stay in the media library.</p>
     <div class="btns"><button type="submit" class="ib danger" aria-label="Delete message" data-tip="Delete message" data-confirm-desc="{{if $.TrashDays}}Moves the message to the Trash.{{else}}Removes the message right away. This cannot be undone.{{end}}"{{if not $.TrashDays}} data-irreversible{{end}}>{{icon "trash-2"}}<span class="lbl">Delete message</span></button></div>{{end}}
   </form>

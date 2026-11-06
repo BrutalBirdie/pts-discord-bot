@@ -82,10 +82,13 @@ expect "old sounds imported" "imported sound into the media library.*beep.ogg" "
 expect "sounds directory removed" "^gone$" "$(docker exec "${app}" sh -c 'test -e /app/data/sounds || echo gone')"
 expect "no token, no crash" "DISCORD_TOKEN is not set|web ui listening" "$(docker logs "${app}" 2>&1)"
 
-echo "==> Store tests against PostgreSQL"
+echo "==> Store and web tests against PostgreSQL"
 docker exec "${db}" psql -U bot -d bot -XAtc "CREATE DATABASE storetest" >/dev/null
+docker exec "${db}" psql -U bot -d bot -XAtc "CREATE DATABASE webtest" >/dev/null
 docker run --rm --network "${net}" -e TEST_DATABASE_URL="postgres://bot:botpw@${db}:5432/storetest" "${build_img}" go test -count=1 ./internal/store/ \
     && pass "store tests" || fail "store tests" "see the output above"
+docker run --rm --network "${net}" -e TEST_DATABASE_URL="postgres://bot:botpw@${db}:5432/webtest" "${build_img}" go test -count=1 ./internal/web/ \
+    && pass "web tests" || fail "web tests" "see the output above"
 
 docker exec "${app}" sed -i 's/^export BOT_ADMIN_GROUP=.*/export BOT_ADMIN_GROUP="bot-admins"/' /app/data/env.sh
 docker restart "${app}" >/dev/null
@@ -140,7 +143,13 @@ INSERT INTO access_requests (user_id, guild_ids, note, requested_at, expires_at)
 INSERT INTO access_requests (user_id, guild_ids, status, decided_by, decided_at) VALUES ('333333333333333334', '{1}', 'approved', 'ann', now());
 INSERT INTO discord_grants (user_id, guild_id, granted_by) VALUES ('333333333333333334', '1', 'ann');
 INSERT INTO sessions (id_hash, username, display_name, is_admin, groups, csrf_token, provider, guild_ids)
-  VALUES (sha256('e2e-discord-session'::bytea), 'discord:333333333333333334', 'ann', true, '{bot-admins}', 'e2e', 'discord', '{1}')" >/dev/null
+  VALUES (sha256('e2e-discord-session'::bytea), 'discord:333333333333333334', 'ann', true, '{bot-admins}', 'e2e', 'discord', '{1,2}');
+INSERT INTO tasks (name, guild_id, enabled, trigger, steps, created_by, updated_by) VALUES
+  ('Guild one task', '1', false, '{\"kind\":\"manual\",\"timezone\":\"UTC\"}', '[{\"type\":\"leave\"}]', 'e2e', 'e2e'),
+  ('Guild two task', '2', false, '{\"kind\":\"manual\",\"timezone\":\"UTC\"}', '[{\"type\":\"leave\"}]', 'e2e', 'e2e');
+INSERT INTO messages (name, guild_id, created_by, updated_by) VALUES ('Guild one msg', '1', 'e2e', 'e2e'), ('Guild two msg', '2', 'e2e', 'e2e');
+INSERT INTO messages (name, guild_id, created_by, updated_by, deleted_at, deleted_by) VALUES ('Trash one', '1', 'e2e', 'e2e', now(), 'e2e'), ('Trash two', '2', 'e2e', 'e2e', now(), 'e2e');
+INSERT INTO media (name, kind, size_bytes, uploaded_by, guild_id) VALUES ('guild-one.ogg', 'sound', 1, 'e2e', '1'), ('guild-two.ogg', 'sound', 1, 'e2e', '2')" >/dev/null
 docker exec "${app}" sed -i 's/^export DISCORD_CLIENT_SECRET=.*/export DISCORD_CLIENT_SECRET="e2e-secret"/' /app/data/env.sh
 docker restart "${app}" >/dev/null
 wait_healthy

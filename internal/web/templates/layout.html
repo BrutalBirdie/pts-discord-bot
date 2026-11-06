@@ -30,7 +30,7 @@
 {{with .Session}}
 <nav class="tabbar" aria-label="Main">
   <a href="/"{{if eq $.Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Home</span></a>
-  {{if not .Discord}}<a href="/servers"{{if eq $.Nav "servers"}} aria-current="page"{{end}}>{{icon "server"}}<span>Servers</span></a>
+  {{if not .NoAccess}}<a href="/servers"{{if eq $.Nav "servers"}} aria-current="page"{{end}}>{{icon "server"}}<span>Servers</span></a>
   <a href="/tasks"{{if eq $.Nav "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span>Tasks</span></a>
   <a href="/media"{{if eq $.Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>{{end}}
   <button type="button" popovertarget="sheet-account">{{icon "more"}}<span>More</span></button>
@@ -41,7 +41,7 @@
     <section>
       <div class="profile"><span class="avatar">{{initials .DisplayName}}</span><span><strong>{{.DisplayName}}</strong><span class="small muted">{{if .Discord}}Discord account{{else}}{{.Username}}{{end}}{{if .IsAdmin}} · administrator{{end}}</span></span></div>
     </section>
-    {{if not .Discord}}<section>
+    {{if not .NoAccess}}<section>
       <span class="eyebrow">Pages</span>
       <a class="choice" href="/messages">{{icon "message-square"}}<span><strong>Messages</strong><small>Saved messages for tasks</small></span></a>
       <a class="choice" href="/trash">{{icon "trash-2"}}<span><strong>Trash{{with $.Trash}} <span class="badge">{{.}}</span>{{end}}</strong><small>Deleted tasks, messages and media</small></span></a>

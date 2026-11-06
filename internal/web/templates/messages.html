@@ -17,7 +17,9 @@
           <span class="meta">
             {{with $m.Embeds}}<span class="chip">{{plural (len .) "embed" "embeds"}}</span>{{end}}
             {{with $m.Files}}<span class="chip">{{icon "paperclip"}}{{plural (len .) "file" "files"}}</span>{{end}}
+            {{with .Guild}}<span class="chip">{{icon "server"}}{{.}}</span>{{end}}
             {{range .UsedBy}}<span class="chip accent">{{icon "calendar"}}{{.}}</span>{{end}}
+            {{with .UsedElse}}<span class="chip">{{icon "calendar"}}{{plural . "task" "tasks"}} in other servers</span>{{end}}
           </span>
         </span>
         <span class="go" aria-hidden="true">{{icon "chevron-right"}}</span>

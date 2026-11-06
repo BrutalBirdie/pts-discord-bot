@@ -49,6 +49,7 @@ type Message struct {
 	Content   string
 	Embeds    []Embed
 	Files     []int64 // media ids sent as attachments
+	GuildID   string  // owning server, "" for shared
 	UpdatedBy string
 	UpdatedAt time.Time
 }

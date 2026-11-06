@@ -41,7 +41,11 @@ type dashboardData struct {
 
 func (s *Server) playingViews(r *http.Request) []playingView {
 	var out []playingView
+	sess := sessionFrom(r)
 	for _, p := range s.bot.NowPlaying() {
+		if !sess.CanGuild(p.GuildID) {
+			continue
+		}
 		out = append(out, playingView{P: p, Guild: s.bot.GuildName(p.GuildID), CSRF: sessionFrom(r).CSRFToken, Next: r.URL.Path})
 	}
 	slices.SortFunc(out, func(a, b playingView) int { return a.P.Started.Compare(b.P.Started) })
@@ -50,7 +54,8 @@ func (s *Server) playingViews(r *http.Request) []playingView {
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	list, err := s.store.ListTasks(ctx)
+	sc := sessionFrom(r).Scope()
+	list, err := s.store.ListTasks(ctx, sc)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -61,7 +66,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := dashboardData{Playing: s.playingViews(r)}
-	for _, g := range s.bot.Guilds() {
+	for _, g := range s.guilds(r) {
 		d.Servers++
 		d.Members += g.Cached
 	}
@@ -86,11 +91,11 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	if d.MoreSoon = len(d.Upcoming) > 8; d.MoreSoon {
 		d.Upcoming = d.Upcoming[:8]
 	}
-	if d.Runs, err = s.store.ListRuns(ctx, store.RunQuery{Limit: 8}); err != nil {
+	if d.Runs, err = s.store.ListRuns(ctx, store.RunQuery{Scope: sc, Limit: 8}); err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	day := store.RunQuery{Since: now.Add(-24 * time.Hour)}
+	day := store.RunQuery{Scope: sc, Since: now.Add(-24 * time.Hour)}
 	if d.Runs24h, err = s.store.CountRuns(ctx, day); err != nil {
 		s.internalError(w, r, err)
 		return

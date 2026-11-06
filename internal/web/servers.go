@@ -21,9 +21,12 @@ type serversData struct {
 }
 
 func (s *Server) servers(w http.ResponseWriter, r *http.Request) {
-	d := serversData{InviteURL: s.bot.InviteURL(), Paging: newPaging(r)}
+	d := serversData{Paging: newPaging(r)}
+	if !sessionFrom(r).Discord() {
+		d.InviteURL = s.bot.InviteURL()
+	}
 	var shown []bot.Guild
-	for _, g := range s.bot.Guilds() {
+	for _, g := range s.guilds(r) {
 		if d.Paging.Matches(g.Name, g.ID) {
 			shown = append(shown, g)
 		}
@@ -61,8 +64,9 @@ type serverData struct {
 }
 
 func (s *Server) server(w http.ResponseWriter, r *http.Request) {
+	sess := sessionFrom(r)
 	g, ok := s.bot.Guild(r.PathValue("id"))
-	if !ok {
+	if !ok || !sess.CanGuild(g.ID) {
 		s.notFound(w, r)
 		return
 	}
@@ -74,7 +78,7 @@ func (s *Server) server(w http.ResponseWriter, r *http.Request) {
 	}
 	switch d.Tab {
 	case "tasks":
-		list, err := s.store.ListTasks(r.Context())
+		list, err := s.store.ListTasks(r.Context(), store.GuildScope(false, g.ID))
 		if err != nil {
 			s.internalError(w, r, err)
 			return
@@ -95,7 +99,7 @@ func (s *Server) server(w http.ResponseWriter, r *http.Request) {
 				d.Text = append(d.Text, c)
 			}
 		}
-		sounds, err := s.store.ListMedia(r.Context(), "")
+		sounds, err := s.store.ListMedia(r.Context(), sess.ItemScope(g.ID), "")
 		if err != nil {
 			s.internalError(w, r, err)
 			return
@@ -121,10 +125,12 @@ func (s *Server) searchMembers(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	var all []bot.Member
 	if g := q.Get("guild"); g != "" {
-		all = s.bot.Members(g)
+		if sessionFrom(r).CanGuild(g) {
+			all = s.bot.Members(g)
+		}
 	} else {
 		seen := map[string]bool{}
-		for _, g := range s.bot.Guilds() {
+		for _, g := range s.guilds(r) {
 			for _, m := range s.bot.Members(g.ID) {
 				if !seen[m.ID] {
 					seen[m.ID] = true
@@ -141,10 +147,11 @@ func (s *Server) searchMembers(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(hits)
 }
 
+// guildID reads the server of a voice control, not found for servers the user may not manage.
 func (s *Server) guildID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := r.PathValue("id")
 	gid, ok := bot.ParseID(id)
-	if !ok {
+	if !ok || !sessionFrom(r).CanGuild(gid.String()) {
 		s.notFound(w, r)
 		return "", false
 	}
@@ -207,8 +214,12 @@ func (s *Server) playInChannel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) startPlay(w http.ResponseWriter, r *http.Request, guildID, channelID, mediaID string) {
+	sess := sessionFrom(r)
 	mid, _ := strconv.ParseInt(mediaID, 10, 64)
 	m, err := s.store.Media(r.Context(), mid)
+	if err == nil && !sess.Scope().Has(m.GuildID) {
+		err = store.ErrNotFound
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		s.fail(w, r, http.StatusBadRequest, "Pick a sound.")
 		return
@@ -218,8 +229,12 @@ func (s *Server) startPlay(w http.ResponseWriter, r *http.Request, guildID, chan
 		return
 	}
 	ch, chGuild, ok := s.bot.Channel(channelID)
-	if !ok || !ch.Voice || (guildID != "" && chGuild != guildID) {
+	if !ok || !ch.Voice || (guildID != "" && chGuild != guildID) || !sess.CanGuild(chGuild) {
 		s.fail(w, r, http.StatusBadRequest, "Pick a voice channel.")
+		return
+	}
+	if m.GuildID != "" && m.GuildID != chGuild {
+		s.fail(w, r, http.StatusBadRequest, "The file belongs to another server, pick a channel there.")
 		return
 	}
 	if !ch.Usable {

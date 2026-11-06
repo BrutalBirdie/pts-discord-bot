@@ -275,21 +275,73 @@ func (s *Server) discordCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-// discordRoutes is all a Discord session may reach until access per server is built.
-var discordRoutes = map[string]bool{
-	"GET /":                 true,
+// discordStart is all a Discord user without an approved server may reach.
+var discordStart = map[string]bool{
+	"GET /{$}":              true,
 	"POST /logout":          true,
 	"POST /account":         true,
 	"POST /access/request":  true,
 	"POST /access/withdraw": true,
 }
 
-func discordAllowed(r *http.Request) bool {
-	method := r.Method
-	if method == http.MethodHead {
-		method = http.MethodGet
+// discordRoutes are the routes of approved Discord users, keyed by mux pattern.
+// Each handler limits what it shows and changes to the user's servers.
+var discordRoutes = map[string]bool{
+	"GET /servers":                    true,
+	"GET /servers/{id}":               true,
+	"GET /members":                    true,
+	"POST /servers/{id}/stop":         true,
+	"POST /servers/{id}/leave":        true,
+	"POST /servers/{id}/play":         true,
+	"POST /servers/{id}/join":         true,
+	"GET /tasks":                      true,
+	"GET /tasks/new":                  true,
+	"POST /tasks/new":                 true,
+	"GET /tasks/{id}":                 true,
+	"POST /tasks/{id}":                true,
+	"POST /tasks/{id}/run":            true,
+	"POST /tasks/{id}/pause":          true,
+	"POST /tasks/{id}/resume":         true,
+	"POST /tasks/{id}/duplicate":      true,
+	"POST /tasks/{id}/delete":         true,
+	"GET /messages":                   true,
+	"GET /messages/new":               true,
+	"POST /messages/new":              true,
+	"GET /messages/{id}":              true,
+	"POST /messages/{id}":             true,
+	"POST /messages/{id}/send":        true,
+	"POST /messages/{id}/duplicate":   true,
+	"POST /messages/{id}/delete":      true,
+	"GET /media":                      true,
+	"POST /media":                     true,
+	"POST /media/url":                 true,
+	"GET /media/{id}/file":            true,
+	"GET /sounds":                     true,
+	"POST /prefs/preview-volume":      true,
+	"POST /media/{id}":                true,
+	"POST /media/{id}/play":           true,
+	"POST /media/{id}/delete":         true,
+	"GET /trash":                      true,
+	"POST /trash/{kind}/{id}/restore": true,
+}
+
+// discordAllowed checks the route of a Discord session, r.Pattern is set by the ServeMux.
+func discordAllowed(r *http.Request, sess *store.Session) bool {
+	if discordStart[r.Pattern] {
+		return true
 	}
-	return discordRoutes[method+" "+r.URL.Path]
+	return !sess.NoAccess() && discordRoutes[r.Pattern]
+}
+
+// grantedGuilds keeps the approved servers the user was still in at login.
+func grantedGuilds(grants, member []string) []string {
+	var out []string
+	for _, g := range grants {
+		if slices.Contains(member, g) {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // isAdmin is recomputed on every request. BOT_ADMINS and BOT_ADMIN_GROUP name
@@ -342,7 +394,7 @@ func avatarURL(u store.DiscordUser) string {
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
-	if sessionFrom(r).Discord() {
+	if sessionFrom(r).NoAccess() {
 		s.discordHome(w, r)
 		return
 	}

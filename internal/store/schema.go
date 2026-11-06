@@ -104,7 +104,6 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_by text;
 ALTER TABLE media ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE media ADD COLUMN IF NOT EXISTS deleted_by text;
 ALTER TABLE media DROP CONSTRAINT IF EXISTS media_name_key;
-CREATE UNIQUE INDEX IF NOT EXISTS media_name_live ON media (name) WHERE deleted_at IS NULL;
 CREATE TABLE IF NOT EXISTS bot_profile_changes (
     guild_id text NOT NULL,
     field text NOT NULL,
@@ -144,4 +143,9 @@ CREATE TABLE IF NOT EXISTS discord_grants (
     granted_by text NOT NULL,
     granted_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, guild_id)
-);`
+);
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS guild_id text;
+ALTER TABLE media ADD COLUMN IF NOT EXISTS guild_id text;
+DROP INDEX IF EXISTS media_name_live;
+CREATE UNIQUE INDEX IF NOT EXISTS media_owner_name_live ON media (coalesce(guild_id, ''), name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS runs_guild ON runs (guild_id, id DESC);`

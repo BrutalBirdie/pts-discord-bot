@@ -25,7 +25,7 @@ func testStore(t *testing.T) *Store {
 	if err := s.CreateSchema(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.pool.Exec(ctx, `TRUNCATE discord_users, access_requests, discord_grants, sessions, oidc_logins, audit_log`); err != nil {
+	if _, err := s.pool.Exec(ctx, `TRUNCATE discord_users, access_requests, discord_grants, sessions, oidc_logins, audit_log, tasks, runs, messages, media, preview_volume`); err != nil {
 		t.Fatal(err)
 	}
 	return s

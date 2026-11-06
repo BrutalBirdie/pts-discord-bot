@@ -30,15 +30,28 @@ type Media struct {
 	UploadedBy  string
 	CreatedAt   time.Time
 	Tags        []string
-	UsedBy      []string // names of tasks and messages that reference it, filled by ListMedia
+	GuildID     string   // owning server, "" for shared
+	UsedBy      []string // names of tasks and messages in scope that reference it, filled by FindMedia
+	UsedElse    int      // tasks and messages out of scope that reference it
 }
 
-const mediaCols = `id, name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, created_at, tags`
+const mediaCols = `id, name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, created_at, tags, coalesce(guild_id, '')`
+
+func (m *Media) fields() []any {
+	return []any{&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &m.GuildID}
+}
 
 func scanMedia(r pgx.Row) (Media, error) {
 	var m Media
-	err := r.Scan(&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags)
+	err := r.Scan(m.fields()...)
 	return m, err
+}
+
+func nullable(guildID string) *string {
+	if guildID == "" {
+		return nil
+	}
+	return &guildID
 }
 
 // UpdateMedia renames a file and sets its tags.
@@ -58,8 +71,8 @@ func (s *Store) UpdateMedia(ctx context.Context, id int64, name string, tags []s
 }
 
 // Tags returns every tag of sounds and videos, the ones Play steps can pick from.
-func (s *Store) Tags(ctx context.Context) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT DISTINCT unnest(tags) AS t FROM media WHERE kind IN ('sound', 'video') AND deleted_at IS NULL ORDER BY t`)
+func (s *Store) Tags(ctx context.Context, sc Scope) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT unnest(tags) AS t FROM media WHERE kind IN ('sound', 'video') AND deleted_at IS NULL AND `+inScope("guild_id", "1")+` ORDER BY t`, sc.param())
 	if err != nil {
 		return nil, err
 	}
@@ -67,15 +80,16 @@ func (s *Store) Tags(ctx context.Context) ([]string, error) {
 }
 
 // RandomSound picks a sound or video with the tag.
-func (s *Store) RandomSound(ctx context.Context, tag string) (Media, error) {
-	m, err := scanMedia(s.pool.QueryRow(ctx, `SELECT `+mediaCols+` FROM media WHERE kind IN ('sound', 'video') AND deleted_at IS NULL AND $1 = ANY (tags) ORDER BY random() LIMIT 1`, tag))
+func (s *Store) RandomSound(ctx context.Context, sc Scope, tag string) (Media, error) {
+	m, err := scanMedia(s.pool.QueryRow(ctx, `SELECT `+mediaCols+` FROM media WHERE kind IN ('sound', 'video') AND deleted_at IS NULL AND $1 = ANY (tags) AND `+inScope("guild_id", "2")+`
+ORDER BY random() LIMIT 1`, tag, sc.param()))
 	return m, noRows(err)
 }
 
 func (s *Store) AddMedia(ctx context.Context, m Media) (int64, error) {
 	var id int64
-	err := s.pool.QueryRow(ctx, `INSERT INTO media (name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`, m.Name, m.Kind, m.ContentType, m.SizeBytes, m.DurationMS, m.Width, m.Height, m.UploadedBy).Scan(&id)
+	err := s.pool.QueryRow(ctx, `INSERT INTO media (name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, guild_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`, m.Name, m.Kind, m.ContentType, m.SizeBytes, m.DurationMS, m.Width, m.Height, m.UploadedBy, nullable(m.GuildID)).Scan(&id)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return 0, ErrNameTaken
@@ -94,45 +108,56 @@ func (s *Store) AnyMedia(ctx context.Context, id int64) (Media, error) {
 	return m, noRows(err)
 }
 
-func (s *Store) MediaByName(ctx context.Context, name string) (Media, error) {
-	m, err := scanMedia(s.pool.QueryRow(ctx, `SELECT `+mediaCols+` FROM media WHERE name = $1 AND deleted_at IS NULL`, name))
+// MediaByName finds a file in scope by name, a shared one first.
+func (s *Store) MediaByName(ctx context.Context, sc Scope, name string) (Media, error) {
+	m, err := scanMedia(s.pool.QueryRow(ctx, `SELECT `+mediaCols+` FROM media WHERE name = $1 AND deleted_at IS NULL AND `+inScope("guild_id", "2")+`
+ORDER BY guild_id NULLS FIRST LIMIT 1`, name, sc.param()))
 	return m, noRows(err)
 }
 
-// listMediaQuery fills UsedBy with the tasks and messages that reference a file.
-const listMediaQuery = `SELECT ` + mediaCols + `,
-  ARRAY(SELECT 'task ' || t.name FROM tasks t WHERE t.deleted_at IS NULL AND (t.steps @> jsonb_build_array(jsonb_build_object('media_id', m.id))
-           OR t.steps @> jsonb_build_array(jsonb_build_object('media_ids', jsonb_build_array(m.id)))
-           OR t.steps @> jsonb_build_array(jsonb_build_object('avatar_media_id', m.id))
-           OR EXISTS (SELECT FROM jsonb_array_elements(t.steps) st WHERE st->>'tag' = ANY (m.tags)))
-        UNION ALL
-        SELECT 'message ' || g.name FROM messages g
-        WHERE g.deleted_at IS NULL AND (m.id = ANY (g.files)
-           OR g.embeds @> jsonb_build_array(jsonb_build_object('image_media_id', m.id))
-           OR g.embeds @> jsonb_build_array(jsonb_build_object('thumb_media_id', m.id))))
-FROM media m WHERE m.deleted_at IS NULL AND ($1 = '' OR kind = $1) AND ($2 = '' OR $2 = ANY (tags))
+// listMediaQuery fills UsedBy with the tasks and messages in scope that
+// reference a file and counts the others, whose names stay hidden.
+var listMediaQuery = `WITH users AS (
+  SELECT m.id AS media_id, 'task ' || t.name AS name, t.guild_id AS owner FROM media m JOIN tasks t ON t.deleted_at IS NULL
+    AND (t.steps @> jsonb_build_array(jsonb_build_object('media_id', m.id))
+      OR t.steps @> jsonb_build_array(jsonb_build_object('media_ids', jsonb_build_array(m.id)))
+      OR t.steps @> jsonb_build_array(jsonb_build_object('avatar_media_id', m.id))
+      OR EXISTS (SELECT FROM jsonb_array_elements(t.steps) st WHERE st->>'tag' = ANY (m.tags) AND coalesce(m.guild_id, t.guild_id) = t.guild_id))
+  WHERE m.deleted_at IS NULL
+  UNION ALL
+  SELECT m.id, 'message ' || g.name, g.guild_id FROM media m JOIN messages g ON g.deleted_at IS NULL
+    AND (m.id = ANY (g.files)
+      OR g.embeds @> jsonb_build_array(jsonb_build_object('image_media_id', m.id))
+      OR g.embeds @> jsonb_build_array(jsonb_build_object('thumb_media_id', m.id)))
+  WHERE m.deleted_at IS NULL
+)
+SELECT ` + mediaCols + `,
+  ARRAY(SELECT u.name FROM users u WHERE u.media_id = m.id AND ` + inScope("u.owner", "6") + ` ORDER BY u.name),
+  (SELECT count(*) FROM users u WHERE u.media_id = m.id AND NOT ` + inScope("u.owner", "6") + `)
+FROM media m WHERE m.deleted_at IS NULL AND ` + inScope("m.guild_id", "6") + ` AND ($1 = '' OR kind = $1) AND ($2 = '' OR $2 = ANY (tags))
   AND ($3 = '' OR name ILIKE '%' || $3 || '%' OR array_to_string(tags, ' ') ILIKE '%' || $3 || '%')
 ORDER BY kind, lower(name), id LIMIT NULLIF($4, 0) OFFSET $5`
 
 // MediaQuery filters the media library. Search matches names and tags, a zero Limit lists all.
 type MediaQuery struct {
+	Scope             Scope
 	Kind, Tag, Search string
 	Limit, Offset     int
 }
 
-// ListMedia returns all media of a kind, every kind when kind is empty.
-func (s *Store) ListMedia(ctx context.Context, kind string) ([]Media, error) {
-	return s.FindMedia(ctx, MediaQuery{Kind: kind})
+// ListMedia returns all media in scope of a kind, every kind when kind is empty.
+func (s *Store) ListMedia(ctx context.Context, sc Scope, kind string) ([]Media, error) {
+	return s.FindMedia(ctx, MediaQuery{Scope: sc, Kind: kind})
 }
 
 func (s *Store) FindMedia(ctx context.Context, q MediaQuery) ([]Media, error) {
-	rows, err := s.pool.Query(ctx, listMediaQuery, q.Kind, q.Tag, likeEscaper.Replace(q.Search), q.Limit, q.Offset)
+	rows, err := s.pool.Query(ctx, listMediaQuery, q.Kind, q.Tag, likeEscaper.Replace(q.Search), q.Limit, q.Offset, q.Scope.param())
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Media, error) {
 		var m Media
-		err := r.Scan(&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &m.UsedBy)
+		err := r.Scan(append(m.fields(), &m.UsedBy, &m.UsedElse)...)
 		return m, err
 	})
 }
@@ -143,10 +168,10 @@ func (s *Store) DeleteMedia(ctx context.Context, id int64) error {
 }
 
 // SearchSounds finds sounds and videos by name, names starting with q first.
-func (s *Store) SearchSounds(ctx context.Context, q string, limit int) ([]Media, error) {
+func (s *Store) SearchSounds(ctx context.Context, sc Scope, q string, limit int) ([]Media, error) {
 	q = likeEscaper.Replace(q)
-	rows, err := s.pool.Query(ctx, `SELECT `+mediaCols+` FROM media WHERE kind IN ('sound', 'video') AND deleted_at IS NULL AND name ILIKE '%' || $1 || '%'
-ORDER BY name NOT ILIKE $1 || '%', lower(name) LIMIT $2`, q, limit)
+	rows, err := s.pool.Query(ctx, `SELECT `+mediaCols+` FROM media WHERE kind IN ('sound', 'video') AND deleted_at IS NULL AND name ILIKE '%' || $1 || '%' AND `+inScope("guild_id", "3")+`
+ORDER BY name NOT ILIKE $1 || '%', lower(name) LIMIT $2`, q, limit, sc.param())
 	if err != nil {
 		return nil, err
 	}
@@ -185,9 +210,9 @@ type MediaSummary struct {
 	Tags   []string
 }
 
-func (s *Store) MediaSummary(ctx context.Context) (MediaSummary, error) {
+func (s *Store) MediaSummary(ctx context.Context, sc Scope) (MediaSummary, error) {
 	out := MediaSummary{Counts: map[string]int{}}
-	rows, err := s.pool.Query(ctx, `SELECT kind, count(*), coalesce(sum(size_bytes), 0) FROM media WHERE deleted_at IS NULL GROUP BY kind`)
+	rows, err := s.pool.Query(ctx, `SELECT kind, count(*), coalesce(sum(size_bytes), 0) FROM media WHERE deleted_at IS NULL AND `+inScope("guild_id", "1")+` GROUP BY kind`, sc.param())
 	if err != nil {
 		return out, err
 	}
@@ -202,7 +227,7 @@ func (s *Store) MediaSummary(ctx context.Context) (MediaSummary, error) {
 	}); err != nil {
 		return out, err
 	}
-	rows, err = s.pool.Query(ctx, `SELECT DISTINCT unnest(tags) AS t FROM media WHERE deleted_at IS NULL ORDER BY t`)
+	rows, err = s.pool.Query(ctx, `SELECT DISTINCT unnest(tags) AS t FROM media WHERE deleted_at IS NULL AND `+inScope("guild_id", "1")+` ORDER BY t`, sc.param())
 	if err != nil {
 		return out, err
 	}

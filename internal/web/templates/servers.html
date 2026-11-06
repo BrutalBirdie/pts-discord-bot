@@ -3,9 +3,9 @@
 <div class="page-head">
   <div><span class="eyebrow">Discord</span><h1>Servers</h1></div>
   <div class="btns">
-    <form method="post" action="/servers/refresh">{{template "csrf" .}}
+    {{if not .Session.Discord}}<form method="post" action="/servers/refresh">{{template "csrf" .}}
       <button type="submit" class="ib" aria-label="Reload members from Discord" data-tip="Reload members from Discord">{{icon "refresh-cw"}}<span class="lbl">Reload members</span></button>
-    </form>
+    </form>{{end}}
   </div>
 </div>
 

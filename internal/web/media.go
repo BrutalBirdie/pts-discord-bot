@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
@@ -30,14 +31,28 @@ type mediaData struct {
 	Voice       []voiceGroup
 	MaxUploadMB int
 	Vols        map[int64]int // preview volumes of the listed sounds
+	Owners      []bot.Guild   // servers an upload can belong to
+	Shared      bool          // uploads can be shared by all servers
+	Names       map[string]string
 	Paging      paging
+}
+
+// Owner is the name of the server owning a file, empty for shared files.
+func (d mediaData) Owner(m store.Media) string {
+	if m.GuildID == "" {
+		return ""
+	}
+	if n := d.Names[m.GuildID]; n != "" {
+		return n
+	}
+	return m.GuildID
 }
 
 func (d mediaData) Vol(id int64) int { return previewVolume(d.Vols, id) }
 
-func (s *Server) voiceGroups() []voiceGroup {
+func (s *Server) voiceGroups(r *http.Request) []voiceGroup {
 	var out []voiceGroup
-	for _, g := range s.bot.Guilds() {
+	for _, g := range s.guilds(r) {
 		vg := voiceGroup{Guild: g}
 		for _, c := range s.bot.Channels(g.ID) {
 			if c.Voice && c.Usable {
@@ -53,7 +68,8 @@ func (s *Server) voiceGroups() []voiceGroup {
 
 func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	sum, err := s.store.MediaSummary(ctx)
+	sess := sessionFrom(r)
+	sum, err := s.store.MediaSummary(ctx, sess.Scope())
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -64,10 +80,14 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	d := mediaData{Kind: q.Get("kind"), Tag: q.Get("tag"), Counts: sum.Counts, TotalBytes: sum.Bytes, Tags: sum.Tags, Voice: s.voiceGroups(), MaxUploadMB: settings.MaxUploadMB, Paging: newPaging(r)}
+	d := mediaData{Kind: q.Get("kind"), Tag: q.Get("tag"), Counts: sum.Counts, TotalBytes: sum.Bytes, Tags: sum.Tags, Voice: s.voiceGroups(r), MaxUploadMB: settings.MaxUploadMB, Paging: newPaging(r),
+		Owners: s.ownerChoices(r, ""), Shared: !sess.Discord(), Names: map[string]string{}}
+	for _, g := range d.Owners {
+		d.Names[g.ID] = g.Name
+	}
 	d.Paging.Keep("kind", d.Kind)
 	d.Paging.Keep("tag", d.Tag)
-	items, err := s.store.FindMedia(ctx, store.MediaQuery{Kind: d.Kind, Tag: d.Tag, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
+	items, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: sess.Scope(), Kind: d.Kind, Tag: d.Tag, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -104,6 +124,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	csrfOK := false
+	owner := ""
 	var added, problems []string
 	for {
 		part, err := mr.NextPart()
@@ -124,6 +145,11 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 			csrfOK = s.validCSRF(r, sess, string(token))
 			continue
 		}
+		if part.FormName() == "guild" {
+			v, _ := io.ReadAll(io.LimitReader(part, 64))
+			owner = string(v)
+			continue
+		}
 		if part.FormName() != "file" || part.FileName() == "" {
 			continue
 		}
@@ -131,12 +157,16 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, http.StatusForbidden, "The request could not be verified. Reload the page and try again.")
 			return
 		}
+		if !validOwner(sess, owner) {
+			s.notFound(w, r)
+			return
+		}
 		name, err := media.CleanName(part.FileName())
 		if err != nil {
 			problems = append(problems, part.FileName()+": "+err.Error()+".")
 			continue
 		}
-		if err := s.saveUpload(r, part, name, limit); err != nil {
+		if err := s.saveUpload(r, part, name, owner, limit); err != nil {
 			problems = append(problems, name+": "+err.Error())
 			continue
 		}
@@ -156,9 +186,10 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, "/media", "uploaded")
 }
 
-func (s *Server) saveUpload(r *http.Request, src io.Reader, name string, limit int64) error {
+// saveUpload adds a file owned by guildID, "" for shared. Names are unique per owner.
+func (s *Server) saveUpload(r *http.Request, src io.Reader, name, guildID string, limit int64) error {
 	ctx := r.Context()
-	if _, err := s.store.MediaByName(ctx, name); err == nil {
+	if _, err := s.store.MediaByName(ctx, ownerScope(guildID), name); err == nil {
 		return errors.New("a file with this name exists, delete it first or rename the upload")
 	}
 	tmp, err := s.cfg.MediaDir.Temp()
@@ -183,7 +214,7 @@ func (s *Server) saveUpload(r *http.Request, src io.Reader, name string, limit i
 	if err != nil {
 		return err
 	}
-	m.UploadedBy = sessionFrom(r).Username
+	m.UploadedBy, m.GuildID = sessionFrom(r).Username, guildID
 	id, err := s.store.AddMedia(ctx, m)
 	if errors.Is(err, store.ErrNameTaken) {
 		return errors.New("a file with this name exists, delete it first or rename the upload")
@@ -200,6 +231,11 @@ func (s *Server) saveUpload(r *http.Request, src io.Reader, name string, limit i
 
 // fetchMedia downloads a file from a link into the media library.
 func (s *Server) fetchMedia(w http.ResponseWriter, r *http.Request) {
+	owner := r.PostForm.Get("guild")
+	if !validOwner(sessionFrom(r), owner) {
+		s.notFound(w, r)
+		return
+	}
 	settings, err := s.store.Settings(r.Context())
 	if err != nil {
 		s.internalError(w, r, err)
@@ -218,7 +254,7 @@ func (s *Server) fetchMedia(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, http.StatusBadRequest, "Not added: "+err.Error()+".")
 		return
 	}
-	if err := s.saveUpload(r, body, name, int64(settings.MaxUploadMB)<<20); err != nil {
+	if err := s.saveUpload(r, body, name, owner, int64(settings.MaxUploadMB)<<20); err != nil {
 		s.fail(w, r, http.StatusBadRequest, name+" not added: "+err.Error())
 		return
 	}
@@ -274,11 +310,22 @@ func (s *Server) loadMedia(w http.ResponseWriter, r *http.Request) (store.Media,
 		return store.Media{}, false
 	}
 	m, err := s.store.Media(r.Context(), id)
+	if err == nil && !sessionFrom(r).Scope().Has(m.GuildID) {
+		err = store.ErrNotFound
+	}
 	if err != nil {
 		s.storeErr(w, r, err)
 		return m, false
 	}
 	return m, true
+}
+
+// ownerScope matches exactly the files of one owner.
+func ownerScope(guildID string) store.Scope {
+	if guildID == "" {
+		return store.GuildScope(true)
+	}
+	return store.GuildScope(false, guildID)
 }
 
 func (s *Server) mediaFile(w http.ResponseWriter, r *http.Request) {
@@ -288,6 +335,9 @@ func (s *Server) mediaFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m, err := s.store.AnyMedia(r.Context(), id)
+	if err == nil && !sessionFrom(r).Scope().Has(m.GuildID) {
+		err = store.ErrNotFound
+	}
 	if err != nil {
 		s.storeErr(w, r, err)
 		return
@@ -318,8 +368,9 @@ func (s *Server) mediaFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) playMedia(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	s.startPlay(w, r, "", r.PostForm.Get("channel"), id)
+	if m, ok := s.loadMedia(w, r); ok {
+		s.startPlay(w, r, "", r.PostForm.Get("channel"), strconv.FormatInt(m.ID, 10))
+	}
 }
 
 func (s *Server) deleteMedia(w http.ResponseWriter, r *http.Request) {
@@ -327,14 +378,18 @@ func (s *Server) deleteMedia(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	list, err := s.store.ListMedia(r.Context(), m.Kind)
+	list, err := s.store.ListMedia(r.Context(), sessionFrom(r).Scope(), m.Kind)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
 	for _, x := range list {
-		if x.ID == m.ID && len(x.UsedBy) > 0 {
-			s.fail(w, r, http.StatusConflict, m.Name+" is used by "+strings.Join(x.UsedBy, ", ")+". Remove it there first.")
+		used := x.UsedBy
+		if x.UsedElse > 0 {
+			used = append(used, fmt.Sprintf("%d tasks or messages in other servers", x.UsedElse))
+		}
+		if x.ID == m.ID && len(used) > 0 {
+			s.fail(w, r, http.StatusConflict, m.Name+" is used by "+strings.Join(used, ", ")+". Remove it there first.")
 			return
 		}
 	}

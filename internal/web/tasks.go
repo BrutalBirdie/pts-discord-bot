@@ -17,7 +17,7 @@ import (
 )
 
 func (s *Server) mediaNames(r *http.Request) (map[int64]string, error) {
-	list, err := s.store.ListMedia(r.Context(), "")
+	list, err := s.store.ListMedia(r.Context(), sessionFrom(r).Scope(), "")
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ type tasksData struct {
 
 func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	list, err := s.store.ListTasks(ctx)
+	list, err := s.store.ListTasks(ctx, sessionFrom(r).Scope())
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -189,7 +189,8 @@ const runsPerPage = 10
 
 func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, error) {
 	ctx := r.Context()
-	e := taskEditor{Task: t, New: isNew, Guilds: s.bot.Guilds(), StepTypes: tasks.StepTypes, Weekdays: tasks.WeekdayNames, Kinds: tasks.TriggerKinds,
+	items := sessionFrom(r).ItemScope(t.GuildID)
+	e := taskEditor{Task: t, New: isNew, Guilds: s.guilds(r), StepTypes: tasks.StepTypes, Weekdays: tasks.WeekdayNames, Kinds: tasks.TriggerKinds,
 		TimesText: strings.Join(t.Trigger.Times, " "), CronText: strings.Join(t.Trigger.Cron, "\n"), Timezones: commonTimezones, Events: tasks.EventTypes}
 	for _, c := range s.bot.Channels(t.GuildID) {
 		if !c.Usable {
@@ -216,7 +217,7 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 			}
 		}
 	}
-	all, err := s.store.ListMedia(ctx, "")
+	all, err := s.store.ListMedia(ctx, items, "")
 	if err != nil {
 		return e, err
 	}
@@ -240,15 +241,15 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 	if e.PreviewVol, err = s.store.PreviewVolumes(ctx, sessionFrom(r).Username, picked); err != nil {
 		return e, err
 	}
-	if e.Messages, err = s.store.ListMessages(ctx); err != nil {
+	if e.Messages, err = s.store.ListMessages(ctx, items); err != nil {
 		return e, err
 	}
-	if e.Tags, err = s.store.Tags(ctx); err != nil {
+	if e.Tags, err = s.store.Tags(ctx, items); err != nil {
 		return e, err
 	}
 	e.Next = t.Trigger.Next(time.Now(), 5)
 	if !isNew {
-		q := store.RunQuery{TaskID: t.ID}
+		q := store.RunQuery{Scope: sessionFrom(r).Scope(), TaskID: t.ID}
 		if e.RunCount, err = s.store.CountRuns(ctx, q); err != nil {
 			return e, err
 		}
@@ -270,26 +271,36 @@ func (s *Server) newTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t := tasks.Task{Enabled: true, Busy: tasks.BusyWait, Trigger: tasks.Trigger{Kind: tasks.Daily, Timezone: settings.Timezone}}
-	if g, ok := s.bot.Guild(r.URL.Query().Get("guild")); ok {
-		t.GuildID = g.ID
-	} else if gs := s.bot.Guilds(); len(gs) > 0 {
-		t.GuildID = gs[0].ID
-	}
+	t.GuildID = s.defaultGuild(r, r.URL.Query().Get("guild"))
 	s.renderEditor(w, r, http.StatusOK, t, true, nil, false)
 }
 
+// defaultGuild is the server preselected in a new task or message: the wanted
+// one if the user may use it, else the first they may use.
+func (s *Server) defaultGuild(r *http.Request, want string) string {
+	sess := sessionFrom(r)
+	if _, ok := s.bot.Guild(want); ok && sess.CanGuild(want) {
+		return want
+	}
+	if gs := s.guilds(r); len(gs) > 0 {
+		return gs[0].ID
+	}
+	if len(sess.Granted) > 0 {
+		return sess.Granted[0]
+	}
+	return ""
+}
+
+// guilds are the servers of the bot the user may manage.
+func (s *Server) guilds(r *http.Request) []bot.Guild {
+	sess := sessionFrom(r)
+	return slices.DeleteFunc(s.bot.Guilds(), func(g bot.Guild) bool { return !sess.CanGuild(g.ID) })
+}
+
 func (s *Server) task(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r)
-	if !ok {
-		s.notFound(w, r)
-		return
+	if t, ok := s.loadTask(w, r); ok {
+		s.renderEditor(w, r, http.StatusOK, t, false, nil, false)
 	}
-	t, err := s.store.Task(r.Context(), id)
-	if err != nil {
-		s.storeErr(w, r, err)
-		return
-	}
-	s.renderEditor(w, r, http.StatusOK, t, false, nil, false)
 }
 
 func (s *Server) renderEditor(w http.ResponseWriter, r *http.Request, status int, t tasks.Task, isNew bool, problems []string, unsaved bool) {
@@ -550,23 +561,22 @@ func (s *Server) resolveMembers(t *tasks.Task) []string {
 func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	isNew := r.PathValue("id") == ""
+	sess := sessionFrom(r)
 	var old tasks.Task
 	if !isNew {
-		id, ok := pathID(r)
-		if !ok {
-			s.notFound(w, r)
-			return
-		}
-		var err error
-		if old, err = s.store.Task(ctx, id); err != nil {
-			s.storeErr(w, r, err)
+		var ok bool
+		if old, ok = s.loadTask(w, r); !ok {
 			return
 		}
 	}
 	t, bad := parseTask(r)
+	if sess.Discord() && !sess.CanGuild(t.GuildID) {
+		s.notFound(w, r)
+		return
+	}
 	t.ID, t.PausedReason = old.ID, old.PausedReason
 	bad = append(bad, s.resolveMembers(&t)...)
-	badSounds, err := s.resolveSounds(ctx, &t)
+	badSounds, err := s.resolveSounds(ctx, sess.ItemScope(t.GuildID), &t)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -581,7 +591,13 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.bot.Guild(t.GuildID); !ok && t.GuildID != old.GuildID {
 		bad = append(bad, "Pick a server the bot is in.")
 	}
-	sounds, err := s.store.ListMedia(ctx, "")
+	items := sess.ItemScope(t.GuildID)
+	sounds, err := s.store.ListMedia(ctx, items, "")
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	msgs, err := s.store.ListMessages(ctx, items)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -592,12 +608,14 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bad = append(bad, avatarProblems(t, sounds)...)
-	bad = append(bad, playProblems(t, slices.DeleteFunc(sounds, func(m store.Media) bool { return !media.HasAudio(m) }), settings.MaxPlayMinutes)...)
+	sounds = slices.DeleteFunc(sounds, func(m store.Media) bool { return !media.HasAudio(m) })
+	bad = append(bad, playProblems(t, sounds, settings.MaxPlayMinutes)...)
+	bad = append(bad, ownerProblems(t, sounds, msgs)...)
 	if problems := append(bad, t.Problems()...); len(problems) > 0 {
 		s.renderEditor(w, r, http.StatusUnprocessableEntity, t, isNew, problems, true)
 		return
 	}
-	user := sessionFrom(r).Username
+	user := sess.Username
 	if isNew {
 		id, err := s.store.CreateTask(ctx, t, user)
 		if err != nil {
@@ -617,6 +635,23 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, fmt.Sprintf("/tasks/%d", t.ID), "saved")
 }
 
+// ownerProblems checks that saved messages and tagged sounds of the steps are
+// in the task's scope: shared or of the task's server, for Discord users only the latter.
+func ownerProblems(t tasks.Task, sounds []store.Media, msgs []messages.Message) []string {
+	var out []string
+	for i, st := range t.Steps {
+		if (st.Type == tasks.Message || st.Type == tasks.DM) && st.MessageID != 0 &&
+			!slices.ContainsFunc(msgs, func(m messages.Message) bool { return m.ID == st.MessageID }) {
+			out = append(out, fmt.Sprintf("Step %d: the saved message is deleted or belongs to another server, pick another.", i+1))
+		}
+		if st.Type == tasks.Play && st.Tag != "" && !slices.ContainsFunc(sounds, func(m store.Media) bool { return slices.Contains(m.Tags, st.Tag) }) {
+			out = append(out, fmt.Sprintf("Step %d: no sound available to this server has the tag %s.", i+1, st.Tag))
+		}
+	}
+	return out
+}
+
+// loadTask answers not found for tasks of servers the user may not manage.
 func (s *Server) loadTask(w http.ResponseWriter, r *http.Request) (tasks.Task, bool) {
 	id, ok := pathID(r)
 	if !ok {
@@ -624,6 +659,9 @@ func (s *Server) loadTask(w http.ResponseWriter, r *http.Request) (tasks.Task, b
 		return tasks.Task{}, false
 	}
 	t, err := s.store.Task(r.Context(), id)
+	if err == nil && !sessionFrom(r).CanGuild(t.GuildID) {
+		err = store.ErrNotFound
+	}
 	if err != nil {
 		s.storeErr(w, r, err)
 		return t, false
@@ -708,7 +746,7 @@ func avatarProblems(t tasks.Task, all []store.Media) []string {
 		}
 		m, ok := byID[st.AvatarMediaID]
 		if !ok {
-			out = append(out, fmt.Sprintf("Step %d: the avatar image was deleted from the media library, pick another.", i+1))
+			out = append(out, fmt.Sprintf("Step %d: the avatar image was deleted from the media library or belongs to another server, pick another.", i+1))
 		} else if msg := media.AvatarProblem(m); msg != "" {
 			out = append(out, fmt.Sprintf("Step %d: %s.", i+1, msg))
 		}

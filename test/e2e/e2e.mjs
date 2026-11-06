@@ -431,11 +431,29 @@ const steps = {
         lastPage = d;
         await d.goto(BASE + '/');
         t = await d.locator('main').innerText();
-        check('Discord user sees the placeholder home', t.includes('Access approved for: 1.') && t.includes('coming soon'), t.slice(0, 300));
-        check('Discord user named like an admin is no admin', await d.locator('a[href="/admin"], a[href="/tasks"]').count() === 0);
-        for (const path of ['/tasks', '/admin', '/admin/access', '/media', '/trash']) {
+        check('Discord user sees the dashboard', t.includes('Dashboard') && t.includes('Next 24 hours'), t.slice(0, 300));
+        check('Discord user named like an admin is no admin', await d.locator('a[href="/admin"]').count() === 0
+            && await d.locator('.nav a[href="/tasks"], .nav a[href="/messages"], .nav a[href="/media"], .nav a[href="/trash"], .nav a[href="/servers"]').count() === 5);
+        for (const path of ['/admin', '/admin/access']) {
             const res = await d.goto(BASE + path);
             check(`Discord session blocked from ${path}`, res.status() === 403);
+        }
+        const only = async (path, mine, others) => {
+            const res = await d.goto(BASE + path);
+            const body = await d.locator('main').innerText();
+            check(`Discord user sees only server 1 on ${path}`, res.status() === 200 && mine.every((s) => body.includes(s)) && !others.some((s) => body.includes(s)), body.slice(0, 400));
+        };
+        await only('/tasks', ['Guild one task', 'Every minute'], ['Guild two task']);
+        await only('/messages', ['Guild one msg'], ['Guild two msg', 'Bulk 01', 'Friday']);
+        await only('/media', ['guild-one.ogg'], ['guild-two.ogg', 'beep.ogg', 'friday_card.png']);
+        await only('/trash', ['Trash one'], ['Trash two', 'New trash']);
+        await d.goto(BASE + '/tasks');
+        await d.getByRole('link', { name: 'Guild one task' }).first().click();
+        check('Discord user opens a task of server 1', (await d.locator('main').innerText()).includes('Guild one task') && !(await d.content()).includes('beep.ogg'));
+        for (const [path, name] of [['/tasks?q=Guild+two', 'Guild two task'], ['/messages?q=Guild+two', 'Guild two msg'], ['/messages?q=Bulk+01', 'Bulk 01']]) {
+            await page.goto(BASE + path);
+            const href = await page.getByRole('link', { name }).first().getAttribute('href');
+            check(`Discord user gets 404 for ${name}`, (await d.goto(BASE + href)).status() === 404, href);
         }
         await page.goto(BASE + '/admin/access?state=approved');
         await submit('333333333333333334', 'revoke');

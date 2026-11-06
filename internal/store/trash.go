@@ -40,6 +40,7 @@ type TrashItem struct {
 	Name      string
 	DeletedAt time.Time
 	DeletedBy string
+	GuildID   string // owning server, "" for shared
 	Task      *tasks.Task
 	Message   *messages.Message
 	Media     *Media
@@ -59,9 +60,9 @@ func (s *Store) Trash(ctx context.Context, kind string, id int64, by string) err
 }
 
 // ListTrash returns every trashed item, the newest deletion first.
-func (s *Store) ListTrash(ctx context.Context) ([]TrashItem, error) {
+func (s *Store) ListTrash(ctx context.Context, sc Scope) ([]TrashItem, error) {
 	var out []TrashItem
-	rows, err := s.pool.Query(ctx, `SELECT `+taskCols+`, deleted_at, coalesce(deleted_by, '') FROM tasks WHERE deleted_at IS NOT NULL`)
+	rows, err := s.pool.Query(ctx, `SELECT `+taskCols+`, deleted_at, coalesce(deleted_by, '') FROM tasks WHERE deleted_at IS NOT NULL AND `+inScope("guild_id", "1"), sc.param())
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +70,7 @@ func (s *Store) ListTrash(ctx context.Context) ([]TrashItem, error) {
 		var t tasks.Task
 		it := TrashItem{Kind: TrashTask, Task: &t}
 		err := r.Scan(&t.ID, &t.Name, &t.GuildID, &t.Enabled, &t.Busy, &t.Slash, &t.Trigger, &t.Steps, &t.PausedReason, &t.CreatedBy, &t.UpdatedBy, &t.UpdatedAt, &it.DeletedAt, &it.DeletedBy)
-		it.ID, it.Name = t.ID, t.Name
+		it.ID, it.Name, it.GuildID = t.ID, t.Name, t.GuildID
 		return it, err
 	})
 	if err != nil {
@@ -77,15 +78,15 @@ func (s *Store) ListTrash(ctx context.Context) ([]TrashItem, error) {
 	}
 	out = append(out, list...)
 
-	rows, err = s.pool.Query(ctx, `SELECT `+messageCols+`, deleted_at, coalesce(deleted_by, '') FROM messages WHERE deleted_at IS NOT NULL`)
+	rows, err = s.pool.Query(ctx, `SELECT `+messageCols+`, deleted_at, coalesce(deleted_by, '') FROM messages WHERE deleted_at IS NOT NULL AND `+inScope("guild_id", "1"), sc.param())
 	if err != nil {
 		return nil, err
 	}
 	list, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (TrashItem, error) {
 		var m messages.Message
 		it := TrashItem{Kind: TrashMessage, Message: &m}
-		err := r.Scan(&m.ID, &m.Name, &m.Content, &m.Embeds, &m.Files, &m.UpdatedBy, &m.UpdatedAt, &it.DeletedAt, &it.DeletedBy)
-		it.ID, it.Name = m.ID, m.Name
+		err := r.Scan(append(messageFields(&m), &it.DeletedAt, &it.DeletedBy)...)
+		it.ID, it.Name, it.GuildID = m.ID, m.Name, m.GuildID
 		return it, err
 	})
 	if err != nil {
@@ -93,15 +94,15 @@ func (s *Store) ListTrash(ctx context.Context) ([]TrashItem, error) {
 	}
 	out = append(out, list...)
 
-	rows, err = s.pool.Query(ctx, `SELECT `+mediaCols+`, deleted_at, coalesce(deleted_by, '') FROM media WHERE deleted_at IS NOT NULL`)
+	rows, err = s.pool.Query(ctx, `SELECT `+mediaCols+`, deleted_at, coalesce(deleted_by, '') FROM media WHERE deleted_at IS NOT NULL AND `+inScope("guild_id", "1"), sc.param())
 	if err != nil {
 		return nil, err
 	}
 	list, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (TrashItem, error) {
 		var m Media
 		it := TrashItem{Kind: TrashMedia, Media: &m}
-		err := r.Scan(&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &it.DeletedAt, &it.DeletedBy)
-		it.ID, it.Name = m.ID, m.Name
+		err := r.Scan(append(m.fields(), &it.DeletedAt, &it.DeletedBy)...)
+		it.ID, it.Name, it.GuildID = m.ID, m.Name, m.GuildID
 		return it, err
 	})
 	if err != nil {
@@ -118,23 +119,23 @@ func (s *Store) ListTrash(ctx context.Context) ([]TrashItem, error) {
 	return out, nil
 }
 
-func (s *Store) CountTrash(ctx context.Context) (int, error) {
+func (s *Store) CountTrash(ctx context.Context, sc Scope) (int, error) {
 	var n int
-	err := s.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM tasks WHERE deleted_at IS NOT NULL)
-  + (SELECT count(*) FROM messages WHERE deleted_at IS NOT NULL)
-  + (SELECT count(*) FROM media WHERE deleted_at IS NOT NULL)`).Scan(&n)
+	where := `deleted_at IS NOT NULL AND ` + inScope("guild_id", "1")
+	err := s.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM tasks WHERE `+where+`)
+  + (SELECT count(*) FROM messages WHERE `+where+`)
+  + (SELECT count(*) FROM media WHERE `+where+`)`, sc.param()).Scan(&n)
 	return n, err
 }
 
-// TrashedName returns the name of a trashed item.
-func (s *Store) TrashedName(ctx context.Context, kind string, id int64) (string, error) {
+// TrashedName returns the name and owning server of a trashed item.
+func (s *Store) TrashedName(ctx context.Context, kind string, id int64) (name, guildID string, err error) {
 	table, err := trashTable(kind)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	var name string
-	err = s.pool.QueryRow(ctx, `SELECT name FROM `+table+` WHERE id = $1 AND deleted_at IS NOT NULL`, id).Scan(&name)
-	return name, noRows(err)
+	err = s.pool.QueryRow(ctx, `SELECT name, coalesce(guild_id, '') FROM `+table+` WHERE id = $1 AND deleted_at IS NOT NULL`, id).Scan(&name, &guildID)
+	return name, guildID, noRows(err)
 }
 
 // RestoreTask takes a task out of the trash, paused so it does not fire unexpectedly.
@@ -175,7 +176,7 @@ func RestoredName(name string, n int) string {
 // RestoreMedia takes a file out of the trash. If another file has its name
 // meanwhile, it gets the first free RestoredName, which is returned.
 func (s *Store) RestoreMedia(ctx context.Context, id int64) (string, error) {
-	name, err := s.TrashedName(ctx, TrashMedia, id)
+	name, _, err := s.TrashedName(ctx, TrashMedia, id)
 	if err != nil {
 		return "", err
 	}

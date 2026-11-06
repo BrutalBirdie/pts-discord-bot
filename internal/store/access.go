@@ -112,6 +112,15 @@ func (s *Store) DiscordAccess(ctx context.Context, userID string) (DiscordAccess
 	return a, nil
 }
 
+// GrantedGuilds are the servers a Discord user was approved for.
+func (s *Store) GrantedGuilds(ctx context.Context, userID string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT guild_id FROM discord_grants WHERE user_id = $1 ORDER BY guild_id`, userID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
 // CreateAccessRequest fails with ErrBlocked for blocked users and ErrPending
 // when the user already waits for an answer.
 func (s *Store) CreateAccessRequest(ctx context.Context, userID string, guildIDs []string, note string) (AccessRequest, error) {
