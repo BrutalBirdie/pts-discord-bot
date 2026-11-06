@@ -658,10 +658,11 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.run.Unschedule(t.ID)
-	if err := s.store.DeleteTask(r.Context(), t.ID); err != nil {
-		s.internalError(w, r, err)
+	trashed, err := s.removeItem(r, store.TrashTask, t.ID)
+	if err != nil {
+		s.storeErr(w, r, err)
 		return
 	}
-	s.audit(r, "task.delete", t.Name, "")
-	redirect(w, r, "/tasks", "deleted")
+	s.audit(r, "task.delete", t.Name, trashDetail(trashed))
+	removed(w, r, "/tasks", store.TrashTask, t.ID, trashed)
 }

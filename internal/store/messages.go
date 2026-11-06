@@ -20,12 +20,12 @@ func scanMessage(r pgx.Row) (messages.Message, error) {
 }
 
 func (s *Store) Message(ctx context.Context, id int64) (messages.Message, error) {
-	m, err := scanMessage(s.pool.QueryRow(ctx, `SELECT `+messageCols+` FROM messages WHERE id = $1`, id))
+	m, err := scanMessage(s.pool.QueryRow(ctx, `SELECT `+messageCols+` FROM messages WHERE id = $1 AND deleted_at IS NULL`, id))
 	return m, noRows(err)
 }
 
 func (s *Store) ListMessages(ctx context.Context) ([]messages.Message, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+messageCols+` FROM messages ORDER BY lower(name)`)
+	rows, err := s.pool.Query(ctx, `SELECT `+messageCols+` FROM messages WHERE deleted_at IS NULL ORDER BY lower(name)`)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (s *Store) CreateMessage(ctx context.Context, m messages.Message, by string
 }
 
 func (s *Store) UpdateMessage(ctx context.Context, m messages.Message, by string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE messages SET name = $2, content = $3, embeds = $4, files = $5, updated_by = $6, updated_at = now() WHERE id = $1`,
+	tag, err := s.pool.Exec(ctx, `UPDATE messages SET name = $2, content = $3, embeds = $4, files = $5, updated_by = $6, updated_at = now() WHERE id = $1 AND deleted_at IS NULL`,
 		m.ID, m.Name, m.Content, m.Embeds, files(m.Files), by)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
@@ -55,7 +55,7 @@ func (s *Store) DeleteMessage(ctx context.Context, id int64) error {
 
 // MessageUsers returns the names of the tasks that send the message.
 func (s *Store) MessageUsers(ctx context.Context, id int64) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT name FROM tasks WHERE steps @> jsonb_build_array(jsonb_build_object('message_id', $1::bigint)) ORDER BY lower(name)`, id)
+	rows, err := s.pool.Query(ctx, `SELECT name FROM tasks WHERE deleted_at IS NULL AND steps @> jsonb_build_array(jsonb_build_object('message_id', $1::bigint)) ORDER BY lower(name)`, id)
 	if err != nil {
 		return nil, err
 	}

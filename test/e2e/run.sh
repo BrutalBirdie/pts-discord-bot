@@ -107,11 +107,18 @@ missed=$(psql "SELECT count(*) FROM runs r JOIN tasks t ON t.id = r.task_id WHER
 expect "missed runs recorded" "^(9|10)$" "${missed}"
 expect "event tasks are not counted as missed" "^0$" "$(psql "SELECT count(*) FROM runs r JOIN tasks t ON t.id = r.task_id WHERE t.name = 'Greeting'")"
 browser persisted
+browser trash
+psql "INSERT INTO messages (name, created_by, updated_by, deleted_at, deleted_by) VALUES ('Old trash', 'e2e', 'e2e', now() - interval '31 days', 'e2e'), ('New trash', 'e2e', 'e2e', now(), 'e2e')" >/dev/null
 
 echo "==> Admin added to BOT_ADMINS applies to a running session"
 docker exec "${app}" sed -i 's/^export BOT_ADMINS=.*/export BOT_ADMINS="carol.smith, bob"/' /app/data/env.sh
 docker restart "${app}" >/dev/null
 wait_healthy
+for _ in $(seq 1 10); do
+    [[ "$(psql "SELECT count(*) FROM messages WHERE name = 'Old trash'")" == 0 ]] && break
+    sleep 1
+done
+expect "trash older than the retention purged" "^New trash$" "$(psql "SELECT string_agg(name, ',') FROM messages WHERE name LIKE '% trash'")"
 browser promoted
 
 if (( failures > 0 )); then

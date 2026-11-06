@@ -4,6 +4,7 @@
 <a href="/tasks"{{if eq .Nav "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span>Tasks</span></a>
 <a href="/messages"{{if eq .Nav "messages"}} aria-current="page"{{end}}>{{icon "message-square"}}<span>Messages</span></a>
 <a href="/media"{{if eq .Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>
+<a href="/trash"{{if eq .Nav "trash"}} aria-current="page"{{end}}>{{icon "trash-2"}}<span>Trash</span>{{with .Trash}}<span class="badge">{{.}}</span>{{end}}</a>
 {{if .Session.IsAdmin}}<a href="/admin"{{if eq .Nav "admin"}} aria-current="page"{{end}}>{{icon "shield"}}<span>Admin</span></a>{{end}}
 {{end}}
 

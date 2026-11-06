@@ -90,6 +90,7 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	st.MaxPlayMinutes = num("max_play_minutes", "Longest playback", 1, 600)
 	st.MaxUploadMB = num("max_upload_mb", "Largest upload", 1, 2000)
 	st.RunRetentionDays = num("run_retention_days", "Run history", 1, 3650)
+	st.TrashRetentionDays = num("trash_retention_days", "Trash", 0, 365)
 	if st.FailureChannelID != "" {
 		if ch, _, ok := s.bot.Channel(st.FailureChannelID); !ok || ch.Voice {
 			bad = append(bad, "Pick a text channel for failures.")
@@ -108,6 +109,6 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	if st.FailureChannelID != "" {
 		failure = "#" + s.bot.ChannelName(st.FailureChannelID)
 	}
-	s.audit(r, "settings.update", "settings", "timezone="+st.Timezone+" max_play="+strconv.Itoa(st.MaxPlayMinutes)+"m max_upload="+strconv.Itoa(st.MaxUploadMB)+"MB failures="+failure+" history="+strconv.Itoa(st.RunRetentionDays)+"d")
+	s.audit(r, "settings.update", "settings", "timezone="+st.Timezone+" max_play="+strconv.Itoa(st.MaxPlayMinutes)+"m max_upload="+strconv.Itoa(st.MaxUploadMB)+"MB failures="+failure+" history="+strconv.Itoa(st.RunRetentionDays)+"d trash="+strconv.Itoa(st.TrashRetentionDays)+"d")
 	redirect(w, r, "/admin/settings", "saved")
 }

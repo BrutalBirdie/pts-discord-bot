@@ -48,6 +48,8 @@
     <select name="failure_channel" aria-label="Failure channel"><option value="">none</option>{{range $d.Text}}<optgroup label="{{.Guild.Name}}">{{range .Text}}<option value="{{.ID}}"{{if eq .ID $st.FailureChannelID}} selected{{end}}>#{{.Name}}</option>{{end}}</optgroup>{{end}}</select></div>
   <div class="param"><div><div class="name">Run history, days</div><div class="row-sub">Older runs are deleted.</div></div>
     <input type="number" name="run_retention_days" value="{{$st.RunRetentionDays}}" min="1" max="3650" aria-label="Run history in days"></div>
+  <div class="param"><div><div class="name">Trash, days</div><div class="row-sub">Deleted tasks, messages and media are removed for good after this time. 0 deletes right away.</div></div>
+    <input type="number" name="trash_retention_days" value="{{$st.TrashRetentionDays}}" min="0" max="365" aria-label="Trash in days"></div>
   <div class="btns mt"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>
 </form>
 {{end}}

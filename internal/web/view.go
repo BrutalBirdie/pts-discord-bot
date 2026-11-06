@@ -55,6 +55,7 @@ var viewFuncs = template.FuncMap{
 	"initials": initials,
 	"when":     when,
 	"until":    until,
+	"ago":      ago,
 	"since":    time.Since,
 	"nowTime":  time.Now,
 	"dur":      dur,
@@ -135,6 +136,21 @@ func until(t time.Time) string {
 		return "now"
 	}
 	return "in " + dur(d)
+}
+
+func ago(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return strconv.Itoa(int(d.Minutes())) + " min ago"
+	case d < 24*time.Hour:
+		return strconv.Itoa(int(d.Hours())) + " h ago"
+	case d < 48*time.Hour:
+		return "yesterday"
+	}
+	return strconv.Itoa(int(d.Hours()/24)) + " days ago"
 }
 
 func dur(d time.Duration) string {

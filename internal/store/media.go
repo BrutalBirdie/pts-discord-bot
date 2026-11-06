@@ -46,7 +46,7 @@ func (s *Store) UpdateMedia(ctx context.Context, id int64, name string, tags []s
 	if tags == nil {
 		tags = []string{}
 	}
-	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, tags = $3 WHERE id = $1`, id, name, tags)
+	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, tags = $3 WHERE id = $1 AND deleted_at IS NULL`, id, name, tags)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return ErrNameTaken
@@ -59,7 +59,7 @@ func (s *Store) UpdateMedia(ctx context.Context, id int64, name string, tags []s
 
 // Tags returns every tag of sounds and videos, the ones Play steps can pick from.
 func (s *Store) Tags(ctx context.Context) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT DISTINCT unnest(tags) AS t FROM media WHERE kind IN ('sound', 'video') ORDER BY t`)
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT unnest(tags) AS t FROM media WHERE kind IN ('sound', 'video') AND deleted_at IS NULL ORDER BY t`)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func (s *Store) Tags(ctx context.Context) ([]string, error) {
 
 // RandomSound picks a sound or video with the tag.
 func (s *Store) RandomSound(ctx context.Context, tag string) (Media, error) {
-	m, err := scanMedia(s.pool.QueryRow(ctx, `SELECT `+mediaCols+` FROM media WHERE kind IN ('sound', 'video') AND $1 = ANY (tags) ORDER BY random() LIMIT 1`, tag))
+	m, err := scanMedia(s.pool.QueryRow(ctx, `SELECT `+mediaCols+` FROM media WHERE kind IN ('sound', 'video') AND deleted_at IS NULL AND $1 = ANY (tags) ORDER BY random() LIMIT 1`, tag))
 	return m, noRows(err)
 }
 
@@ -84,27 +84,33 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`, m.Name, m.Kind, m.Content
 }
 
 func (s *Store) Media(ctx context.Context, id int64) (Media, error) {
+	m, err := scanMedia(s.pool.QueryRow(ctx, `SELECT `+mediaCols+` FROM media WHERE id = $1 AND deleted_at IS NULL`, id))
+	return m, noRows(err)
+}
+
+// AnyMedia also finds trashed media, so the Trash can preview them.
+func (s *Store) AnyMedia(ctx context.Context, id int64) (Media, error) {
 	m, err := scanMedia(s.pool.QueryRow(ctx, `SELECT `+mediaCols+` FROM media WHERE id = $1`, id))
 	return m, noRows(err)
 }
 
 func (s *Store) MediaByName(ctx context.Context, name string) (Media, error) {
-	m, err := scanMedia(s.pool.QueryRow(ctx, `SELECT `+mediaCols+` FROM media WHERE name = $1`, name))
+	m, err := scanMedia(s.pool.QueryRow(ctx, `SELECT `+mediaCols+` FROM media WHERE name = $1 AND deleted_at IS NULL`, name))
 	return m, noRows(err)
 }
 
 // ListMedia returns all media of a kind, every kind when kind is empty.
 func (s *Store) ListMedia(ctx context.Context, kind string) ([]Media, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+mediaCols+`,
-  ARRAY(SELECT 'task ' || t.name FROM tasks t WHERE t.steps @> jsonb_build_array(jsonb_build_object('media_id', m.id))
+  ARRAY(SELECT 'task ' || t.name FROM tasks t WHERE t.deleted_at IS NULL AND (t.steps @> jsonb_build_array(jsonb_build_object('media_id', m.id))
            OR t.steps @> jsonb_build_array(jsonb_build_object('media_ids', jsonb_build_array(m.id)))
-           OR EXISTS (SELECT FROM jsonb_array_elements(t.steps) st WHERE st->>'tag' = ANY (m.tags))
+           OR EXISTS (SELECT FROM jsonb_array_elements(t.steps) st WHERE st->>'tag' = ANY (m.tags)))
         UNION ALL
         SELECT 'message ' || g.name FROM messages g
-        WHERE m.id = ANY (g.files)
+        WHERE g.deleted_at IS NULL AND (m.id = ANY (g.files)
            OR g.embeds @> jsonb_build_array(jsonb_build_object('image_media_id', m.id))
-           OR g.embeds @> jsonb_build_array(jsonb_build_object('thumb_media_id', m.id)))
-FROM media m WHERE $1 = '' OR kind = $1 ORDER BY kind, lower(name)`, kind)
+           OR g.embeds @> jsonb_build_array(jsonb_build_object('thumb_media_id', m.id))))
+FROM media m WHERE m.deleted_at IS NULL AND ($1 = '' OR kind = $1) ORDER BY kind, lower(name)`, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +129,7 @@ func (s *Store) DeleteMedia(ctx context.Context, id int64) error {
 // SearchSounds finds sounds and videos by name, names starting with q first.
 func (s *Store) SearchSounds(ctx context.Context, q string, limit int) ([]Media, error) {
 	q = likeEscaper.Replace(q)
-	rows, err := s.pool.Query(ctx, `SELECT `+mediaCols+` FROM media WHERE kind IN ('sound', 'video') AND name ILIKE '%' || $1 || '%'
+	rows, err := s.pool.Query(ctx, `SELECT `+mediaCols+` FROM media WHERE kind IN ('sound', 'video') AND deleted_at IS NULL AND name ILIKE '%' || $1 || '%'
 ORDER BY name NOT ILIKE $1 || '%', lower(name) LIMIT $2`, q, limit)
 	if err != nil {
 		return nil, err
@@ -157,6 +163,6 @@ ON CONFLICT (username, media_id) DO UPDATE SET volume = EXCLUDED.volume`, userna
 }
 
 func (s *Store) MediaBytes(ctx context.Context) (count int, bytes int64, err error) {
-	err = s.pool.QueryRow(ctx, `SELECT count(*), coalesce(sum(size_bytes), 0) FROM media`).Scan(&count, &bytes)
+	err = s.pool.QueryRow(ctx, `SELECT count(*), coalesce(sum(size_bytes), 0) FROM media WHERE deleted_at IS NULL`).Scan(&count, &bytes)
 	return count, bytes, err
 }

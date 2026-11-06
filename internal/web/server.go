@@ -57,7 +57,7 @@ type Server struct {
 	provider *oidc.Provider
 }
 
-var pageNames = []string{"login", "error", "dashboard", "servers", "server", "tasks", "task", "messages", "message", "media", "admin"}
+var pageNames = []string{"login", "error", "dashboard", "servers", "server", "tasks", "task", "messages", "message", "media", "trash", "admin"}
 
 func New(cfg Config, st *store.Store, b *bot.Bot, r *runner.Runner, log *slog.Logger) (*Server, error) {
 	s := &Server{cfg: cfg, store: st, bot: b, run: r, log: log, pages: map[string]*template.Template{}}
@@ -121,6 +121,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /media/{id}", s.requireLogin(s.updateMedia))
 	mux.Handle("POST /media/{id}/play", s.requireLogin(s.playMedia))
 	mux.Handle("POST /media/{id}/delete", s.requireLogin(s.deleteMedia))
+
+	mux.Handle("GET /trash", s.requireLogin(s.trash))
+	mux.Handle("POST /trash/{kind}/{id}/restore", s.requireLogin(s.restoreTrash))
+	mux.Handle("POST /trash/{kind}/{id}/purge", s.requireAdmin(s.purgeTrash))
+	mux.Handle("POST /trash/empty", s.requireAdmin(s.emptyTrash))
 
 	mux.Handle("GET /admin", s.requireAdmin(s.admin))
 	mux.Handle("GET /admin/{tab}", s.requireAdmin(s.admin))
@@ -235,35 +240,43 @@ func (s *Server) rejectPost(r *http.Request, sess *store.Session, reason string)
 }
 
 type pageData struct {
-	Title   string
-	Session *store.Session
-	Prefs   store.Prefs
-	Nav     string // highlighted entry of the main navigation
-	Path    string // where the account sheet returns to
-	Bot     bot.Status
-	Error   string
-	Notice  string
-	Data    any
+	Title     string
+	Session   *store.Session
+	Prefs     store.Prefs
+	Nav       string // highlighted entry of the main navigation
+	Path      string // where the account sheet returns to
+	Bot       bot.Status
+	Error     string
+	Notice    string
+	Undo      *trashRef // restore button next to the notice after a delete
+	Trash     int       // items in the trash
+	TrashDays int
+	Data      any
 }
 
 var navOf = map[string]string{"dashboard": "home", "servers": "servers", "server": "servers", "tasks": "tasks", "task": "tasks",
-	"messages": "messages", "message": "messages", "media": "media", "admin": "admin"}
+	"messages": "messages", "message": "messages", "media": "media", "trash": "trash", "admin": "admin"}
 
 // notices are shown after a redirect with ?done=<key>.
 var notices = map[string]string{
-	"saved":     "Saved.",
-	"started":   "Started. The run shows up below in a moment.",
-	"paused":    "Paused.",
-	"resumed":   "Active again.",
-	"deleted":   "Deleted.",
-	"sent":      "Sent.",
-	"uploaded":  "Uploaded.",
-	"playing":   "Playing. It shows up on the dashboard in a moment.",
-	"stopped":   "Stopped.",
-	"left":      "The bot left the voice channel.",
-	"joining":   "Joining. The bot shows up in the channel in a moment.",
-	"refreshed": "Members requested from Discord. Large servers take a few seconds.",
-	"copied":    "Copy created.",
+	"saved":         "Saved.",
+	"started":       "Started. The run shows up below in a moment.",
+	"paused":        "Paused.",
+	"resumed":       "Active again.",
+	"deleted":       "Deleted.",
+	"sent":          "Sent.",
+	"uploaded":      "Uploaded.",
+	"playing":       "Playing. It shows up on the dashboard in a moment.",
+	"stopped":       "Stopped.",
+	"left":          "The bot left the voice channel.",
+	"joining":       "Joining. The bot shows up in the channel in a moment.",
+	"refreshed":     "Members requested from Discord. Large servers take a few seconds.",
+	"copied":        "Copy created.",
+	"trashed":       "Moved to the Trash.",
+	"restored":      "Restored.",
+	"restored-task": "Restored. It stays paused until you resume it.",
+	"purged":        "Deleted for good.",
+	"emptied":       "The trash is empty.",
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page string, data any) {
@@ -273,25 +286,49 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page
 func (s *Server) renderMsg(w http.ResponseWriter, r *http.Request, status int, page, msg string, data any) {
 	sess := sessionFrom(r)
 	prefs := store.DefaultPrefs
+	trash, trashDays := 0, store.DefaultSettings.TrashRetentionDays
 	if sess != nil && s.store != nil {
 		if p, err := s.store.Prefs(r.Context(), sess.Username); err != nil {
 			s.log.Error("reading preferences", "user", sess.Username, "err", err)
 		} else {
 			prefs = p
 		}
+		var err error
+		if trash, err = s.store.CountTrash(r.Context()); err != nil {
+			s.log.Error("counting the trash", "err", err)
+		}
+		if st, err := s.store.Settings(r.Context()); err == nil {
+			trashDays = st.TrashRetentionDays
+		}
+	}
+	q := r.URL.Query()
+	notice := notices[q.Get("done")]
+	var undo *trashRef
+	switch q.Get("done") {
+	case "trashed":
+		if sess != nil {
+			undo = parseTrashRef(q.Get("undo"))
+		}
+	case "renamed":
+		if as := q.Get("as"); as != "" && len(as) <= 300 {
+			notice = "Restored as " + as + ", the old name is taken."
+		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	err := s.pages[page].Execute(w, pageData{
-		Title:   "PTS Discord Bot",
-		Session: sess,
-		Prefs:   prefs,
-		Nav:     navOf[page],
-		Path:    r.URL.Path,
-		Bot:     s.bot.Status(),
-		Error:   msg,
-		Notice:  notices[r.URL.Query().Get("done")],
-		Data:    data,
+		Title:     "PTS Discord Bot",
+		Session:   sess,
+		Prefs:     prefs,
+		Nav:       navOf[page],
+		Path:      r.URL.Path,
+		Bot:       s.bot.Status(),
+		Error:     msg,
+		Notice:    notice,
+		Undo:      undo,
+		Trash:     trash,
+		TrashDays: trashDays,
+		Data:      data,
 	})
 	if err != nil {
 		s.log.Error("render", "page", page, "err", err)
@@ -354,17 +391,27 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok\n"))
 }
 
-// PurgeLoop removes expired sessions and old runs.
+// PurgeLoop removes expired sessions, old runs and items that were long enough in the trash.
 func (s *Server) PurgeLoop(ctx context.Context) {
 	t := time.NewTicker(15 * time.Minute)
 	defer t.Stop()
 	for {
-		days := store.DefaultSettings.RunRetentionDays
-		if st, err := s.store.Settings(ctx); err == nil {
-			days = st.RunRetentionDays
+		st, err := s.store.Settings(ctx)
+		if err != nil {
+			st = store.DefaultSettings
 		}
-		if err := s.store.Purge(ctx, idleTimeout, maxSession, time.Duration(days)*24*time.Hour); err != nil && ctx.Err() == nil {
+		if err := s.store.Purge(ctx, idleTimeout, maxSession, time.Duration(st.RunRetentionDays)*24*time.Hour); err != nil && ctx.Err() == nil {
 			s.log.Error("purge", "err", err)
+		}
+		n, ids, err := s.store.PurgeTrash(ctx, time.Duration(st.TrashRetentionDays)*24*time.Hour)
+		if err != nil && ctx.Err() == nil {
+			s.log.Error("purging the trash", "err", err)
+		}
+		for _, id := range ids {
+			s.removeMediaFile(id)
+		}
+		if n > 0 {
+			s.log.Info("removed items from the trash", "count", n)
 		}
 		select {
 		case <-ctx.Done():

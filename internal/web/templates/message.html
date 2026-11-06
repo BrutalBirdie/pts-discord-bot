@@ -128,8 +128,8 @@
     <input type="hidden" name="csrf" value="{{$csrf}}">
     <h3>{{icon "trash-2"}}Delete message</h3>
     {{if $e.UsedBy}}<p class="small">Used by {{join $e.UsedBy ", "}}. Remove it from their steps first.</p>
-    {{else}}<p class="small">The files stay in the media library.</p>
-    <div class="btns"><button type="submit" class="ib danger" aria-label="Delete message" data-tip="Delete message" data-confirm-desc="Moves the message to the Trash.">{{icon "trash-2"}}<span class="lbl">Delete message</span></button></div>{{end}}
+    {{else}}<p class="small">{{if $.TrashDays}}Moves the message to the Trash for {{plural $.TrashDays "day" "days"}}, where it can be restored.{{else}}Removes the message right away.{{end}} The files stay in the media library.</p>
+    <div class="btns"><button type="submit" class="ib danger" aria-label="Delete message" data-tip="Delete message" data-confirm-desc="{{if $.TrashDays}}Moves the message to the Trash.{{else}}Removes the message right away. This cannot be undone.{{end}}"{{if not $.TrashDays}} data-irreversible{{end}}>{{icon "trash-2"}}<span class="lbl">Delete message</span></button></div>{{end}}
   </form>
   {{end}}
 </aside>

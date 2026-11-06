@@ -307,10 +307,11 @@ func (s *Server) deleteMessage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, http.StatusConflict, "The message is used by the tasks "+strings.Join(used, ", ")+". Remove it from their steps first.")
 		return
 	}
-	if err := s.store.DeleteMessage(r.Context(), m.ID); err != nil {
-		s.internalError(w, r, err)
+	trashed, err := s.removeItem(r, store.TrashMessage, m.ID)
+	if err != nil {
+		s.storeErr(w, r, err)
 		return
 	}
-	s.audit(r, "message.delete", m.Name, "")
-	redirect(w, r, "/messages", "deleted")
+	s.audit(r, "message.delete", m.Name, trashDetail(trashed))
+	removed(w, r, "/messages", store.TrashMessage, m.ID, trashed)
 }

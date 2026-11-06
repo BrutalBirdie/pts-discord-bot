@@ -178,7 +178,7 @@ const steps = {
         check('cancel disarms', await line.count() === 0 && !(await del.evaluate((b) => b.classList.contains('armed'))));
         await del.click();
         await del.click();
-        await page.waitForURL('**/messages?done=deleted');
+        await page.waitForURL(/\/messages\?.*done=trashed/);
         check('second click deletes', !(await text(page)).includes('Throwaway one'));
 
         const toggleConfirm = async () => {
@@ -194,7 +194,7 @@ const steps = {
             && !(await page.locator('#sheet-account input[name=confirm_actions]').isChecked()));
         del = await throwaway('Throwaway two');
         await del.click();
-        await page.waitForURL('**/messages?done=deleted');
+        await page.waitForURL(/\/messages\?.*done=trashed/);
         check('with confirm actions off one click deletes', !(await text(page)).includes('Throwaway two'));
         await toggleConfirm();
         check('confirm actions on again', await page.evaluate(() => document.body.dataset.confirm) === undefined);
@@ -234,7 +234,7 @@ const steps = {
         const task = page.url();
         for (const width of [1280, 390]) {
             await page.setViewportSize({ width, height: 900 });
-            for (const path of ['/media', '/messages', msg.replace(BASE, ''), '/admin/settings', '/admin/audit']) {
+            for (const path of ['/media', '/messages', msg.replace(BASE, ''), '/trash', '/admin/settings', '/admin/audit']) {
                 await page.goto(BASE + path);
                 const wide = await page.evaluate(() => [...document.querySelectorAll('main *')]
                     .filter((el) => {
@@ -247,6 +247,88 @@ const steps = {
             }
         }
         check('task editor reached', task.includes('/tasks/new'));
+    },
+
+    // posts the delete forms directly, so the test does not depend on the confirm UI
+    async trash() {
+        const { page } = await session('ann');
+        const post = async (sel) => {
+            const nav = page.waitForNavigation();
+            await page.locator(sel).first().evaluate((f) => {
+                const c = f.querySelector('input[name=confirm]');
+                if (c) c.value = c.dataset.confirm;
+                f.requestSubmit();
+            });
+            await nav;
+        };
+        const taskRow = () => page.locator('main .list > li', { has: page.getByRole('link', { name: 'Every minute', exact: true }) });
+
+        const trashCount = async () => Number(await page.locator('.nav a[href="/trash"] .badge').textContent({ timeout: 1000 }).catch(() => '0'));
+        await page.goto(BASE + '/tasks');
+        const before = await trashCount();
+        await page.getByRole('link', { name: 'Every minute', exact: true }).click();
+        const taskID = page.url().split('/').pop();
+        await post('form[action$="/delete"]');
+        let t = await text(page);
+        check('task moved to the trash', t.includes('Moved to the Trash.') && await taskRow().count() === 0, t.slice(0, 300));
+        check('nav shows the trash count', await trashCount() === before + 1);
+        await post('.notice form.undo');
+        check('undo brings the task back', (await text(page)).includes('stays paused') && await taskRow().count() === 1);
+        await page.goto(BASE + '/tasks/' + taskID);
+        await post('form[action$="/delete"]');
+        await page.goto(BASE + '/trash');
+        t = await text(page);
+        check('task listed in the trash', t.includes('Every minute') && t.includes('removed in 30 days') && t.includes('Deleted by ann'), t.slice(0, 500));
+        await post(`form[action="/trash/task/${taskID}/restore"]`);
+        check('task restored', (await text(page)).includes('Restored.'));
+        await page.goto(BASE + '/tasks');
+        check('restored task is paused', (await taskRow().innerText()).includes('paused'), await taskRow().innerText());
+
+        const wav = Buffer.alloc(44 + 8000);
+        wav.write('RIFF', 0); wav.writeUInt32LE(36 + 8000, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20);
+        wav.writeUInt16LE(1, 22); wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+        wav.write('data', 36); wav.writeUInt32LE(8000, 40);
+        const upload = async () => {
+            await page.goto(BASE + '/media');
+            await page.setInputFiles('input[type=file]', { name: 'chime.wav', mimeType: 'audio/wav', buffer: wav });
+            await page.click('form[data-upload] button[type=submit]');
+            return (await text(page)).includes('Uploaded.');
+        };
+        const chimes = () => page.locator('main .list > li', { hasText: 'chime' });
+        check('sound uploaded', await upload());
+        const action = await chimes().locator('form[action$="/delete"]').getAttribute('action');
+        const mediaID = action.split('/')[2];
+        await post(`form[action="${action}"]`);
+        check('sound moved to the trash', (await text(page)).includes('Moved to the Trash.') && await chimes().count() === 0);
+        check('same name uploads again', await upload());
+        await page.goto(BASE + '/trash?kind=media');
+        check('trash names the new name', (await text(page)).includes('comes back as chime (restored).wav'));
+        await post(`form[action="/trash/media/${mediaID}/restore"]`);
+        check('restore renames on a clash', (await text(page)).includes('Restored as chime (restored).wav'), (await text(page)).slice(0, 300));
+        await page.goto(BASE + '/media');
+        check('both sounds in media', await chimes().count() === 2);
+
+        await post(`form[action="/media/${mediaID}/delete"]`);
+        const bob = await session('bob');
+        await bob.page.goto(BASE + '/trash');
+        t = await bob.page.locator('main').innerText();
+        check('user sees the trash without purge', t.includes('chime (restored).wav') && await bob.page.locator('form[action$="/purge"], form[action="/trash/empty"]').count() === 0, t.slice(0, 300));
+        lastPage = page;
+        await page.goto(BASE + '/trash');
+        await post(`form[action="/trash/media/${mediaID}/purge"]`);
+        t = await text(page);
+        check('admin purges an item', t.includes('Deleted for good.') && !t.includes('chime (restored).wav'));
+        check('purged file is gone', (await page.request.get(`${BASE}/media/${mediaID}/file`)).status() === 404);
+
+        await page.goto(BASE + '/media');
+        await post(`form[action="${await chimes().locator('form[action$="/delete"]').getAttribute('action')}"]`);
+        await page.goto(BASE + '/trash');
+        await post('form[action="/trash/empty"]');
+        t = await text(page);
+        check('trash emptied', t.includes('The trash is empty.') && await page.locator('.nav a[href="/trash"] .badge').count() === 0, t.slice(0, 300));
+        await page.goto(BASE + '/admin/audit');
+        t = await text(page);
+        check('trash in the audit log', ['task.restore', 'media.restore', 'media.purge', 'trash.empty'].every((a) => t.includes(a)), t.slice(0, 500));
     },
 
     async promoted() {

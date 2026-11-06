@@ -285,8 +285,14 @@ func (s *Server) loadMedia(w http.ResponseWriter, r *http.Request) (store.Media,
 }
 
 func (s *Server) mediaFile(w http.ResponseWriter, r *http.Request) {
-	m, ok := s.loadMedia(w, r)
+	id, ok := pathID(r)
 	if !ok {
+		s.notFound(w, r)
+		return
+	}
+	m, err := s.store.AnyMedia(r.Context(), id)
+	if err != nil {
+		s.storeErr(w, r, err)
 		return
 	}
 	f, err := os.Open(s.cfg.MediaDir.Path(m.ID))
@@ -335,13 +341,11 @@ func (s *Server) deleteMedia(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := s.store.DeleteMedia(r.Context(), m.ID); err != nil {
-		s.internalError(w, r, err)
+	trashed, err := s.removeItem(r, store.TrashMedia, m.ID)
+	if err != nil {
+		s.storeErr(w, r, err)
 		return
 	}
-	if err := os.Remove(s.cfg.MediaDir.Path(m.ID)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		s.log.Error("removing media file", "id", m.ID, "err", err)
-	}
-	s.audit(r, "media.delete", m.Name, "")
-	redirect(w, r, "/media", "deleted")
+	s.audit(r, "media.delete", m.Name, trashDetail(trashed))
+	removed(w, r, "/media", store.TrashMedia, m.ID, trashed)
 }

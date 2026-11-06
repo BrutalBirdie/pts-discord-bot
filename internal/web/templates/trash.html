@@ -1,0 +1,59 @@
+{{define "content"}}
+{{$d := .Data}}{{$csrf := .Session.CSRFToken}}{{$admin := .Session.IsAdmin}}
+<div class="page-head">
+  <div><span class="eyebrow">Recover</span><h1>Trash</h1>
+    <p class="small muted">{{if $d.Days}}Deleted tasks, messages and media stay here for {{plural $d.Days "day" "days"}}, then they are removed for good.{{else}}Deleting removes items right away; the trash stays empty.{{end}}</p></div>
+  {{if and $admin (index $d.Counts "")}}<div class="btns">
+    <form method="post" action="/trash/empty"><input type="hidden" name="csrf" value="{{$csrf}}">
+      <button type="submit" class="ib danger" aria-label="Empty trash" data-tip="Empty trash" data-confirm-desc="Removes all {{plural (index $d.Counts "") "item" "items"}} for good. This cannot be undone." data-irreversible>{{icon "trash-2"}}<span class="lbl">Empty trash</span></button></form>
+  </div>{{end}}
+</div>
+
+<div class="pills">
+  <a href="/trash"{{if not $d.Kind}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
+  <a href="/trash?kind=task"{{if eq $d.Kind "task"}} aria-current="page"{{end}}>Tasks {{index $d.Counts "task"}}</a>
+  <a href="/trash?kind=message"{{if eq $d.Kind "message"}} aria-current="page"{{end}}>Messages {{index $d.Counts "message"}}</a>
+  <a href="/trash?kind=media"{{if eq $d.Kind "media"}} aria-current="page"{{end}}>Media {{index $d.Counts "media"}}</a>
+</div>
+
+<section class="card">
+  <ul class="list">
+    {{range $d.Rows}}
+    <li>
+      <div class="person">
+        {{if .Task}}<span class="thumb">{{icon "calendar"}}</span>
+        {{else if .Message}}<span class="thumb">{{icon "message-square"}}</span>
+        {{else if or (eq .Media.Kind "sound") (eq .Media.Kind "video")}}{{if eq .Media.Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Name "Vol" ($d.Vol .ID))}}{{else}}<span class="thumb">{{icon "film"}}</span>{{end}}
+        {{else if eq .Media.Kind "image"}}<span class="thumb">{{icon "image"}}</span>
+        {{else}}<span class="thumb">{{icon "file"}}</span>{{end}}
+        <div class="row-main">
+          <span class="row-title{{if .Media}} mono{{end}}">{{.Name}}</span>
+          <span class="row-sub" data-preview-detail>Deleted by {{.DeletedBy}} {{ago .DeletedAt}} · {{with .Task}}{{.Trigger.Summary}} · {{plural (len .Steps) "step" "steps"}}{{end}}{{with .Message}}{{if or .Embeds .Files}}{{with .Embeds}}{{plural (len .) "embed" "embeds"}}{{end}}{{if and .Embeds .Files}} · {{end}}{{with .Files}}{{plural (len .) "file" "files"}}{{end}}{{else}}text only{{end}}{{end}}{{with .Media}}{{if .DurationMS}}{{clock .DurationMS}} · {{end}}{{if .Width}}{{.Width}} × {{.Height}} · {{end}}{{bytes .SizeBytes}}{{end}}</span>
+          <span class="meta">
+            <span class="chip">{{if .Media}}{{.Media.Kind}}{{else}}{{.Kind}}{{end}}</span>
+            <span class="chip{{if le .DaysLeft 1}} warn{{end}}">{{if eq .DaysLeft 0}}removed today{{else if eq .DaysLeft 1}}removed tomorrow{{else}}removed in {{.DaysLeft}} days{{end}}</span>
+            {{with .RestoreAs}}<span class="chip accent">comes back as {{.}}</span>{{end}}
+          </span>
+        </div>
+      </div>
+      <div class="btns">
+        <form method="post" action="/trash/{{.Kind}}/{{.ID}}/restore"><input type="hidden" name="csrf" value="{{$csrf}}">
+          <button type="submit" class="ib" aria-label="Restore {{.Name}}" data-tip="Restore" data-confirm-desc="{{if .Task}}Puts the task back in Tasks. It stays paused until you resume it.{{else if .Message}}Puts the message back in Messages.{{else if .RestoreAs}}Puts the file back in Media as {{.RestoreAs}}, the name {{.Name}} is taken by now.{{else}}Puts {{.Name}} back in Media.{{end}}">{{icon "rotate-ccw"}}<span class="lbl">Restore</span></button></form>
+        {{if $admin}}<form method="post" action="/trash/{{.Kind}}/{{.ID}}/purge"><input type="hidden" name="csrf" value="{{$csrf}}">
+          <button type="submit" class="ib danger" aria-label="Delete {{.Name}} for good" data-tip="Delete for good" data-confirm-desc="Removes {{.Name}} now. This cannot be undone." data-irreversible>{{icon "trash-2"}}<span class="lbl">Delete for good</span></button></form>{{end}}
+      </div>
+    </li>
+    {{else}}
+    <li><span class="muted">{{if $d.Kind}}Nothing of this kind in the trash.{{else}}The trash is empty. Deleted tasks, messages and media show up here.{{end}}</span></li>
+    {{end}}
+  </ul>
+  {{if or (gt $d.Page 1) $d.More}}
+  <div class="pager mt">
+    {{if gt $d.Page 1}}<a class="ib with-label" href="/trash?page={{add $d.Page -1}}&amp;kind={{$d.Kind}}"><span class="lbl">Newer</span></a>{{else}}<span></span>{{end}}
+    <span class="hint">Page {{$d.Page}}</span>
+    {{if $d.More}}<a class="ib with-label" href="/trash?page={{add $d.Page 1}}&amp;kind={{$d.Kind}}"><span class="lbl">Older</span></a>{{else}}<span></span>{{end}}
+  </div>
+  {{end}}
+</section>
+{{if not $admin}}<p class="hint">Only admins can delete items for good before their time is up.</p>{{end}}
+{{end}}

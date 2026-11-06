@@ -180,14 +180,15 @@ ON CONFLICT (username) DO UPDATE SET show_labels = EXCLUDED.show_labels, confirm
 
 // Settings are changed on the admin page.
 type Settings struct {
-	Timezone         string // default for new tasks
-	MaxPlayMinutes   int
-	MaxUploadMB      int
-	FailureChannelID string // empty: no failure posts
-	RunRetentionDays int
+	Timezone           string // default for new tasks
+	MaxPlayMinutes     int
+	MaxUploadMB        int
+	FailureChannelID   string // empty: no failure posts
+	RunRetentionDays   int
+	TrashRetentionDays int // 0: deleting removes right away
 }
 
-var DefaultSettings = Settings{Timezone: "Europe/Berlin", MaxPlayMinutes: 10, MaxUploadMB: 100, RunRetentionDays: 90}
+var DefaultSettings = Settings{Timezone: "Europe/Berlin", MaxPlayMinutes: 10, MaxUploadMB: 100, RunRetentionDays: 90, TrashRetentionDays: 30}
 
 func (s *Store) Settings(ctx context.Context) (Settings, error) {
 	out := DefaultSettings
@@ -204,7 +205,7 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 		return out, err
 	}
 	for _, p := range kv {
-		n, _ := strconv.Atoi(p[1])
+		n, nerr := strconv.Atoi(p[1])
 		switch p[0] {
 		case "timezone":
 			out.Timezone = p[1]
@@ -222,6 +223,10 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 			if n > 0 {
 				out.RunRetentionDays = n
 			}
+		case "trash_retention_days":
+			if nerr == nil && n >= 0 {
+				out.TrashRetentionDays = n
+			}
 		}
 	}
 	return out, nil
@@ -229,11 +234,12 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 
 func (s *Store) SaveSettings(ctx context.Context, st Settings) error {
 	kv := map[string]string{
-		"timezone":           st.Timezone,
-		"max_play_minutes":   strconv.Itoa(st.MaxPlayMinutes),
-		"max_upload_mb":      strconv.Itoa(st.MaxUploadMB),
-		"failure_channel_id": st.FailureChannelID,
-		"run_retention_days": strconv.Itoa(st.RunRetentionDays),
+		"timezone":             st.Timezone,
+		"max_play_minutes":     strconv.Itoa(st.MaxPlayMinutes),
+		"max_upload_mb":        strconv.Itoa(st.MaxUploadMB),
+		"failure_channel_id":   st.FailureChannelID,
+		"run_retention_days":   strconv.Itoa(st.RunRetentionDays),
+		"trash_retention_days": strconv.Itoa(st.TrashRetentionDays),
 	}
 	batch := &pgx.Batch{}
 	for k, v := range kv {

@@ -19,12 +19,12 @@ func scanTask(r pgx.Row) (tasks.Task, error) {
 }
 
 func (s *Store) Task(ctx context.Context, id int64) (tasks.Task, error) {
-	t, err := scanTask(s.pool.QueryRow(ctx, `SELECT `+taskCols+` FROM tasks WHERE id = $1`, id))
+	t, err := scanTask(s.pool.QueryRow(ctx, `SELECT `+taskCols+` FROM tasks WHERE id = $1 AND deleted_at IS NULL`, id))
 	return t, noRows(err)
 }
 
 func (s *Store) ListTasks(ctx context.Context) ([]tasks.Task, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+taskCols+` FROM tasks ORDER BY lower(name), id`)
+	rows, err := s.pool.Query(ctx, `SELECT `+taskCols+` FROM tasks WHERE deleted_at IS NULL ORDER BY lower(name), id`)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) RETURNING id`, t.Name, t.GuildID, t.
 
 // UpdateTask saves the editor's state and clears a pause reason.
 func (s *Store) UpdateTask(ctx context.Context, t tasks.Task, by string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE tasks SET name = $2, guild_id = $3, enabled = $4, busy = $5, slash = $6, trigger = $7, steps = $8, paused_reason = '', updated_by = $9, updated_at = now() WHERE id = $1`,
+	tag, err := s.pool.Exec(ctx, `UPDATE tasks SET name = $2, guild_id = $3, enabled = $4, busy = $5, slash = $6, trigger = $7, steps = $8, paused_reason = '', updated_by = $9, updated_at = now() WHERE id = $1 AND deleted_at IS NULL`,
 		t.ID, t.Name, t.GuildID, t.Enabled, t.Busy, t.Slash, t.Trigger, steps(t.Steps), by)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
@@ -50,7 +50,7 @@ func (s *Store) UpdateTask(ctx context.Context, t tasks.Task, by string) error {
 
 // SetTaskEnabled pauses or resumes a task. reason is shown on paused tasks.
 func (s *Store) SetTaskEnabled(ctx context.Context, id int64, enabled bool, reason, by string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE tasks SET enabled = $2, paused_reason = $3, updated_by = $4, updated_at = now() WHERE id = $1`, id, enabled, reason, by)
+	tag, err := s.pool.Exec(ctx, `UPDATE tasks SET enabled = $2, paused_reason = $3, updated_by = $4, updated_at = now() WHERE id = $1 AND deleted_at IS NULL`, id, enabled, reason, by)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}

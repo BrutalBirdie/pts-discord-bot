@@ -374,7 +374,7 @@ func TestConfirmAndPreviewMarkup(t *testing.T) {
 	sess := &store.Session{Username: "ann", CSRFToken: "tok"}
 	render := func(page string, data any, prefs store.Prefs) string {
 		var b strings.Builder
-		if err := s.pages[page].Execute(&b, pageData{Session: sess, Prefs: prefs, Data: data}); err != nil {
+		if err := s.pages[page].Execute(&b, pageData{Session: sess, Prefs: prefs, Data: data, TrashDays: 30}); err != nil {
 			t.Fatal(err)
 		}
 		if strings.Contains(b.String(), " style=") {
@@ -389,7 +389,7 @@ func TestConfirmAndPreviewMarkup(t *testing.T) {
 	if !strings.Contains(body, `<body>`) || !strings.Contains(body, `name="confirm_actions" checked`) {
 		t.Error("confirm actions is not on by default")
 	}
-	for _, want := range []string{`<button type="submit" class="ib danger" aria-label="Delete task" data-tip="Delete task" data-confirm-desc="Moves the task and its run history to the Trash. Sounds and messages it uses stay.">`,
+	for _, want := range []string{`<button type="submit" class="ib danger" aria-label="Delete task" data-tip="Delete task" data-confirm-desc="Moves the task and its run history to the Trash.">`,
 		`<span class="lbl">Delete task</span>`, "Deleting for good and emptying the Trash always ask."} {
 		if !strings.Contains(body, want) {
 			t.Errorf("task: missing %q", want)
@@ -423,5 +423,78 @@ func TestConfirmAndPreviewMarkup(t *testing.T) {
 	}
 	if strings.Contains(body, "<audio") || strings.Contains(body, `data-preview-media="8"`) {
 		t.Error("media: audio element or preview of a video")
+	}
+}
+
+func TestTrashRender(t *testing.T) {
+	s := testServer(t)
+	now := time.Now()
+	daily := tasks.Task{ID: 3, Name: "Adhan", Trigger: tasks.Trigger{Kind: tasks.Daily, Times: []string{"05:00"}, Timezone: "UTC"}, Steps: []tasks.Step{{Type: tasks.Leave}}}
+	msg := messages.Message{ID: 7, Name: "Friday", Files: []int64{6}}
+	sound := store.Media{ID: 5, Name: "intro.ogg", Kind: store.KindSound, SizeBytes: 2048, DurationMS: 3000}
+	d := trashData{Days: 30, Page: 1, Counts: map[string]int{"": 3, "task": 1, "message": 1, "media": 1}, Rows: []trashRow{
+		{TrashItem: store.TrashItem{Kind: store.TrashTask, ID: 3, Name: "Adhan", DeletedAt: now, DeletedBy: "ann", Task: &daily}, DaysLeft: 30},
+		{TrashItem: store.TrashItem{Kind: store.TrashMessage, ID: 7, Name: "Friday", DeletedAt: now.Add(-3 * time.Hour), DeletedBy: "bob", Message: &msg}, DaysLeft: 1},
+		{TrashItem: store.TrashItem{Kind: store.TrashMedia, ID: 5, Name: "intro.ogg", DeletedAt: now.Add(-30 * 24 * time.Hour), DeletedBy: "ann", Media: &sound}, RestoreAs: "intro (restored).ogg"},
+	}}
+	for _, sess := range []*store.Session{
+		{Username: "ann", DisplayName: "Ann Admin", IsAdmin: true, CSRFToken: "tok"},
+		{Username: "bob", DisplayName: "Bob", CSRFToken: "tok"},
+	} {
+		req := httptest.NewRequest("GET", "/trash?done=trashed&undo=task.3", nil)
+		req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
+		rec := httptest.NewRecorder()
+		s.render(rec, req, http.StatusOK, "trash", d)
+		body := rec.Body.String()
+		for _, w := range []string{"Moved to the Trash.", `action="/trash/task/3/restore"`, `action="/trash/media/5/restore"`, "stay here for 30 days",
+			"Daily 05:00 · 1 step", "1 file", "0:03 · 2.0 KB", "removed in 30 days", `chip warn">removed tomorrow`, "removed today", "Deleted by bob 3 h ago",
+			`data-preview-media="5"`, "comes back as intro (restored).ogg", "It stays paused until you resume it.", `href="/trash" aria-current="page"`, "All 3"} {
+			if !strings.Contains(body, w) {
+				t.Errorf("%s: missing %q", sess.Username, w)
+			}
+		}
+		purge := strings.Contains(body, `/purge"`) || strings.Contains(body, `action="/trash/empty"`)
+		if purge != sess.IsAdmin {
+			t.Errorf("%s: purge buttons shown %v", sess.Username, purge)
+		}
+		if strings.Contains(body, " style=") {
+			t.Errorf("%s: inline style attribute, blocked by the CSP", sess.Username)
+		}
+	}
+
+	req := httptest.NewRequest("GET", "/trash?kind=media", nil)
+	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, &store.Session{Username: "bob", CSRFToken: "tok"}))
+	rec := httptest.NewRecorder()
+	s.render(rec, req, http.StatusOK, "trash", trashData{Kind: "media", Page: 1, Counts: map[string]int{}})
+	if body := rec.Body.String(); !strings.Contains(body, "Nothing of this kind in the trash.") || !strings.Contains(body, "removes items right away") {
+		t.Errorf("empty trash:\n%s", body)
+	}
+}
+
+func TestTrashHelpers(t *testing.T) {
+	for in, ok := range map[string]bool{"task.3": true, "media.12": true, "message.1": true, "task.0": false, "user.3": false, "task": false, "": false} {
+		if got := parseTrashRef(in); (got != nil) != ok {
+			t.Errorf("parseTrashRef(%q) = %v", in, got)
+		}
+	}
+	for name, want := range map[string][2]string{
+		"intro.ogg":  {"intro (restored).ogg", "intro (restored 2).ogg"},
+		"README":     {"README (restored)", "README (restored 2)"},
+		".hidden":    {".hidden (restored)", ".hidden (restored 2)"},
+		"a.b (x).gz": {"a.b (x) (restored).gz", "a.b (x) (restored 2).gz"},
+	} {
+		if got := [2]string{store.RestoredName(name, 1), store.RestoredName(name, 2)}; got != want || store.RestoredName(name, 0) != name {
+			t.Errorf("RestoredName(%q) = %v", name, got)
+		}
+	}
+	SetDisplayTimezone("UTC")
+	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		deleted time.Time
+		want    int
+	}{{now, 30}, {now.Add(-29 * 24 * time.Hour), 1}, {now.Add(-30*24*time.Hour + time.Hour), 0}, {now.Add(-40 * 24 * time.Hour), 0}} {
+		if got := daysLeft(c.deleted, 30, now); got != c.want {
+			t.Errorf("daysLeft(%v) = %d, want %d", c.deleted, got, c.want)
+		}
 	}
 }

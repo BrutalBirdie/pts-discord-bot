@@ -96,4 +96,12 @@ CREATE TABLE IF NOT EXISTS preview_volume (
     volume integer NOT NULL CHECK (volume BETWEEN 0 AND 100),
     PRIMARY KEY (username, media_id)
 );
-ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS confirm_actions boolean NOT NULL DEFAULT true;`
+ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS confirm_actions boolean NOT NULL DEFAULT true;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted_by text;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_by text;
+ALTER TABLE media ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE media ADD COLUMN IF NOT EXISTS deleted_by text;
+ALTER TABLE media DROP CONSTRAINT IF EXISTS media_name_key;
+CREATE UNIQUE INDEX IF NOT EXISTS media_name_live ON media (name) WHERE deleted_at IS NULL;`
