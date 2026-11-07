@@ -201,9 +201,8 @@ func (s *Store) PurgeTrashed(ctx context.Context, kind string, id int64) error {
 		return err
 	}
 	var n int
-	err = s.pool.QueryRow(ctx, `WITH d AS (DELETE FROM `+table+` WHERE id = $1 AND deleted_at IS NOT NULL RETURNING id),
-v AS (DELETE FROM preview_volume WHERE $2 AND media_id IN (SELECT id FROM d))
-SELECT count(*) FROM d`, id, kind == TrashMedia).Scan(&n)
+	err = s.pool.QueryRow(ctx, `WITH d AS (DELETE FROM `+table+` WHERE id = $1 AND deleted_at IS NOT NULL RETURNING id)
+SELECT count(*) FROM d`, id).Scan(&n)
 	if err == nil && n == 0 {
 		return ErrNotFound
 	}
@@ -233,9 +232,6 @@ func (s *Store) PurgeTrash(ctx context.Context, retention time.Duration) (int, [
 	}
 	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
 	if err != nil {
-		return 0, nil, err
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM preview_volume WHERE media_id = ANY ($1)`, ids); err != nil {
 		return 0, nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

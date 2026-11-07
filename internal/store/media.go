@@ -160,7 +160,7 @@ func (s *Store) FindMedia(ctx context.Context, q MediaQuery) ([]Media, error) {
 }
 
 func (s *Store) DeleteMedia(ctx context.Context, id int64) error {
-	_, err := s.pool.Exec(ctx, `WITH v AS (DELETE FROM preview_volume WHERE media_id = $1) DELETE FROM media WHERE id = $1`, id)
+	_, err := s.pool.Exec(ctx, `DELETE FROM media WHERE id = $1`, id)
 	return err
 }
 
@@ -175,31 +175,6 @@ ORDER BY `+ownFirst("m", "3")+`, name NOT ILIKE $1 || '%', lower(name) LIMIT $2`
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Media, error) { return scanMedia(r) })
-}
-
-// PreviewVolumes returns the saved preview volumes of a user, sounds without one are missing.
-func (s *Store) PreviewVolumes(ctx context.Context, username string, ids []int64) (map[int64]int, error) {
-	out := map[int64]int{}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	rows, err := s.pool.Query(ctx, `SELECT media_id, volume FROM preview_volume WHERE username = $1 AND media_id = ANY ($2)`, username, ids)
-	if err != nil {
-		return nil, err
-	}
-	var id int64
-	var vol int
-	_, err = pgx.ForEachRow(rows, []any{&id, &vol}, func() error {
-		out[id] = vol
-		return nil
-	})
-	return out, err
-}
-
-func (s *Store) SetPreviewVolume(ctx context.Context, username string, mediaID int64, volume int) error {
-	_, err := s.pool.Exec(ctx, `INSERT INTO preview_volume (username, media_id, volume) SELECT $1, id, $3 FROM media WHERE id = $2
-ON CONFLICT (username, media_id) DO UPDATE SET volume = EXCLUDED.volume`, username, mediaID, volume)
-	return err
 }
 
 // MediaSummary is the whole library at a glance: files per kind ("" for all), their size and every tag.

@@ -165,14 +165,14 @@
     function stopPreviewIn(el) {
         if (preview && el.contains(preview.btn)) stopPreview();
     }
-    function saveVolume(id, volume) {
+    function saveVolume(volume) {
         const csrf = document.querySelector('input[name=csrf]');
         if (!csrf) return;
         clearTimeout(volTimer);
         volTimer = setTimeout(function () {
             fetch('/prefs/preview-volume', {
                 method: 'POST',
-                body: new URLSearchParams({ csrf: csrf.value, media_id: id, volume }),
+                body: new URLSearchParams({ csrf: csrf.value, volume }),
                 headers: { Accept: 'application/json' },
             }).then(
                 (r) => { if (!r.ok) toast('Volume not saved, reload the page and try again'); },
@@ -190,12 +190,12 @@
         const label = document.createElement('label');
         const text = document.createElement('span');
         text.className = 'vh';
-        text.textContent = 'Preview volume';
+        text.textContent = 'Preview volume, for all sounds';
         const slider = document.createElement('input');
         slider.type = 'range';
         slider.min = '0';
         slider.max = '100';
-        slider.value = btn.dataset.vol || '100';
+        slider.value = document.body.dataset.previewVol || '100';
         const out = document.createElement('output');
         out.textContent = slider.value + '%';
         label.append(text, slider);
@@ -204,8 +204,8 @@
         slider.addEventListener('input', function () {
             audio.volume = Number(slider.value) / 100;
             out.textContent = slider.value + '%';
-            document.querySelectorAll('[data-preview-media="' + id + '"]').forEach((b) => { b.dataset.vol = slider.value; });
-            saveVolume(id, slider.value);
+            document.body.dataset.previewVol = slider.value;
+            saveVolume(slider.value);
         });
         if (detail) {
             detail.hidden = true;
@@ -275,7 +275,6 @@
                 pv.type = 'button';
                 pv.className = 'pv';
                 pv.dataset.previewMedia = h.id;
-                pv.dataset.vol = h.volume ?? 100;
                 pv.dataset.name = h.name;
                 pv.setAttribute('aria-label', 'Preview ' + h.name);
                 pv.setAttribute('aria-pressed', 'false');

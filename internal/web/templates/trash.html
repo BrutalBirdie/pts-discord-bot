@@ -25,7 +25,7 @@
       <div class="person">
         {{if .Task}}<span class="thumb">{{icon "calendar"}}</span>
         {{else if .Message}}<span class="thumb">{{icon "message-square"}}</span>
-        {{else if or (eq .Media.Kind "sound") (eq .Media.Kind "video")}}{{if eq .Media.Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Name "Vol" ($d.Vol .ID))}}{{else}}<span class="thumb">{{icon "film"}}</span>{{end}}
+        {{else if or (eq .Media.Kind "sound") (eq .Media.Kind "video")}}{{if eq .Media.Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Name)}}{{else}}<span class="thumb">{{icon "film"}}</span>{{end}}
         {{else if eq .Media.Kind "image"}}<span class="thumb">{{icon "image"}}</span>
         {{else}}<span class="thumb">{{icon "file"}}</span>{{end}}
         <div class="row-main">

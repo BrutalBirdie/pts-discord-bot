@@ -90,12 +90,6 @@ ALTER TABLE media ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slash boolean NOT NULL DEFAULT false;
 ALTER TABLE runs DROP CONSTRAINT IF EXISTS runs_source_check;
 ALTER TABLE runs ADD CONSTRAINT runs_source_check CHECK (source IN ('schedule', 'manual', 'event', 'discord'));
-CREATE TABLE IF NOT EXISTS preview_volume (
-    username text NOT NULL,
-    media_id bigint NOT NULL,
-    volume integer NOT NULL CHECK (volume BETWEEN 0 AND 100),
-    PRIMARY KEY (username, media_id)
-);
 ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS confirm_actions boolean NOT NULL DEFAULT true;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted_by text;
@@ -150,6 +144,8 @@ DROP INDEX IF EXISTS media_name_live;
 CREATE INDEX IF NOT EXISTS runs_guild ON runs (guild_id, id DESC);
 ALTER TABLE media ADD COLUMN IF NOT EXISTS group_only boolean NOT NULL DEFAULT false;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS group_only boolean NOT NULL DEFAULT false;
+ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS preview_volume integer NOT NULL DEFAULT 100 CHECK (preview_volume BETWEEN 0 AND 100);
+DROP TABLE IF EXISTS preview_volume;
 DO $$
 DECLARE
     r record;

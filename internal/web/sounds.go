@@ -19,7 +19,6 @@ type soundHit struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
 	DurationMS int    `json:"duration_ms"`
-	Volume     int    `json:"volume"`
 }
 
 // searchSounds feeds the sound picker of play steps.
@@ -30,44 +29,27 @@ func (s *Server) searchSounds(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	ids := make([]int64, len(list))
-	for i, m := range list {
-		ids[i] = m.ID
-	}
-	vols, err := s.store.PreviewVolumes(ctx, sessionFrom(r).Username, ids)
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
 	hits := []soundHit{}
 	for _, m := range list {
-		hits = append(hits, soundHit{ID: m.ID, Name: m.Name, DurationMS: m.DurationMS, Volume: previewVolume(vols, m.ID)})
+		hits = append(hits, soundHit{ID: m.ID, Name: m.Name, DurationMS: m.DurationMS})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(hits)
 }
 
-// savePreviewVolume stores the volume of the preview player in the editor, per user and sound.
+// savePreviewVolume stores the volume of every sound preview of the user.
 func (s *Server) savePreviewVolume(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PostForm.Get("media_id"), 10, 64)
-	vol, verr := strconv.Atoi(r.PostForm.Get("volume"))
-	if err != nil || verr != nil || vol < 0 || vol > 100 {
-		http.Error(w, "media_id and a volume from 0 to 100 are needed", http.StatusBadRequest)
+	vol, err := strconv.Atoi(r.PostForm.Get("volume"))
+	if err != nil || vol < 0 || vol > 100 {
+		http.Error(w, "a volume from 0 to 100 is needed", http.StatusBadRequest)
 		return
 	}
-	if err := s.store.SetPreviewVolume(r.Context(), sessionFrom(r).Username, id, vol); err != nil {
+	if err := s.store.SetPreviewVolume(r.Context(), sessionFrom(r).Username, vol); err != nil {
 		s.log.Error("saving preview volume", "err", err)
 		http.Error(w, "not saved", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func previewVolume(vols map[int64]int, id int64) int {
-	if v, ok := vols[id]; ok {
-		return v
-	}
-	return 100
 }
 
 // token is one chip of a token field.
@@ -78,7 +60,6 @@ type token struct {
 	Title  string
 	Avatar string // initial of a member
 	Media  int64  // sounds get a preview button
-	Vol    int    // preview volume
 	MS     int    // length, for the live total
 }
 
@@ -138,7 +119,7 @@ func (e taskEditor) Play(i int) playView {
 		if ref.Tag != "" {
 			k.Value, k.Name = "tag:"+ref.Tag, "random sound tagged "+ref.Tag
 		} else if m, ok := byID[ref.MediaID]; ok {
-			k.Value, k.Name, k.Media, k.Vol = strconv.FormatInt(m.ID, 10), m.Name, m.ID, previewVolume(e.PreviewVol, m.ID)
+			k.Value, k.Name, k.Media = strconv.FormatInt(m.ID, 10), m.Name, m.ID
 		} else {
 			k.Value, k.Name, k.Sub = strconv.FormatInt(ref.MediaID, 10), "Deleted sound", ""
 		}

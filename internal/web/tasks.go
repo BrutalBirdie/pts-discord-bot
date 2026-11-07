@@ -180,9 +180,7 @@ type taskEditor struct {
 	Tags      []string
 	Overlaps  []overlapView // event tasks that start on the same events
 
-	// play steps: per account preview volume of the picked sounds, and the longest playback
-	PreviewVol     map[int64]int
-	MaxPlayMinutes int
+	MaxPlayMinutes int // longest playback of a play step
 }
 
 var commonTimezones = []string{"Europe/Berlin", "Europe/Vienna", "Europe/Zurich", "Europe/London", "Europe/Paris", "Europe/Istanbul",
@@ -237,13 +235,6 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 		return e, err
 	}
 	e.MaxPlayMinutes = settings.MaxPlayMinutes
-	var picked []int64
-	for _, st := range t.Steps {
-		picked = append(picked, st.MediaIDs...)
-	}
-	if e.PreviewVol, err = s.store.PreviewVolumes(ctx, sessionFrom(r).Username, picked); err != nil {
-		return e, err
-	}
 	if e.Tags, err = s.store.Tags(ctx, t.GuildID); err != nil {
 		return e, err
 	}

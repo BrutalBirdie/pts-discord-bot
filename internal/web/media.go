@@ -30,7 +30,6 @@ type mediaData struct {
 	TotalBytes   int64
 	Voice        []voiceGroup
 	MaxUploadMB  int
-	Vols         map[int64]int // preview volumes of the listed sounds
 	Groups       []bot.Guild   // servers a file can be grouped with
 	Group        string        // list filter: a server, store.NoGroup or "" for all
 	DefaultGroup string        // preselected for uploads: the server of a Discord user
@@ -61,7 +60,6 @@ func groupLabel(names map[string]string, guildID string) string {
 	return guildID
 }
 
-func (d mediaData) Vol(id int64) int { return previewVolume(d.Vols, id) }
 
 func (s *Server) voiceGroups(r *http.Request) []voiceGroup {
 	var out []voiceGroup
@@ -118,16 +116,6 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 		if _, ok := d.Names[m.GuildID]; m.GuildID != "" && !ok {
 			d.Names[m.GuildID] = s.bot.GuildName(m.GuildID)
 		}
-	}
-	var sounds []int64
-	for _, m := range d.Items {
-		if m.Kind == store.KindSound {
-			sounds = append(sounds, m.ID)
-		}
-	}
-	if d.Vols, err = s.store.PreviewVolumes(ctx, sessionFrom(r).Username, sounds); err != nil {
-		s.internalError(w, r, err)
-		return
 	}
 	s.render(w, r, http.StatusOK, "media", d)
 }

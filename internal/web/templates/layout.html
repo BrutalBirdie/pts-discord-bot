@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="/static/logo.png">
 </head>
-<body{{if and .Session (not .Prefs.ConfirmActions)}} data-confirm="off"{{end}}>
+<body data-preview-vol="{{.Prefs.PreviewVolume}}"{{if and .Session (not .Prefs.ConfirmActions)}} data-confirm="off"{{end}}>
 {{template "icons"}}
 <header class="topbar">
   <div class="wrap">

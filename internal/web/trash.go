@@ -24,11 +24,8 @@ type trashData struct {
 	Kind   string
 	Counts map[string]int
 	Days   int
-	Vols   map[int64]int
 	Paging paging
 }
-
-func (d trashData) Vol(id int64) int { return previewVolume(d.Vols, id) }
 
 type trashRef struct {
 	Kind string
@@ -108,16 +105,6 @@ func (s *Server) trash(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		d.Rows = append(d.Rows, row)
-	}
-	var sounds []int64
-	for _, it := range items {
-		if it.Media != nil && it.Media.Kind == store.KindSound {
-			sounds = append(sounds, it.ID)
-		}
-	}
-	if d.Vols, err = s.store.PreviewVolumes(ctx, sessionFrom(r).Username, sounds); err != nil {
-		s.internalError(w, r, err)
-		return
 	}
 	s.render(w, r, http.StatusOK, "trash", d)
 }

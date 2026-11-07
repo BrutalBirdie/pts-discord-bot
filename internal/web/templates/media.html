@@ -53,7 +53,7 @@
     <li>
       <div class="person">
         <input type="checkbox" class="pick" name="id" value="{{.ID}}" form="group-bulk" aria-label="Select {{.Name}}">
-        {{if eq .Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Name "Vol" ($d.Vol .ID))}}
+        {{if eq .Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Name)}}
         {{else}}<span class="thumb">{{if eq .Kind "image"}}<img src="/media/{{.ID}}/file" alt="" loading="lazy">{{else if eq .Kind "video"}}{{icon "film"}}{{else}}{{icon "file"}}{{end}}</span>{{end}}
         <div class="row-main">
           <span class="row-title mono">{{.Name}}{{if gt .SizeBytes 20971520}} <span class="chip warn">{{icon "triangle-alert"}}over 20 MB for Discord messages</span>{{end}}</span>

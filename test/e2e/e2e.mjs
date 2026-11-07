@@ -584,9 +584,9 @@ const steps = {
         check('play step saved', (await text(page)).includes('Saved.'), (await text(page)).slice(0, 300));
         ids = await soundToks();
         check('sounds and preview volume after reload', ids.length === 2 && await page.locator('input[name="s1.order"][value=random]').isChecked()
-            && await sounds.locator('.tok .pv').first().getAttribute('data-vol') === '35', ids.join());
+            && await page.locator('body').getAttribute('data-preview-vol') === '35', ids.join());
         const hits = await (await page.request.get(BASE + '/sounds?q=beep')).json();
-        check('sound search answers JSON', hits.length === 1 && hits[0].name === 'beep.ogg' && hits[0].volume === 35 && hits[0].duration_ms > 1000, JSON.stringify(hits));
+        check('sound search answers JSON', hits.length === 1 && hits[0].name === 'beep.ogg' && hits[0].duration_ms > 1000, JSON.stringify(hits));
         await page.goto(BASE + '/media');
         check('media shows multi sound usage', (await text(page)).includes('used by task Greeting'));
     },

@@ -69,7 +69,7 @@ func TestPagesRender(t *testing.T) {
 		{"task", taskEditor{Task: adhan, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, TimesText: "05:00 16:35",
 			Voice: []bot.Channel{{ID: "2", Name: "prayer", Voice: true}}, Text: []bot.Channel{{ID: "44", Name: "general"}}, Labels: map[string]string{"9": "Amira (@amira)"},
 			Sounds: []store.Media{sound}, Messages: []messages.Message{msg}, Next: adhan.Trigger.Next(now, 3), Runs: runs, RunCount: 2, Page: 1, Pages: 1},
-			[]string{`name="s0.target"`, `value="2" selected`, `name="s0.follow" value=""`, `data-members="1"`, `<input type="hidden" name="s1.media" value="5">`, `data-preview-media="5" data-vol="100"`, "Total 3:45 / 10:00", `name="s1.volume" value="80"`, `value="add:wait"`, `value="daily" checked`, "Unknown channel 4", `name="s3.user" value="Amira (@amira)"`, `name="s4.wait" value="5s"`, `action="/tasks/3/delete"`, "As cron"}},
+			[]string{`name="s0.target"`, `value="2" selected`, `name="s0.follow" value=""`, `data-members="1"`, `<input type="hidden" name="s1.media" value="5">`, `data-preview-media="5"`, "Total 3:45 / 10:00", `name="s1.volume" value="80"`, `value="add:wait"`, `value="daily" checked`, "Unknown channel 4", `name="s3.user" value="Amira (@amira)"`, `name="s4.wait" value="5s"`, `action="/tasks/3/delete"`, "As cron"}},
 		{"task", taskEditor{Task: tasks.Task{Trigger: tasks.Trigger{Kind: tasks.Manual}}, New: true, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Problems: []string{"Give the task a name."}},
 			[]string{"Create task", "Give the task a name.", `action="/tasks/new"`}},
 		{"messages", messagesData{Rows: []messageRow{{Message: msg, UsedBy: []string{"Adhan"}}}}, []string{`href="/messages/7"`, "1 embed", "1 file"}},
@@ -79,7 +79,7 @@ func TestPagesRender(t *testing.T) {
 			[]string{`<span class="dmention">@Amira</span>`, `fill="#112233"`, `name="e0.f0.inline" checked`, `src="/media/6/file"`, `action="/messages/7/send"`, `name="file" value="6"`}},
 		{"media", mediaData{Items: []store.Media{sound, img, {ID: 8, Name: "big.mp4", Kind: store.KindVideo, SizeBytes: 30 << 20}}, Counts: map[string]int{"": 3, "sound": 1}, MaxUploadMB: 100,
 			Voice: []voiceGroup{{Guild: bot.Guild{Name: "PTS"}, Voice: []bot.Channel{{ID: "2", Name: "prayer"}}}}},
-			[]string{`id="sheet-play-5"`, `data-preview-media="5" data-vol="100" data-name="muezzin.ogg"`, "over 20 MB", "used by task Adhan", "3:45", `enctype="multipart/form-data"`}},
+			[]string{`id="sheet-play-5"`, `data-preview-media="5" data-name="muezzin.ogg"`, "over 20 MB", "used by task Adhan", "3:45", `enctype="multipart/form-data"`}},
 		{"admin", adminData{Tab: "overview", Admins: []string{"ann"}, Groups: []string{"bot-admins"}}, []string{"BOT_ADMIN_GROUP", "bot-admins"}},
 		{"admin", adminData{Tab: "settings", Settings: store.DefaultSettings, Timezones: commonTimezones}, []string{`name="max_play_minutes" value="10"`, `value="Europe/Berlin"`}},
 		{"admin", adminData{Tab: "audit", Page: 1, Audit: []store.AuditEntry{{At: now, Actor: "ann", Action: "task.run", Target: "Adhan"}}}, []string{"task.run"}},
@@ -94,7 +94,7 @@ func TestPagesRender(t *testing.T) {
 			t.Errorf("%s: incomplete page:\n%s", p.name, body)
 			continue
 		}
-		for _, w := range append(p.want, "Saved.", `name="confirm_actions" checked`, "<body>") {
+		for _, w := range append(p.want, "Saved.", `name="confirm_actions" checked`, `<body data-preview-vol="100">`) {
 			if !strings.Contains(body, w) {
 				t.Errorf("%s: missing %q", p.name, w)
 			}
@@ -321,14 +321,14 @@ func TestPlayEditorRenders(t *testing.T) {
 	sounds := []store.Media{{ID: 3, Name: "intro.ogg", Kind: store.KindSound, DurationMS: 330000, Tags: []string{"intro"}}, {ID: 5, Name: "outro.ogg", Kind: store.KindSound, DurationMS: 0}}
 	task := tasks.Task{ID: 4, Name: "Jingles", GuildID: "1", Busy: tasks.BusyWait, Trigger: tasks.Trigger{Kind: tasks.Manual},
 		Steps: []tasks.Step{{Type: tasks.Play, Tag: "intro", MediaIDs: []int64{3, 5, 3}, Order: tasks.OrderSequence, Volume: 100}, {Type: tasks.Play, MediaIDs: []int64{3, 3}, Order: tasks.OrderRandom, Volume: 50}}}
-	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Sounds: sounds, PreviewVol: map[int64]int{3: 40}, MaxPlayMinutes: 10, Page: 1, Pages: 1}
+	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Sounds: sounds, MaxPlayMinutes: 10, Page: 1, Pages: 1}
 	req := httptest.NewRequest("GET", "/tasks/4", nil)
 	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
 	rec := httptest.NewRecorder()
 	s.render(rec, req, http.StatusOK, "task", e)
 	body := rec.Body.String()
 	for _, want := range []string{`data-tokens="s0.media" data-max="25" data-empty="No sound" data-source="/sounds" data-guild="1" data-dupes`, `<input type="hidden" name="s0.media" value="tag:intro">`,
-		"random sound tagged intro <span class=\"un\">5:30</span>", `<span class="tok" title="intro.ogg" data-ms="330000"><button type="button" class="pv js-only" data-preview-media="3" data-vol="40" data-name="intro.ogg" aria-label="Preview intro.ogg" data-tip="Preview intro.ogg" aria-pressed="false">`, `<span class="nm" data-preview-detail>intro.ogg`, `value="tokdel:s0.media:3"`,
+		"random sound tagged intro <span class=\"un\">5:30</span>", `<span class="tok" title="intro.ogg" data-ms="330000"><button type="button" class="pv js-only" data-preview-media="3" data-name="intro.ogg" aria-label="Preview intro.ogg" data-tip="Preview intro.ogg" aria-pressed="false">`, `<span class="nm" data-preview-detail>intro.ogg`, `value="tokdel:s0.media:3"`,
 		"outro.ogg <span class=\"un\">length unknown</span>", "4 of 25", `name="s0.find" value=""`, `<li class="step bad">`, "Total 16:30 / 10:00, some lengths unknown",
 		`name="s1.order" value="random" checked`, "Total 5:30 / 10:00</span>", `name="s0.order" value="sequence" checked`} {
 		if !strings.Contains(body, want) {
@@ -449,7 +449,7 @@ func TestConfirmAndPreviewMarkup(t *testing.T) {
 	editor := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Page: 1, Pages: 1}
 
 	body := render("task", editor, store.DefaultPrefs)
-	if !strings.Contains(body, `<body>`) || !strings.Contains(body, `name="confirm_actions" checked`) {
+	if !strings.Contains(body, `<body data-preview-vol="100">`) || !strings.Contains(body, `name="confirm_actions" checked`) {
 		t.Error("confirm actions is not on by default")
 	}
 	for _, want := range []string{`<button type="submit" class="ib danger" aria-label="Delete task" data-tip="Delete task" data-confirm-desc="Moves the task and its run history to the Trash.">`,
@@ -465,7 +465,7 @@ func TestConfirmAndPreviewMarkup(t *testing.T) {
 	}
 
 	body = render("task", editor, store.Prefs{ShowLabels: true})
-	if !strings.Contains(body, `<body data-confirm="off">`) || strings.Contains(body, `name="confirm_actions" checked`) || !strings.Contains(body, `<html lang="en" class="labels">`) {
+	if !strings.Contains(body, `<body data-preview-vol="0" data-confirm="off">`) || strings.Contains(body, `name="confirm_actions" checked`) || !strings.Contains(body, `<html lang="en" class="labels">`) {
 		t.Error("confirm actions off is not rendered")
 	}
 
@@ -477,8 +477,8 @@ func TestConfirmAndPreviewMarkup(t *testing.T) {
 
 	sound := store.Media{ID: 5, Name: "muezzin.ogg", Kind: store.KindSound, DurationMS: 225000}
 	video := store.Media{ID: 8, Name: "clip.mp4", Kind: store.KindVideo}
-	body = render("media", mediaData{Items: []store.Media{sound, video}, Counts: map[string]int{}, Vols: map[int64]int{5: 30}}, store.DefaultPrefs)
-	for _, want := range []string{`<button type="button" class="preview-tile js-only" data-preview-media="5" data-vol="30" data-name="muezzin.ogg" aria-label="Preview muezzin.ogg" data-tip="Preview muezzin.ogg" aria-pressed="false">`,
+	body = render("media", mediaData{Items: []store.Media{sound, video}, Counts: map[string]int{}}, store.DefaultPrefs)
+	for _, want := range []string{`<button type="button" class="preview-tile js-only" data-preview-media="5" data-name="muezzin.ogg" aria-label="Preview muezzin.ogg" data-tip="Preview muezzin.ogg" aria-pressed="false">`,
 		`<span class="row-sub" data-preview-detail>3:45`, `data-confirm-desc="Moves muezzin.ogg to the Trash."`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("media: missing %q", want)
