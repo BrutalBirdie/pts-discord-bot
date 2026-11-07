@@ -328,7 +328,7 @@ func TestPlayEditorRenders(t *testing.T) {
 	s.render(rec, req, http.StatusOK, "task", e)
 	body := rec.Body.String()
 	for _, want := range []string{`data-tokens="s0.media" data-max="25" data-empty="No sound" data-source="/sounds" data-guild="1" data-dupes`, `<input type="hidden" name="s0.media" value="tag:intro">`,
-		"random sound tagged intro <span class=\"un\">5:30</span>", `<span class="tok" title="intro.ogg" data-ms="330000"><button type="button" class="pv js-only" data-preview-media="3" data-vol="40" data-name="intro.ogg" aria-label="Preview intro.ogg" aria-pressed="false">`, `<span class="nm" data-preview-detail>intro.ogg`, `value="tokdel:s0.media:3"`,
+		"random sound tagged intro <span class=\"un\">5:30</span>", `<span class="tok" title="intro.ogg" data-ms="330000"><button type="button" class="pv js-only" data-preview-media="3" data-vol="40" data-name="intro.ogg" aria-label="Preview intro.ogg" data-tip="Preview intro.ogg" aria-pressed="false">`, `<span class="nm" data-preview-detail>intro.ogg`, `value="tokdel:s0.media:3"`,
 		"outro.ogg <span class=\"un\">length unknown</span>", "4 of 25", `name="s0.find" value=""`, `<li class="step bad">`, "Total 16:30 / 10:00, some lengths unknown",
 		`name="s1.order" value="random" checked`, "Total 5:30 / 10:00</span>", `name="s0.order" value="sequence" checked`} {
 		if !strings.Contains(body, want) {

@@ -150,7 +150,7 @@
         btn.setAttribute('aria-pressed', String(playing));
         btn.setAttribute('aria-label', text);
         if (btn.dataset.tip !== undefined) btn.dataset.tip = text;
-        btn.querySelector('use').setAttribute('href', playing ? '#i-square' : '#i-music');
+        btn.querySelector('use').setAttribute('href', playing ? '#i-square' : '#i-play');
     }
     function stopPreview() {
         if (!preview) return;
@@ -279,7 +279,8 @@
                 pv.dataset.name = h.name;
                 pv.setAttribute('aria-label', 'Preview ' + h.name);
                 pv.setAttribute('aria-pressed', 'false');
-                pv.append(svgIcon('music'));
+                pv.dataset.tip = 'Preview ' + h.name;
+                pv.append(svgIcon('play'));
                 tok.append(pv);
             }
             const nm = document.createElement('span');
@@ -361,10 +362,10 @@
                 input.value = h.label;
             }
         }
-        input.addEventListener('input', function () {
+        // sound pickers list the server's sounds before the first keystroke
+        const browse = Boolean(tokens && tokens.dataset.source);
+        function search(q, wait) {
             clearTimeout(timer);
-            const q = input.value.trim();
-            if (q === '') { close(); return; }
             timer = setTimeout(function () {
                 const mine = ++seq;
                 const params = new URLSearchParams({ q });
@@ -376,7 +377,15 @@
                     active = hits.length ? 0 : -1;
                     show();
                 }).catch(() => {});
-            }, 150);
+            }, wait);
+        }
+        input.addEventListener('input', function () {
+            const q = input.value.trim();
+            if (q === '' && !browse) { clearTimeout(timer); close(); return; }
+            search(q, 150);
+        });
+        if (browse) input.addEventListener('focus', function () {
+            if (input.value.trim() === '') search('', 0);
         });
         input.addEventListener('keydown', function (event) {
             if (tokens && event.key === 'Backspace' && input.value === '') {

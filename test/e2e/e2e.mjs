@@ -144,6 +144,11 @@ const steps = {
         await page.click('button[value="up:2"]');
         check('steps added and moved', await stepTypes() === 's0.type=play,s1.type=leave,s2.type=wait', await stepTypes());
         check('moving does not reload the page', await page.evaluate(() => window.notReloaded === true));
+        await page.focus('input[name="s0.find"]');
+        const beepOption = page.locator('[role=option]', { hasText: 'beep.ogg' });
+        await beepOption.first().waitFor({ timeout: 5000 }).catch(() => {});
+        check('sound picker lists sounds before typing', await beepOption.count() > 0);
+        await page.keyboard.press('Escape');
         check('moved step renumbered', await page.locator('.step').nth(1).locator('button[data-move="-1"]').getAttribute('value') === 'up:1'
             && await page.locator('.step').nth(1).locator('.num').innerText() === '2'
             && await page.locator('.step').nth(0).locator('button[data-move="-1"]').isDisabled());

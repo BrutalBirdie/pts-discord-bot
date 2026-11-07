@@ -40,7 +40,7 @@
 <div class="url"><code>{{.Text}}</code><button type="button" class="ib quiet copy" data-copy="{{.Text}}" aria-label="{{.Label}}" data-tip="{{.Label}}" hidden>{{icon "copy"}}<span class="lbl">Copy</span></button></div>
 {{end}}
 
-{{define "previewtile"}}<button type="button" class="preview-tile js-only" data-preview-media="{{.ID}}" data-vol="{{.Vol}}" data-name="{{.Name}}" aria-label="Preview {{.Name}}" data-tip="Preview {{.Name}}" aria-pressed="false">{{icon "music"}}</button><span class="thumb no-js">{{icon "music"}}</span>{{end}}
+{{define "previewtile"}}<button type="button" class="preview-tile js-only" data-preview-media="{{.ID}}" data-vol="{{.Vol}}" data-name="{{.Name}}" aria-label="Preview {{.Name}}" data-tip="Preview {{.Name}}" aria-pressed="false">{{icon "play"}}</button><span class="thumb no-js">{{icon "music"}}</span>{{end}}
 
 {{define "csrf"}}<input type="hidden" name="csrf" value="{{.Session.CSRFToken}}">{{end}}
 
@@ -86,7 +86,7 @@
 <div class="field{{with .Class}} {{.}}{{end}}">{{if .LabelID}}<span id="{{.LabelID}}">{{.Label}}</span>{{end}}
   <div class="tokens" data-tokens="{{.Field}}" data-max="{{.Max}}" data-empty="{{.Empty}}"{{with .Source}} data-source="{{.}}"{{with $.Guild}} data-guild="{{.}}"{{end}}{{end}}{{if .Dupes}} data-dupes{{end}}>
     <div class="box">
-      {{range $i, $k := .Items}}<span class="tok" title="{{$k.Title}}"{{if $.Source}} data-ms="{{$k.MS}}"{{end}}>{{if $k.Media}}<button type="button" class="pv js-only" data-preview-media="{{$k.Media}}" data-vol="{{$k.Vol}}" data-name="{{$k.Name}}" aria-label="Preview {{$k.Name}}" aria-pressed="false">{{icon "music"}}</button>{{else if $k.Avatar}}<span class="av" aria-hidden="true">{{$k.Avatar}}</span>{{end}}<span class="nm"{{if $k.Media}} data-preview-detail{{end}}>{{$k.Name}}{{with $k.Sub}} <span class="un">{{.}}</span>{{end}}</span><input type="hidden" name="{{$.Field}}" value="{{$k.Value}}"><button type="submit" name="op" value="tokdel:{{$.Field}}:{{$i}}" class="rm" aria-label="Remove {{$k.Name}}">{{icon "x"}}</button></span>{{end}}
+      {{range $i, $k := .Items}}<span class="tok" title="{{$k.Title}}"{{if $.Source}} data-ms="{{$k.MS}}"{{end}}>{{if $k.Media}}<button type="button" class="pv js-only" data-preview-media="{{$k.Media}}" data-vol="{{$k.Vol}}" data-name="{{$k.Name}}" aria-label="Preview {{$k.Name}}" data-tip="Preview {{$k.Name}}" aria-pressed="false">{{icon "play"}}</button>{{else if $k.Avatar}}<span class="av" aria-hidden="true">{{$k.Avatar}}</span>{{end}}<span class="nm"{{if $k.Media}} data-preview-detail{{end}}>{{$k.Name}}{{with $k.Sub}} <span class="un">{{.}}</span>{{end}}</span><input type="hidden" name="{{$.Field}}" value="{{$k.Value}}"><button type="submit" name="op" value="tokdel:{{$.Field}}:{{$i}}" class="rm" aria-label="Remove {{$k.Name}}">{{icon "x"}}</button></span>{{end}}
       <input type="search" name="{{.Find}}" value="{{.Value}}" placeholder="{{.Placeholder}}" {{if .LabelID}}aria-labelledby="{{.LabelID}}"{{else}}aria-label="{{.Label}}"{{end}} autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other"{{if not .Source}} data-members="{{.Guild}}"{{end}}{{if ge (len .Items) .Max}} hidden{{end}}>
       {{if .Source}}<button type="submit" name="op" value="reload" class="ib sm quiet no-js" aria-label="Add the sound with this name" data-tip="Add">{{icon "plus"}}</button>{{end}}
     </div>
