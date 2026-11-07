@@ -18,6 +18,8 @@ const (
 	soundsPerPage  = 48
 	membersPerPage = 50
 	maxEmojiRunes  = 10
+	// mentions of other members show their ID in the preview
+	maxPreviewNames = 2000
 )
 
 // soundEmojis are offered in the emoji picker of a sound, any other emoji can be typed.
@@ -62,9 +64,11 @@ type roomData struct {
 	Images    []store.Media
 
 	Messages []messages.Message
-	Tasks    []tasks.Task // of the channel, or for the member
-	Except   []tasks.Task // that leave the member out
-	Greets   []tasks.Task // event tasks that start when the member joins voice
+	Author   bot.Member        // the bot in this server, for the message preview
+	Names    map[string]string // member names for mentions in the preview
+	Tasks    []tasks.Task      // of the channel, or for the member
+	Except   []tasks.Task      // that leave the member out
+	Greets   []tasks.Task      // event tasks that start when the member joins voice
 }
 
 func (d roomData) URL(key, value string) string {
@@ -191,6 +195,10 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 			if d.Messages, err = s.store.ListMessages(ctx, g.ID); err != nil {
 				s.internalError(w, r, err)
 				return
+			}
+			d.Author, d.Names = s.author(g.ID), map[string]string{}
+			for _, m := range members[:min(len(members), maxPreviewNames)] {
+				d.Names[m.ID] = m.Name
 			}
 		}
 	case "member":

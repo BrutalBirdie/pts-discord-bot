@@ -75,6 +75,7 @@ type messageEditor struct {
 	FileBytes  int64
 	Limits     map[string]int
 	Embeddable map[int64]bool
+	Author     bot.Member // the bot as the message's server shows it
 }
 
 func (s *Server) messageEditor(r *http.Request, m messages.Message, isNew bool) (messageEditor, error) {
@@ -100,6 +101,7 @@ func (s *Server) messageEditor(r *http.Request, m messages.Message, isNew bool) 
 			return e, err
 		}
 	}
+	e.Author = s.author(m.GuildID)
 	gs := s.guilds(r)
 	slices.SortStableFunc(gs, func(a, b bot.Guild) int { return cmpBool(a.ID != m.GuildID, b.ID != m.GuildID) })
 	for _, g := range gs {
@@ -403,4 +405,16 @@ func (s *Server) deleteMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, "message.delete", m.Name, trashDetail(trashed))
 	removed(w, r, "/messages", store.TrashMessage, m.ID, trashed)
+}
+
+// author is the name and avatar of the bot in a server, its global ones without a server.
+func (s *Server) author(guildID string) bot.Member {
+	if g, ok := s.bot.Guild(guildID); ok && g.Self.Name != "" {
+		return g.Self
+	}
+	st := s.bot.Status()
+	if st.User == "" {
+		st.User = "PTS Bot"
+	}
+	return bot.Member{Name: st.User, Avatar: st.Avatar}
 }

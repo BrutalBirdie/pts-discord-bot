@@ -147,9 +147,19 @@
     <div class="cols2">
       <section class="card stack" aria-labelledby="qm-title">
         <h2 id="qm-title">Quick message</h2>
-        <form method="post" action="/room/{{$g.ID}}/send" class="form">
+        <form method="post" action="/room/{{$g.ID}}/send" class="form" data-preview-form>
           <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
-          <label class="field"><span>Text</span><textarea name="text" rows="5" maxlength="2000" class="prose" required></textarea></label>
+          <label class="field"><span>Text <span class="counter" data-count="qm" data-max="2000">0 / 2000</span></span><textarea name="text" rows="5" maxlength="2000" class="prose" required data-preview="qm"></textarea></label>
+          <div class="sec-head"><span class="eyebrow">Preview</span>{{template "mdhelp"}}</div>
+          <div class="dpv" data-names="{{json $d.Names}}">
+            <div class="dmsg">
+              {{template "dava" $d.Author}}
+              <div class="minw0">
+                <div class="dhead"><strong>{{$d.Author.Name}}</strong><span class="dtag">APP</span><span class="dtime">{{when nowTime}}</span></div>
+                <div class="dtext" data-preview-target="qm" data-md=""></div>
+              </div>
+            </div>
+          </div>
           <div class="btns"><button type="submit" class="ib primary with-label">{{icon "send"}}<span class="lbl">Send to #{{$ch.Name}}</span></button></div>
         </form>
         {{if $d.Messages}}

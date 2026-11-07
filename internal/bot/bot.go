@@ -199,6 +199,7 @@ type Status struct {
 	Latency       time.Duration
 	Since         time.Time
 	User          string
+	Avatar        string // URL on Discord's CDN
 	ApplicationID string
 	MembersIntent bool
 	MessageIntent bool
@@ -218,7 +219,7 @@ func (b *Bot) Status() Status {
 		st.Latency = c.Gateway.Latency()
 	}
 	if u, ok := c.Caches.SelfUser(); ok {
-		st.User = u.EffectiveName()
+		st.User, st.Avatar = u.EffectiveName(), u.EffectiveAvatarURL(discord.WithSize(64))
 	}
 	if c.ApplicationID != 0 {
 		st.ApplicationID = c.ApplicationID.String()

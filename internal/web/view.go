@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -78,6 +79,10 @@ var viewFuncs = template.FuncMap{
 	"untilLabel": tasks.UntilLabel,
 	"untils":     func() []string { return tasks.Untils },
 	"hasID":      func(list []int64, id int64) bool { return slices.Contains(list, id) },
+	"json": func(v any) (string, error) {
+		b, err := json.Marshal(v)
+		return string(b), err
+	},
 	"plural": func(n int, one, many string) string {
 		if n == 1 {
 			return "1 " + one

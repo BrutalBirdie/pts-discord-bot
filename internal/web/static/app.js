@@ -417,9 +417,58 @@
         input.addEventListener('blur', close);
     });
 
-    // live preview of the message editor
-    const previewForm = document.querySelector('form[data-preview-form]');
-    if (previewForm) {
+    // Discord markdown for the message previews, everything is escaped before marks become tags
+    const escapeHTML = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    function markdown(src, names) {
+        const held = [];
+        const hold = (html) => { held.push(html); return '\u0000' + (held.length - 1) + '\u0000'; };
+        src = src.replace(/\\([*_~|`>#\-\\\[\]()])/g, (_, c) => hold(escapeHTML(c)));
+        src = src.replace(/```(?:[a-z0-9+-]*\n)?([\s\S]*?)```/gi, (_, code) => hold('<pre class="dpre">' + escapeHTML(code.replace(/\n$/, '')) + '</pre>'));
+        function inline(s) {
+            s = s.replace(/`([^`\n]+)`/g, (_, c) => hold('<code class="dcode">' + escapeHTML(c) + '</code>'));
+            s = escapeHTML(s);
+            s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, t, u) => hold('<a class="dlink" href="' + u + '" target="_blank" rel="noopener">' + t + '</a>'));
+            s = s.replace(/(^|[\s(])(https?:\/\/[^\s<]+)/g, (_, pre, u) => pre + hold('<a class="dlink" href="' + u + '" target="_blank" rel="noopener">' + u + '</a>'));
+            s = s.replace(/&lt;@!?(\d+)&gt;/g, (_, id) => '<span class="dmention">@' + escapeHTML((names && names[id]) || id) + '</span>')
+                .replace(/&lt;@&amp;(\d+)&gt;/g, '<span class="dmention">@role</span>')
+                .replace(/&lt;#(\d+)&gt;/g, '<span class="dmention">#channel</span>')
+                .replace(/\*\*\*([^*\n]+?)\*\*\*/g, '<b><i>$1</i></b>')
+                .replace(/\*\*([^*\n]+?)\*\*/g, '<b>$1</b>')
+                .replace(/__([^_\n]+?)__/g, '<u>$1</u>')
+                .replace(/\*([^*\s][^*\n]*?)\*/g, '<i>$1</i>')
+                .replace(/(^|[^\w])_([^_\n]+?)_(?![\w])/g, '$1<i>$2</i>')
+                .replace(/~~([^~\n]+?)~~/g, '<s>$1</s>')
+                .replace(/\|\|([^|\n]+?)\|\|/g, '<span class="dspoiler" tabindex="0">$1</span>');
+            return s;
+        }
+        let quoteRest = false;
+        const out = src.split('\n').map(function (line) {
+            let m;
+            if (!quoteRest && (m = line.match(/^>>> ?(.*)$/))) { quoteRest = true; line = m[1]; }
+            if (quoteRest) return '<div class="dquote">' + (inline(line) || '&nbsp;') + '</div>';
+            if ((m = line.match(/^> ?(.*)$/))) return '<div class="dquote">' + (inline(m[1]) || '&nbsp;') + '</div>';
+            if ((m = line.match(/^(#{1,3}) (.+)$/))) return '<div class="dh' + m[1].length + '">' + inline(m[2]) + '</div>';
+            if ((m = line.match(/^-# (.+)$/))) return '<div class="dsub">' + inline(m[1]) + '</div>';
+            if ((m = line.match(/^\s*[-*] (.+)$/))) return '<div class="dli">' + inline(m[1]) + '</div>';
+            if ((m = line.match(/^\s*(\d+)\. (.+)$/))) return '<div class="dli num"><span>' + m[1] + '.</span>' + inline(m[2]) + '</div>';
+            return '<div class="dline">' + inline(line) + '</div>';
+        }).join('');
+        let html = out;
+        for (let i = 0; i < 3 && html.includes('\u0000'); i++) html = html.replace(/\u0000(\d+)\u0000/g, (_, i) => held[Number(i)]);
+        return html;
+    }
+    function namesOf(el) {
+        const box = el.closest('[data-names]');
+        try { return box ? JSON.parse(box.dataset.names) : {}; } catch (e) { return {}; }
+    }
+    function renderMarkdown(el, text) {
+        el.classList.add('md');
+        el.innerHTML = markdown(text, namesOf(el));
+    }
+    document.querySelectorAll('[data-md]').forEach((el) => renderMarkdown(el, el.dataset.md));
+
+    // live preview of the message editor and the quick message box
+    document.querySelectorAll('form[data-preview-form]').forEach(function (previewForm) {
         previewForm.addEventListener('input', function (event) {
             const key = event.target.dataset.preview;
             if (!key) return;
@@ -430,15 +479,16 @@
                 return;
             }
             const link = target.querySelector('a');
-            (link || target).textContent = event.target.value;
-            if (key === 'content') {
-                const counter = document.querySelector('[data-count=content]');
+            if (target.hasAttribute('data-md')) renderMarkdown(target, event.target.value);
+            else (link || target).textContent = event.target.value;
+            const counter = document.querySelector('[data-count="' + key + '"]');
+            if (counter) {
                 const n = [...event.target.value].length;
                 counter.textContent = n + ' / ' + counter.dataset.max;
                 counter.classList.toggle('over', n > Number(counter.dataset.max));
             }
         });
-    }
+    });
 
     // a link like /servers/1#sheet-play-2 opens that sheet
     const target = location.hash.startsWith('#sheet-') && document.getElementById(location.hash.slice(1));

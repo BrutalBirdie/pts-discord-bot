@@ -36,7 +36,7 @@
     <label class="switch-row"><span>Do not suggest to other servers<small>Tasks of other servers find it only when it is picked already. Needs a server group.</small></span><input type="checkbox" class="switch" name="group_only"{{if $m.GroupOnly}} checked{{end}}></label>
     <label class="field"><span>Text <span class="counter" data-count="content" data-max="{{index $e.Limits "content"}}">{{$m.ContentChars}} / {{index $e.Limits "content"}}</span></span>
       <textarea name="content" rows="5" class="prose" data-preview="content">{{$m.Content}}</textarea>
-      <span class="help">Discord markdown works. Placeholders: <span class="mono">{date} {time} {server} {channel}</span>, and in runs started by a member <span class="mono">{member}</span> (a mention) and <span class="mono">{member_name}</span>. A member mention is written as <span class="mono">&lt;@id&gt;</span>.</span>
+      <span class="help">Discord markdown works, see Formatting help next to the preview. Placeholders: <span class="mono">{date} {time} {server} {channel}</span>, and in runs started by a member <span class="mono">{member}</span> (a mention) and <span class="mono">{member_name}</span>. A member mention is written as <span class="mono">&lt;@id&gt;</span>.</span>
     </label>
     <div class="field js-only"><span>Mention a member</span>
       <span class="picker"><input type="search" placeholder="Search members to mention in the text" aria-label="Mention a member" autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other" data-members="" data-insert="content"></span>
@@ -101,19 +101,20 @@
 </form>
 
 <aside class="stack sticky">
-  <div class="sec-head"><span class="eyebrow">Preview</span><span class="hint">Placeholders filled with sample values</span></div>
-  <div class="dpv">
+  <div class="sec-head"><span class="eyebrow">Preview</span>{{template "mdhelp"}}</div>
+  <span class="hint">Placeholders filled with sample values.</span>
+  <div class="dpv" data-names="{{json $e.Names}}">
     <div class="dmsg">
-      <span class="dava">{{icon "bot"}}</span>
+      {{template "dava" $e.Author}}
       <div class="minw0">
-        <div class="dhead"><strong>{{if .Bot.User}}{{.Bot.User}}{{else}}PTS Bot{{end}}</strong><span class="dtag">APP</span><span class="dtime">{{when nowTime}}</span></div>
-        <div class="dtext" data-preview-target="content">{{mentions (expand $m.Content) $e.Names}}</div>
+        <div class="dhead"><strong>{{$e.Author.Name}}</strong><span class="dtag">APP</span><span class="dtime">{{when nowTime}}</span></div>
+        <div class="dtext" data-preview-target="content" data-md="{{expand $m.Content}}">{{mentions (expand $m.Content) $e.Names}}</div>
         {{range $i, $em := $m.Embeds}}
         <div class="dembed"><svg class="dbar" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"><rect width="1" height="1" fill="{{if $em.Color}}{{$em.Color}}{{else}}#4752c4{{end}}" data-preview-target="color-{{$i}}"/></svg>
           <div class="dembed-body"><div>
             <div class="dt" data-preview-target="title-{{$i}}">{{if $em.URL}}<a href="{{$em.URL}}" rel="noopener" target="_blank">{{expand $em.Title}}</a>{{else}}{{expand $em.Title}}{{end}}</div>
-            <div class="dtext" data-preview-target="desc-{{$i}}">{{expand $em.Description}}</div>
-            {{with $em.Fields}}<div class="dfields">{{range .}}<div{{if .Inline}} class="inline"{{end}}><b>{{expand .Name}}</b>{{expand .Value}}</div>{{end}}</div>{{end}}
+            <div class="dtext" data-preview-target="desc-{{$i}}" data-md="{{expand $em.Description}}">{{expand $em.Description}}</div>
+            {{with $em.Fields}}<div class="dfields">{{range .}}<div{{if .Inline}} class="inline"{{end}}><b>{{expand .Name}}</b><span data-md="{{expand .Value}}">{{expand .Value}}</span></div>{{end}}</div>{{end}}
           </div>{{with $em.ThumbMediaID}}<img class="dthumb" src="/media/{{.}}/file" alt="">{{end}}</div>
           {{with $em.ImageMediaID}}<img class="dimg" src="/media/{{.}}/file" alt="">{{end}}
           {{with $em.Footer}}<div class="dfoot">{{expand .}}</div>{{end}}

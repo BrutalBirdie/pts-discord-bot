@@ -580,3 +580,27 @@ fieldset.presets { border: 0; margin: 0; padding: 0; }
   .snd-more { top: 4px; right: 36px; }
   .side-body { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* Discord markdown in the previews */
+.dtext.md { white-space: normal; }
+.dline { min-height: 1.375em; white-space: pre-wrap; }
+.dh1, .dh2, .dh3 { display: block; color: #f2f3f5; font-weight: 700; line-height: 1.375; margin: 8px 0 4px; }
+.dh1 { font-size: 1.5rem; } .dh2 { font-size: 1.25rem; } .dh3 { font-size: 1rem; }
+.dsub { display: block; color: #949ba4; font-size: .8rem; }
+.dquote { border-left: 4px solid #4e5058; padding-left: 12px; }
+.dcode { font: .85em var(--mono); background: #2b2d31; border-radius: 4px; padding: 0 4px; color: #dbdee1; }
+.dpre { font: .85rem/1.4 var(--mono); background: #2b2d31; border: 1px solid #1e1f22; border-radius: 4px; padding: 8px; margin: 4px 0; white-space: pre-wrap; color: #dbdee1; }
+.dspoiler { background: #1e1f22; color: transparent; border-radius: 3px; padding: 0 2px; cursor: pointer; }
+.dspoiler:hover, .dspoiler:focus { color: inherit; background: #3a3c42; }
+.dli { position: relative; padding-left: 20px; }
+.dli::before { content: "•"; position: absolute; left: 4px; }
+.dli.num::before { content: none; }
+.dli.num > span:first-child { position: absolute; left: 0; color: #b5bac1; }
+.dlink { color: #00a8fc; }
+img.dava { object-fit: cover; }
+.mdhelp { display: grid; gap: 2px; padding: 8px; }
+.mdrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: center; padding: 6px 8px; border-radius: 6px; }
+.mdrow:nth-child(even) { background: #2b2d31; }
+.mdrow > code { font: .85rem var(--mono); color: #b5bac1; overflow-wrap: anywhere; }
+.mdrow.head { font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #949ba4; }
+.mdrow .dh1, .mdrow .dh2, .mdrow .dh3, .mdrow .dpre { margin: 0; }

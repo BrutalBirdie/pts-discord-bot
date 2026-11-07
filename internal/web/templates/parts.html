@@ -115,3 +115,35 @@
 {{end}}{{end}}
 
 {{define "discordava"}}{{if .Avatar}}<span class="ava lg"><img src="{{.Avatar}}" alt="" width="44" height="44" loading="lazy" referrerpolicy="no-referrer"></span>{{else}}<span class="ava lg" aria-hidden="true">{{with initials .Name}}{{.}}{{else}}?{{end}}</span>{{end}}{{end}}
+
+{{define "dava"}}{{if .Avatar}}<img class="dava" src="{{.Avatar}}" alt="" width="40" height="40" referrerpolicy="no-referrer">{{else}}<span class="dava">{{icon "bot"}}</span>{{end}}{{end}}
+
+{{define "mdhelp"}}
+<button type="button" class="ib sm with-label" popovertarget="sheet-md">{{icon "info"}}<span class="lbl">Formatting help</span></button>
+<div popover id="sheet-md" class="sheet" aria-labelledby="sheet-md-title">
+  {{template "sheethead" (dict "ID" "sheet-md" "Icon" "info" "Title" "Discord formatting")}}
+  <div class="sheet-body">
+    <p class="hint">Discord turns these marks into formatting. Headings and lists need their mark at the start of a line.</p>
+    <div class="dpv mdhelp">
+      <div class="mdrow head"><span>You type</span><span>Discord shows</span></div>
+      <div class="mdrow"><code># Big heading</code><span class="dh1">Big heading</span></div>
+      <div class="mdrow"><code>## Heading</code><span class="dh2">Heading</span></div>
+      <div class="mdrow"><code>### Small heading</code><span class="dh3">Small heading</span></div>
+      <div class="mdrow"><code>-# grey small text</code><span class="dsub">grey small text</span></div>
+      <div class="mdrow"><code>**bold**</code><b>bold</b></div>
+      <div class="mdrow"><code>*italic*</code><i>italic</i></div>
+      <div class="mdrow"><code>__underline__</code><u>underline</u></div>
+      <div class="mdrow"><code>~~strikethrough~~</code><s>strikethrough</s></div>
+      <div class="mdrow"><code>||spoiler||</code><span><span class="dspoiler" tabindex="0">spoiler</span></span></div>
+      <div class="mdrow"><code>`code`</code><span><code class="dcode">code</code></span></div>
+      <div class="mdrow"><code>```<br>code block<br>```</code><pre class="dpre">code block</pre></div>
+      <div class="mdrow"><code>&gt; quote</code><div class="dquote">quote</div></div>
+      <div class="mdrow"><code>- list item</code><div class="dli">list item</div></div>
+      <div class="mdrow"><code>1. numbered</code><div class="dli num"><span>1.</span>numbered</div></div>
+      <div class="mdrow"><code>[PTS](https://example.com)</code><span><a class="dlink" href="https://example.com" rel="noopener" target="_blank">PTS</a></span></div>
+      <div class="mdrow"><code>&lt;@member id&gt;</code><span><span class="dmention">@Mira</span></span></div>
+    </div>
+    <p class="hint">Mix them: <code>***bold italic***</code>, <code>__*underlined italic*__</code>. A backslash shows a mark as it is: <code>\*not italic\*</code>.</p>
+  </div>
+</div>
+{{end}}
