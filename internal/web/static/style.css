@@ -616,3 +616,4 @@ img.dava { object-fit: cover; }
 .dbtn[data-style=danger] { background: #da373c; }
 .dbtn[data-style=link] .i { display: inline; }
 .dbtn > span:empty { display: none; }
+.side-head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
