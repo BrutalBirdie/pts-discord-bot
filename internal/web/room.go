@@ -64,7 +64,7 @@ type roomData struct {
 	Own       []soundTile // sounds of this server's group
 	Rest      []soundTile
 	Paging    paging
-	Tag       string           // the soundboard shows only the sounds with this tag
+	Tags      []string         // the soundboard shows only the sounds with all of these tags
 	SoundTags []store.SoundTag // the tags of the sounds offered to the server
 	TagEdit   *store.SoundTag  // the tag in the tag icon sheet
 	Edit      *store.Media     // the sound in the Edit sound sheet
@@ -79,14 +79,29 @@ type roomData struct {
 	Greets   []tasks.Task      // event tasks that start when the member joins voice
 }
 
-// TagURL is the soundboard of the channel with only the sounds of a tag, all of them for "".
-func (d roomData) TagURL(tag string) string {
+// tagsURL is the soundboard of the channel with only the sounds that have all of the tags.
+func (d roomData) tagsURL(tags []string) string {
 	v := url.Values{"c": {d.Channel.ID}}
-	if tag != "" {
-		v.Set("tag", tag)
+	for _, t := range tags {
+		v.Add("tag", t)
 	}
 	return "/room/" + d.Guild.ID + "?" + v.Encode()
 }
+
+// AllURL shows every sound, HereURL the soundboard with the picked tags, OnlyURL the sounds of one tag.
+func (d roomData) AllURL() string            { return d.tagsURL(nil) }
+func (d roomData) HereURL() string           { return d.tagsURL(d.Tags) }
+func (d roomData) OnlyURL(tag string) string { return d.tagsURL([]string{tag}) }
+
+// ToggleURL adds the tag to the picked tags, or takes it away.
+func (d roomData) ToggleURL(tag string) string {
+	if d.TagOn(tag) {
+		return d.tagsURL(slices.DeleteFunc(slices.Clone(d.Tags), func(t string) bool { return t == tag }))
+	}
+	return d.tagsURL(append(slices.Clone(d.Tags), tag))
+}
+
+func (d roomData) TagOn(tag string) bool { return slices.Contains(d.Tags, tag) }
 
 func (d roomData) URL(key, value string) string {
 	v := url.Values{}
@@ -246,14 +261,22 @@ func (s *Server) roomSounds(r *http.Request, d *roomData) error {
 		return err
 	}
 	d.Paging.Keep("c", d.Channel.ID)
-	if t := ParseTags(r.URL.Query().Get("tag")); len(t) == 1 {
-		d.Tag = t[0]
-		d.Paging.Keep("tag", d.Tag)
+	for _, v := range r.URL.Query()["tag"] {
+		if t := ParseTags(v); len(t) == 1 && !slices.Contains(d.Tags, t[0]) && len(d.Tags) < maxTags {
+			d.Tags = append(d.Tags, t[0])
+			d.Paging.Add("tag", t[0])
+		}
 	}
-	if d.SoundTags, err = s.store.SoundTags(ctx, d.Guild.ID); err != nil {
+	if d.SoundTags, err = s.store.SoundTags(ctx, d.Guild.ID, d.Tags); err != nil {
 		return err
 	}
-	if d.Paging.Page == 1 && d.Paging.Query == "" && d.Tag == "" {
+	// the picked tags stay in the list even when no sound is left
+	for _, t := range d.Tags {
+		if !slices.ContainsFunc(d.SoundTags, func(x store.SoundTag) bool { return x.Name == t }) {
+			d.SoundTags = append(d.SoundTags, store.SoundTag{Name: t})
+		}
+	}
+	if d.Paging.Page == 1 && d.Paging.Query == "" && len(d.Tags) == 0 {
 		list, err := s.store.FavoriteSounds(ctx, user)
 		if err != nil {
 			return err
@@ -264,7 +287,7 @@ func (s *Server) roomSounds(r *http.Request, d *roomData) error {
 			}
 		}
 	}
-	list, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: store.All, Offer: d.Guild.ID, Kind: store.KindSound, Tag: d.Tag, Search: d.Paging.Query,
+	list, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: store.All, Offer: d.Guild.ID, Kind: store.KindSound, AllTags: d.Tags, Search: d.Paging.Query,
 		Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
 	if err != nil {
 		return err

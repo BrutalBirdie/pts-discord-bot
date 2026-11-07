@@ -36,13 +36,19 @@ func TestLookFavoritesAndPreviewVolume(t *testing.T) {
 	must(s.UpdateMedia(ctx, Media{ID: horn, Name: "horn.ogg", DisplayName: "Big Horn", Tags: []string{"fun", "loud"}}))
 	must(s.UpdateMedia(ctx, Media{ID: horn2, Name: "horn2.ogg", Tags: []string{"fun"}}))
 	must(s.SetTagLook(ctx, "fun", "🎉", 0))
-	tags, err := s.SoundTags(ctx, "")
+	tags, err := s.SoundTags(ctx, "", nil)
 	must(err)
 	if len(tags) != 2 || tags[0] != (SoundTag{Name: "fun", Count: 2, Emoji: "🎉"}) || tags[1] != (SoundTag{Name: "loud", Count: 1}) {
 		t.Errorf("tags: %+v", tags)
 	}
+	if tags, _ := s.SoundTags(ctx, "", []string{"loud"}); len(tags) != 2 || tags[0].Count != 1 || tags[1].Count != 1 {
+		t.Errorf("tags within loud: %+v", tags)
+	}
+	if hits, _ := s.FindMedia(ctx, MediaQuery{Scope: All, AllTags: []string{"fun", "loud"}}); len(hits) != 1 || hits[0].ID != horn {
+		t.Errorf("all tags: %v", hits)
+	}
 	must(s.SetTagLook(ctx, "fun", "", 0))
-	if tags, _ := s.SoundTags(ctx, ""); tags[0].Emoji != "" {
+	if tags, _ := s.SoundTags(ctx, "", nil); tags[0].Emoji != "" {
 		t.Errorf("tag look not removed: %+v", tags)
 	}
 	if (Media{Name: "x.ogg"}).Label() != "x.ogg" {

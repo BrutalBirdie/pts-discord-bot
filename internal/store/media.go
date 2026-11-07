@@ -183,11 +183,15 @@ type SoundTag struct {
 	IconID int64
 }
 
-// SoundTags returns the tags of the sounds offered to a server by name.
-func (s *Store) SoundTags(ctx context.Context, guildID string) ([]SoundTag, error) {
+// SoundTags returns the tags of the sounds offered to a server by name. Count
+// is the number of sounds with the tag among those that have all of within.
+func (s *Store) SoundTags(ctx context.Context, guildID string, within []string) ([]SoundTag, error) {
+	if within == nil {
+		within = []string{}
+	}
 	rows, err := s.pool.Query(ctx, `SELECT t.tag, t.n, coalesce(l.emoji, ''), coalesce(l.icon_media_id, 0)
-FROM (SELECT unnest(tags) AS tag, count(*) AS n FROM media m WHERE kind = 'sound' AND deleted_at IS NULL AND `+offered("m", "1")+` GROUP BY 1) t
-LEFT JOIN tag_looks l ON l.tag = t.tag ORDER BY t.tag`, guildID)
+FROM (SELECT unnest(tags) AS tag, count(*) AS n FROM media m WHERE kind = 'sound' AND deleted_at IS NULL AND `+offered("m", "1")+` AND tags @> $2 GROUP BY 1) t
+LEFT JOIN tag_looks l ON l.tag = t.tag ORDER BY t.tag`, guildID, within)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +261,7 @@ var listMediaQuery = `WITH users AS (
 SELECT ` + mediaCols + `,
   ARRAY(SELECT u.name FROM users u WHERE u.media_id = m.id AND (u.open OR ` + inScope("u.owner", "6") + `) ORDER BY u.name),
   (SELECT count(*) FROM users u WHERE u.media_id = m.id AND NOT (u.open OR ` + inScope("u.owner", "6") + `))
-FROM media m WHERE m.deleted_at IS NULL AND ` + offered("m", "7") + ` AND ` + inGroup("m", "8") + ` AND ($1 = '' OR kind = $1) AND ($2 = '' OR $2 = ANY (tags))
+FROM media m WHERE m.deleted_at IS NULL AND ` + offered("m", "7") + ` AND ` + inGroup("m", "8") + ` AND ($1 = '' OR kind = $1) AND ($2 = '' OR $2 = ANY (tags)) AND ($9::text[] IS NULL OR tags @> $9)
   AND ($3 = '' OR name ILIKE '%' || $3 || '%' OR display_name ILIKE '%' || $3 || '%' OR array_to_string(tags, ' ') ILIKE '%' || $3 || '%')
 ORDER BY ` + ownFirst("m", "7") + `, kind, lower(name), id LIMIT NULLIF($4, 0) OFFSET $5`
 
@@ -269,6 +273,7 @@ type MediaQuery struct {
 	Scope             Scope
 	Offer, Group      string
 	Kind, Tag, Search string
+	AllTags           []string // only files with all of these tags
 	Limit, Offset     int
 }
 
@@ -279,7 +284,7 @@ func (s *Store) ListMedia(ctx context.Context, guildID, kind string) ([]Media, e
 }
 
 func (s *Store) FindMedia(ctx context.Context, q MediaQuery) ([]Media, error) {
-	rows, err := s.pool.Query(ctx, listMediaQuery, q.Kind, q.Tag, likeEscaper.Replace(q.Search), q.Limit, q.Offset, q.Scope.param(), q.Offer, q.Group)
+	rows, err := s.pool.Query(ctx, listMediaQuery, q.Kind, q.Tag, likeEscaper.Replace(q.Search), q.Limit, q.Offset, q.Scope.param(), q.Offer, q.Group, q.AllTags)
 	if err != nil {
 		return nil, err
 	}

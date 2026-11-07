@@ -184,7 +184,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		}
 		if part.FormName() == "tag" {
 			v, _ := io.ReadAll(io.LimitReader(part, 64))
-			tags = ParseTags(string(v))
+			tags = ParseTags(strings.Join(append(tags, string(v)), ","))
 			continue
 		}
 		if part.FormName() == "next" {

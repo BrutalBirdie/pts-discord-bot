@@ -728,3 +728,4 @@ html.loading, html.loading * { cursor: progress; }
 .tagbar .tag-back { font-weight: 700; }
 .tface { flex: none; font-size: 1.05rem; line-height: 1; }
 img.tface { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; }
+.tagbar a[aria-current] > .i:last-child { width: 14px; height: 14px; }

@@ -123,14 +123,14 @@
       <div class="contents" data-live="sounds" data-live-list>
       {{with $d.SoundTags}}
       <div class="pills tagbar" role="navigation" aria-label="Sounds by tag">
-        {{if $d.Tag}}<a href="{{$d.TagURL ""}}" class="tag-back">{{icon "arrow-left"}}All sounds</a>{{else}}<a href="{{$d.TagURL ""}}" aria-current="page">All sounds</a>{{end}}
-        {{range $i, $t := .}}<a href="{{$d.TagURL .Name}}"{{if eq .Name $d.Tag}} aria-current="page"{{end}} data-menu="menu-tag-{{$i}}">{{template "tagface" .}}<span>{{.Name}}</span><span class="badge">{{.Count}}</span></a>{{end}}
+        {{if $d.Tags}}<a href="{{$d.AllURL}}" class="tag-back">{{icon "arrow-left"}}All sounds</a>{{else}}<a href="{{$d.AllURL}}" aria-current="page">All sounds</a>{{end}}
+        {{range $i, $t := .}}<a href="{{$d.ToggleURL .Name}}"{{if $d.TagOn .Name}} aria-current="page" aria-label="{{.Name}}, picked, {{plural .Count "sound" "sounds"}}"{{else}} aria-label="{{.Name}}, {{plural .Count "sound" "sounds"}}{{if $d.Tags}} with the picked tags{{end}}"{{end}} data-menu="menu-tag-{{$i}}">{{template "tagface" .}}<span>{{.Name}}</span><span class="badge">{{.Count}}</span>{{if $d.TagOn .Name}}{{icon "x"}}{{end}}</a>{{end}}
       </div>
       {{range $i, $t := .}}
       <div popover id="menu-tag-{{$i}}" class="menu" role="menu" aria-label="Tag {{.Name}}">
         <span class="menu-title">#{{.Name}} · {{plural .Count "sound" "sounds"}}</span>
-        <a role="menuitem" href="{{$d.TagURL .Name}}">{{icon "music"}}Show the sounds tagged {{.Name}}</a>
-        <a role="menuitem" href="{{$d.TagURL $d.Tag}}&amp;tagedit={{.Name}}#sheet-tag">{{icon "smile"}}Set icon</a>
+        <a role="menuitem" href="{{$d.OnlyURL .Name}}">{{icon "music"}}Show only the sounds tagged {{.Name}}</a>
+        <a role="menuitem" href="{{$d.HereURL}}&amp;tagedit={{.Name}}#sheet-tag">{{icon "smile"}}Set icon</a>
         <a role="menuitem" href="/media?tag={{.Name}}">{{icon "image"}}Show in Media</a>
       </div>
       {{end}}
@@ -150,7 +150,7 @@
     <div popover id="sheet-tag" class="sheet" aria-labelledby="sheet-tag-title">
       {{template "sheethead" (dict "ID" "sheet-tag" "Icon" "hash" "Title" "Icon for the tag" "Name" .Name)}}
       <form method="post" action="/tags/look" class="sheet-body form" data-fetch data-done="Saved the icon of {{.Name}}.">
-        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="tag" value="{{.Name}}"><input type="hidden" name="next" value="{{$d.TagURL $d.Tag}}">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="tag" value="{{.Name}}"><input type="hidden" name="next" value="{{$d.HereURL}}">
         <div class="field"><span id="tag-emoji-label">Emoji</span>
           <input type="text" name="emoji" value="{{.Emoji}}" maxlength="64" autocomplete="off" aria-labelledby="tag-emoji-label" data-emoji-picker="{{json $d.Emojis}}">
         </div>
@@ -354,7 +354,7 @@
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <input type="hidden" name="next" value="{{$d.URL "c" $d.Channel.ID}}">
     <input type="hidden" name="guild" value="{{$d.Guild.ID}}">
-    {{with $d.Tag}}<input type="hidden" name="tag" value="{{.}}">{{end}}
+    {{range $d.Tags}}<input type="hidden" name="tag" value="{{.}}">{{end}}
     <label class="snd-play">{{icon "plus"}}<span class="nm">Upload new</span><input type="file" name="file" accept="audio/*,video/*,.ogg,.opus,.mp3,.wav,.flac,.m4a,.webm" multiple class="vh"></label>
     <button type="submit" class="ib sm no-js">{{icon "upload"}}<span class="lbl">Upload</span></button>
   </form>

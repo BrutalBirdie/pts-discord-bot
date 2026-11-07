@@ -29,6 +29,9 @@ func newPaging(r *http.Request) paging {
 	return p
 }
 
+// Add keeps one more value of a filter that can repeat.
+func (p *paging) Add(key, value string) { p.filters.Add(key, value) }
+
 func (p *paging) Keep(key, value string) {
 	if value != "" {
 		p.filters.Set(key, value)

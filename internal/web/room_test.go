@@ -69,7 +69,7 @@ func TestSoundLookAndFavorite(t *testing.T) {
 	if code := post(f.discord, "/tags/look", "tag", "Fun", "emoji", "🎉"); code != http.StatusSeeOther {
 		t.Errorf("tag look: %d", code)
 	}
-	if tags, _ := f.st.SoundTags(ctx, ""); !slices.ContainsFunc(tags, func(x store.SoundTag) bool { return x.Name == "fun" && x.Emoji == "🎉" && x.Count >= 1 }) {
+	if tags, _ := f.st.SoundTags(ctx, "", nil); !slices.ContainsFunc(tags, func(x store.SoundTag) bool { return x.Name == "fun" && x.Emoji == "🎉" && x.Count >= 1 }) {
 		t.Errorf("tag look not saved: %+v", tags)
 	}
 	if code := post(f.cloud, "/tags/look", "tag", "fun", "emoji", "E"); code != http.StatusBadRequest {

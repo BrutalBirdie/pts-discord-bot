@@ -2,7 +2,7 @@
 * Control Room: the server like in Discord, with channels, who is in voice, members by role with status and activity, right-click menus, and task controls
 * Soundboard with favorites, emoji or image per sound, preview, per-user play volume and an Upload new tile; a new sound cuts short the one before
 * Edit sound: display name, tags, own volume and the part to play, cut on a waveform
-* The soundboard lists the tags with an icon each; a tag shows only its sounds, uploads there get the tag
+* The soundboard lists the tags with an icon each; picking tags shows only the sounds with all of them, the counts follow, uploads there get the tags
 * Media files can have a display name
 * Discord login for server members, access approved by an admin per server
 * Media and messages are open to every user, with optional server groups
