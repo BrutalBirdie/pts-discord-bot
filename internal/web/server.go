@@ -60,7 +60,7 @@ type Server struct {
 	discord  discordAPI
 }
 
-var pageNames = []string{"login", "error", "dashboard", "servers", "server", "tasks", "task", "messages", "message", "media", "trash", "admin", "access"}
+var pageNames = []string{"login", "error", "dashboard", "servers", "server", "tasks", "task", "messages", "message", "media", "trash", "admin", "access", "room"}
 
 func New(cfg Config, st *store.Store, b *bot.Bot, r *runner.Runner, log *slog.Logger) (*Server, error) {
 	s := &Server{cfg: cfg, store: st, bot: b, run: r, log: log, pages: map[string]*template.Template{}, discord: httpDiscord{client: &http.Client{Timeout: 15 * time.Second}}}
@@ -102,6 +102,10 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /servers/{id}/play", s.requireLogin(s.playInChannel))
 	mux.Handle("POST /servers/{id}/join", s.requireLogin(s.joinVoice))
 
+	mux.Handle("GET /room", s.requireLogin(s.roomHome))
+	mux.Handle("GET /room/{id}", s.requireLogin(s.room))
+	mux.Handle("POST /room/{id}/send", s.requireLogin(s.roomSend))
+
 	mux.Handle("GET /tasks", s.requireLogin(s.tasks))
 	mux.Handle("GET /tasks/new", s.requireLogin(s.newTask))
 	mux.Handle("POST /tasks/new", s.requireLogin(s.postTask))
@@ -133,6 +137,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /media/{id}/play", s.requireLogin(s.playMedia))
 	mux.Handle("POST /media/{id}/delete", s.requireLogin(s.deleteMedia))
 	mux.Handle("POST /media/group", s.requireLogin(s.groupMedia))
+	mux.Handle("POST /media/{id}/look", s.requireLogin(s.setMediaLook))
+	mux.Handle("POST /media/{id}/favorite", s.requireLogin(s.setFavorite))
 
 	mux.Handle("GET /trash", s.requireLogin(s.trash))
 	mux.Handle("POST /trash/{kind}/{id}/restore", s.requireLogin(s.restoreTrash))
@@ -298,7 +304,7 @@ type pageData struct {
 }
 
 var navOf = map[string]string{"dashboard": "home", "servers": "servers", "server": "servers", "tasks": "tasks", "task": "tasks",
-	"messages": "messages", "message": "messages", "media": "media", "trash": "trash", "admin": "admin", "access": "home"}
+	"messages": "messages", "message": "messages", "media": "media", "trash": "trash", "admin": "admin", "access": "home", "room": "room"}
 
 // notices are shown after a redirect with ?done=<key>.
 var notices = map[string]string{

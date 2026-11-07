@@ -24,6 +24,8 @@ type Guild struct {
 	Playing     *Playing
 	Problems    int      // channels the bot cannot use
 	Missing     []string // server permissions of the invite link the bot lacks
+	Icon        string   // URL on Discord's CDN, empty without an icon
+	Self        Member   // the bot in this server, with its nickname and avatar
 }
 
 // invitePermissionNames name InvitePermissions as Discord's settings do.
@@ -48,6 +50,7 @@ type Channel struct {
 	Usable   bool
 	Problem  string
 	InVoice  []string // member names in a voice channel
+	People   []Member // members in a voice channel, without the bot
 	HasBot   bool
 	position [2]int
 }
@@ -59,6 +62,8 @@ type Member struct {
 	Bot      bool
 	Roles    []string
 	Voice    string // voice channel name
+	VoiceID  string
+	Avatar   string // URL on Discord's CDN
 }
 
 func initials(s string) string {
@@ -132,7 +137,11 @@ func (b *Bot) guildView(c *disgobot.Client, g discord.CacheGuild) Guild {
 		}
 	}
 	v.Playing = b.playingIn(g.ID)
+	if u := g.IconURL(discord.WithSize(96)); u != nil {
+		v.Icon = *u
+	}
 	if self, ok := c.Caches.SelfMember(g.ID); ok {
+		v.Self = memberView(self)
 		perms := c.Caches.MemberPermissions(self)
 		for _, n := range invitePermissionNames {
 			if !perms.Has(n.p) {
@@ -163,19 +172,19 @@ func (b *Bot) Channels(guildID string) []Channel {
 			list = append(list, ch)
 		}
 	}
-	inVoice := map[snowflake.ID][]string{}
+	inVoice := map[snowflake.ID][]Member{}
 	for vs := range c.Caches.VoiceStates(gid) {
 		if vs.ChannelID == nil {
 			continue
 		}
-		name := vs.UserID.String()
-		if m, ok := c.Caches.Member(gid, vs.UserID); ok {
-			name = m.EffectiveName()
+		m := Member{ID: vs.UserID.String(), Name: vs.UserID.String()}
+		if cm, ok := c.Caches.Member(gid, vs.UserID); ok {
+			m = memberView(cm)
 		}
 		if vs.UserID == selfID {
-			name = ""
+			m.ID = ""
 		}
-		inVoice[*vs.ChannelID] = append(inVoice[*vs.ChannelID], name)
+		inVoice[*vs.ChannelID] = append(inVoice[*vs.ChannelID], m)
 	}
 
 	out := make([]Channel, 0, len(list))
@@ -192,13 +201,15 @@ func (b *Bot) Channels(guildID string) []Channel {
 				v.position[0] = cat.Position()
 			}
 		}
-		for _, n := range inVoice[ch.ID()] {
-			if n == "" {
+		for _, m := range inVoice[ch.ID()] {
+			if m.ID == "" {
 				v.HasBot = true
 			} else {
-				v.InVoice = append(v.InVoice, n)
+				v.InVoice = append(v.InVoice, m.Name)
+				v.People = append(v.People, m)
 			}
 		}
+		slices.SortFunc(v.People, func(a, b Member) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
 		if haveSelf {
 			perms := c.Caches.MemberPermissionsInChannel(ch, self)
 			need := discord.PermissionViewChannel | discord.PermissionSendMessages
@@ -260,7 +271,7 @@ func (b *Bot) Members(guildID string) []Member {
 	}
 	var out []Member
 	for m := range c.Caches.Members(gid) {
-		v := Member{ID: m.User.ID.String(), Name: m.EffectiveName(), Username: m.User.Username, Bot: m.User.Bot}
+		v := memberView(m)
 		for _, r := range m.RoleIDs {
 			if n, ok := roles[r]; ok {
 				v.Roles = append(v.Roles, n)
@@ -268,13 +279,17 @@ func (b *Bot) Members(guildID string) []Member {
 		}
 		if vs, ok := c.Caches.VoiceState(gid, m.User.ID); ok && vs.ChannelID != nil {
 			if ch, ok := c.Caches.Channel(*vs.ChannelID); ok {
-				v.Voice = ch.Name()
+				v.Voice, v.VoiceID = ch.Name(), ch.ID().String()
 			}
 		}
 		out = append(out, v)
 	}
 	slices.SortFunc(out, func(a, b Member) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
 	return out
+}
+
+func memberView(m discord.Member) Member {
+	return Member{ID: m.User.ID.String(), Name: m.EffectiveName(), Username: m.User.Username, Bot: m.User.Bot, Avatar: m.EffectiveAvatarURL(discord.WithSize(64))}
 }
 
 // MemberName returns the display name of a user in a guild, or the ID.

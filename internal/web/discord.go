@@ -295,6 +295,9 @@ var discordRoutes = map[string]bool{
 	"POST /servers/{id}/leave":        true,
 	"POST /servers/{id}/play":         true,
 	"POST /servers/{id}/join":         true,
+	"GET /room":                       true,
+	"GET /room/{id}":                  true,
+	"POST /room/{id}/send":            true,
 	"GET /tasks":                      true,
 	"GET /tasks/new":                  true,
 	"POST /tasks/new":                 true,
@@ -324,6 +327,8 @@ var discordRoutes = map[string]bool{
 	"POST /media/{id}/play":           true,
 	"POST /media/{id}/delete":         true,
 	"POST /media/group":               true,
+	"POST /media/{id}/look":           true,
+	"POST /media/{id}/favorite":       true,
 	"GET /trash":                      true,
 	"POST /trash/{kind}/{id}/restore": true,
 }

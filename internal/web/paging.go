@@ -16,6 +16,7 @@ type paging struct {
 	Query   string
 	More    bool
 	Dated   bool // newest first, the pager says Newer and Older
+	Per     int  // rows per page, perPage when zero
 	path    string
 	filters url.Values
 }
@@ -34,10 +35,17 @@ func (p *paging) Keep(key, value string) {
 	}
 }
 
-func (p paging) Offset() int { return (p.Page - 1) * perPage }
+func (p paging) per() int {
+	if p.Per > 0 {
+		return p.Per
+	}
+	return perPage
+}
+
+func (p paging) Offset() int { return (p.Page - 1) * p.per() }
 
 // Limit asks the database for one row more than a page, cut tells from it whether there is a next page.
-func (p paging) Limit() int { return perPage + 1 }
+func (p paging) Limit() int { return p.per() + 1 }
 
 func (p paging) Path() string { return p.path }
 
@@ -96,8 +104,8 @@ func (p paging) Matches(fields ...string) bool {
 
 // cut trims a result fetched with Limit to one page.
 func cut[T any](p *paging, list []T) []T {
-	if p.More = len(list) > perPage; p.More {
-		list = list[:perPage]
+	if p.More = len(list) > p.per(); p.More {
+		list = list[:p.per()]
 	}
 	return list
 }
@@ -105,7 +113,7 @@ func cut[T any](p *paging, list []T) []T {
 // window returns the current page of a list filtered in memory.
 func window[T any](p *paging, list []T) []T {
 	from := min(p.Offset(), len(list))
-	to := min(from+perPage, len(list))
+	to := min(from+p.per(), len(list))
 	p.More = to < len(list)
 	return list[from:to]
 }

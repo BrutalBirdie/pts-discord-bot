@@ -150,7 +150,7 @@
         btn.setAttribute('aria-pressed', String(playing));
         btn.setAttribute('aria-label', text);
         if (btn.dataset.tip !== undefined) btn.dataset.tip = text;
-        btn.querySelector('use').setAttribute('href', playing ? '#i-square' : '#i-play');
+        btn.querySelector('use').setAttribute('href', playing ? '#i-square' : '#i-' + (btn.dataset.icon || 'play'));
     }
     function stopPreview() {
         if (!preview) return;
@@ -201,6 +201,16 @@
         label.append(text, slider);
         vol.append(label, out);
         audio.volume = Number(slider.value) / 100;
+        if (btn.hasAttribute('data-no-slider')) {
+            setPreviewButton(btn, true);
+            preview = { audio, btn, vol, detail: null };
+            audio.addEventListener('ended', function () { if (preview && preview.audio === audio) stopPreview(); });
+            audio.play().catch(function () {
+                if (preview && preview.audio === audio) stopPreview();
+                toast('The preview could not be played');
+            });
+            return;
+        }
         slider.addEventListener('input', function () {
             audio.volume = Number(slider.value) / 100;
             out.textContent = slider.value + '%';
@@ -620,5 +630,87 @@
         box.addEventListener('change', count);
         show();
         count();
+    });
+
+    // one preview volume for every sound, e.g. on the soundboard
+    document.querySelectorAll('input[data-preview-volume]').forEach(function (slider) {
+        const out = slider.parentElement.querySelector('output');
+        slider.addEventListener('input', function () {
+            document.body.dataset.previewVol = slider.value;
+            if (out) out.textContent = slider.value + '%';
+            if (preview) preview.audio.volume = Number(slider.value) / 100;
+            saveVolume(slider.value);
+        });
+    });
+
+    // forms that act without leaving the page, like playing a sound or starring it
+    document.addEventListener('submit', function (event) {
+        const form = event.target.closest('form[data-fetch]');
+        if (!form || event.defaultPrevented || !window.fetch) return;
+        event.preventDefault();
+        const body = new URLSearchParams(new FormData(form, event.submitter));
+        const menu = form.closest('.menu[popover]');
+        if (menu && menu.matches(':popover-open')) menu.hidePopover();
+        fetch(form.action, { method: 'POST', body }).then(function (r) {
+            if (!r.ok) throw new Error(String(r.status));
+            if (form.dataset.done) toast(form.dataset.done);
+            if (form.hasAttribute('data-toggle')) {
+                const on = form.querySelector('input[name=on]');
+                const btn = form.querySelector('[aria-pressed]');
+                const now = on.value === '1';
+                btn.setAttribute('aria-pressed', String(now));
+                on.value = now ? '0' : '1';
+                toast(now ? 'Added to Favorites' : 'Removed from Favorites');
+            }
+        }).catch(function () { toast('That did not work. Reload the page and try again.'); });
+    });
+
+    // menus of channels, members and sounds: right click or the ... button, arrow keys move
+    function menuItems(menu) {
+        return Array.from(menu.querySelectorAll('a[role=menuitem], button[role=menuitem]')).filter((el) => !el.hidden);
+    }
+    function placeMenu(menu, x, y) {
+        menu.style.margin = '0';
+        menu.style.inset = 'auto';
+        const w = menu.offsetWidth, h = menu.offsetHeight;
+        menu.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
+        menu.style.top = (y + h > window.innerHeight - 8 ? Math.max(8, y - h) : y) + 'px';
+        const first = menuItems(menu)[0];
+        if (first) first.focus();
+    }
+    document.addEventListener('contextmenu', function (event) {
+        const row = event.target.closest('[data-menu]');
+        const menu = row && document.getElementById(row.dataset.menu);
+        if (!menu || !menu.showPopover) return;
+        event.preventDefault();
+        let x = event.clientX, y = event.clientY;
+        if (!x && !y) {
+            const r = row.getBoundingClientRect();
+            x = r.left + 16;
+            y = r.bottom;
+        }
+        if (!menu.matches(':popover-open')) menu.showPopover();
+        placeMenu(menu, x, y);
+    });
+    document.addEventListener('click', function (event) {
+        const btn = event.target.closest('button[popovertarget]');
+        const menu = btn && document.getElementById(btn.getAttribute('popovertarget'));
+        if (!menu || !menu.classList.contains('menu')) return;
+        requestAnimationFrame(function () {
+            if (!menu.matches(':popover-open')) return;
+            const r = btn.getBoundingClientRect();
+            placeMenu(menu, r.left, r.bottom + 4);
+        });
+    });
+    document.addEventListener('keydown', function (event) {
+        const menu = event.target.closest && event.target.closest('.menu[popover]');
+        if (!menu || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+        const items = menuItems(menu);
+        let i = items.indexOf(document.activeElement);
+        if (event.key === 'ArrowDown') i = (i + 1) % items.length;
+        else if (event.key === 'ArrowUp') i = (i - 1 + items.length) % items.length;
+        else i = event.key === 'Home' ? 0 : items.length - 1;
+        event.preventDefault();
+        items[i].focus();
     });
 })();

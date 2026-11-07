@@ -322,6 +322,11 @@ func (r *Runner) SendNow(guildID, channelID string, messageID int64, actor strin
 	return r.execute(t, store.SourceManual, actor, nil)
 }
 
+// SendStepNow runs a single message or direct message step and waits for the result.
+func (r *Runner) SendStepNow(guildID string, step tasks.Step, actor, title string) error {
+	return r.execute(tasks.Task{Name: title, GuildID: guildID, Steps: []tasks.Step{step}}, store.SourceManual, actor, nil)
+}
+
 func (r *Runner) lock(guildID string) chan struct{} {
 	r.locksMu.Lock()
 	defer r.locksMu.Unlock()

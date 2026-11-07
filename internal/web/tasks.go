@@ -280,7 +280,29 @@ func (s *Server) newTask(w http.ResponseWriter, r *http.Request) {
 	}
 	t := tasks.Task{Enabled: true, Busy: tasks.BusyWait, Trigger: tasks.Trigger{Kind: tasks.Daily, Timezone: settings.Timezone}}
 	t.GuildID = s.defaultGuild(r, r.URL.Query().Get("guild"))
+	prefill(&t, r.URL.Query(), s.bot.Members(t.GuildID))
 	s.renderEditor(w, r, http.StatusOK, t, true, nil, false)
+}
+
+// prefill starts a new task from the Control Room: ?join a voice channel,
+// ?play a sound, ?post in a text channel, or greet the ?member who joins voice.
+func prefill(t *tasks.Task, q url.Values, members []bot.Member) {
+	if m := q.Get("member"); m != "" {
+		t.Trigger = tasks.Trigger{Kind: tasks.Event, Event: tasks.VoiceJoin, Timezone: t.Trigger.Timezone, UserIDs: []string{m}, Cooldown: tasks.DefaultCooldown}
+		t.Steps = append(t.Steps, tasks.Step{Type: tasks.Join, ToTrigger: true})
+		if found, ok := bot.MatchMember(members, m); ok && found.Username != "" {
+			t.Name = "Greet " + found.Name
+		}
+	}
+	if c := q.Get("join"); c != "" {
+		t.Steps = append(t.Steps, tasks.Step{Type: tasks.Join, ChannelID: c})
+	}
+	if id, err := strconv.ParseInt(q.Get("play"), 10, 64); err == nil && id > 0 {
+		t.Steps = append(t.Steps, tasks.Step{Type: tasks.Play, MediaIDs: []int64{id}, Volume: 100})
+	}
+	if c := q.Get("post"); c != "" {
+		t.Steps = append(t.Steps, tasks.Step{Type: tasks.Message, ChannelID: c})
+	}
 }
 
 // defaultGuild is the server preselected in a new task or message: the wanted

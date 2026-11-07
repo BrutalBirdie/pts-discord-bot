@@ -54,6 +54,10 @@ const steps = {
         check('offline notice', t.includes('The bot is not connected to Discord') && t.includes('DISCORD_TOKEN is not set'), t.slice(0, 300));
         check('admin link for admin group', await page.locator('.nav a[href="/admin"]').count() === 1);
 
+        await page.goto(BASE + '/room');
+        check('Control Room without servers', (await text(page)).includes('The bot is in no server you may manage yet.')
+            && await page.locator('.nav a[href="/room"][aria-current=page]').count() === 1);
+
         await page.goto(BASE + '/admin');
         check('admin page shows group', (await text(page)).includes('bot-admins'));
         await page.goto(BASE + '/admin/settings');
@@ -438,7 +442,7 @@ const steps = {
         t = await d.locator('main').innerText();
         check('Discord user sees the dashboard', t.includes('Dashboard') && t.includes('Next 24 hours'), t.slice(0, 300));
         check('Discord user named like an admin is no admin', await d.locator('a[href="/admin"]').count() === 0
-            && await d.locator('.nav a[href="/tasks"], .nav a[href="/messages"], .nav a[href="/media"], .nav a[href="/trash"], .nav a[href="/servers"]').count() === 5);
+            && await d.locator('.nav a[href="/tasks"], .nav a[href="/messages"], .nav a[href="/media"], .nav a[href="/trash"], .nav a[href="/servers"], .nav a[href="/room"]').count() === 6);
         for (const path of ['/admin', '/admin/access']) {
             const res = await d.goto(BASE + path);
             check(`Discord session blocked from ${path}`, res.status() === 403);

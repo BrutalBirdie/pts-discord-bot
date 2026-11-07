@@ -202,7 +202,7 @@ func (s *Server) joinVoice(w http.ResponseWriter, r *http.Request) {
 	}
 	s.run.JoinNow(id, channelID, sessionFrom(r).Username)
 	s.audit(r, "voice.join", s.bot.GuildName(id), ch.Name)
-	redirect(w, r, "/servers/"+id, "joining")
+	redirect(w, r, safeNext(r.PostForm.Get("next"), "/servers/"+id), "joining")
 }
 
 // playInChannel plays a file from the media library in a voice channel.

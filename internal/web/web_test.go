@@ -29,6 +29,17 @@ func testServer(t *testing.T) *Server {
 	return s
 }
 
+func room(view string, ch bot.Channel, more func(*roomData)) roomData {
+	mira := bot.Member{ID: "9", Name: "Mira", Username: "mira", VoiceID: "2", Voice: "Lounge"}
+	d := roomData{Guilds: []bot.Guild{{ID: "1", Name: "PTS Server"}}, Guild: bot.Guild{ID: "1", Name: "PTS Server", BotVoice: "Lounge", Self: bot.Member{Name: "PTS Bot"}},
+		Text:  []roomChannel{{Channel: bot.Channel{ID: "4", Name: "general", Usable: true}, Tasks: 1}},
+		Voice: []roomChannel{{Channel: bot.Channel{ID: "2", Name: "Lounge", Voice: true, Usable: true, HasBot: true, People: []bot.Member{mira}}, Tasks: 1}},
+		View:  view, Channel: ch, Self: "/room/1?c=" + ch.ID, InVoice: []bot.Member{mira}, MPage: 1, Paging: paging{Page: 1},
+		Tasks: []tasks.Task{{ID: 3, Name: "Adhan", Trigger: tasks.Trigger{Kind: tasks.Manual}}}}
+	more(&d)
+	return d
+}
+
 func TestPagesRender(t *testing.T) {
 	s := testServer(t)
 	admin := &store.Session{Username: "ann", DisplayName: "Ann Admin", IsAdmin: true, CSRFToken: "tok"}
@@ -80,6 +91,22 @@ func TestPagesRender(t *testing.T) {
 		{"media", mediaData{Items: []store.Media{sound, img, {ID: 8, Name: "big.mp4", Kind: store.KindVideo, SizeBytes: 30 << 20}}, Counts: map[string]int{"": 3, "sound": 1}, MaxUploadMB: 100,
 			Voice: []voiceGroup{{Guild: bot.Guild{Name: "PTS"}, Voice: []bot.Channel{{ID: "2", Name: "prayer"}}}}},
 			[]string{`id="sheet-play-5"`, `data-preview-media="5" data-name="muezzin.ogg"`, "over 20 MB", "used by task Adhan", "3:45", `enctype="multipart/form-data"`}},
+		{"room", roomData{}, []string{"The bot is in no server you may manage yet."}},
+		{"room", room("voice", bot.Channel{ID: "2", Name: "Lounge", Voice: true, Usable: true, HasBot: true}, func(d *roomData) {
+			horn := sound
+			horn.Emoji = "🎺"
+			d.Favorites = []soundTile{{Media: horn, Fav: true}}
+			d.Rest = []soundTile{{Media: img}}
+			d.Look, d.Emojis = &horn, soundEmojis
+		}), []string{`popovertarget="menu-c2"`, `data-menu="menu-v9"`, "Leave Lounge", `action="/media/5/favorite"`, `aria-pressed="true"`, `<span class="face" aria-hidden="true">🎺</span>`,
+			`name="emoji_text"`, `<input type="radio" name="emoji" value="🎺" checked>`, `href="/tasks/new?guild=1&amp;join=2&amp;play=5"`, "Tasks in Lounge", `data-preview-volume`, `href="/room/1?c=2&amp;look=5#look"`}},
+		{"room", room("text", bot.Channel{ID: "4", Name: "general", Usable: true}, func(d *roomData) {
+			d.Messages = []messages.Message{msg}
+		}), []string{`action="/room/1/send"`, `name="channel" value="4"`, `<option value="7">Friday</option>`, "Tasks that use #general", `href="/tasks/new?guild=1&amp;post=4"`}},
+		{"room", room("member", bot.Channel{}, func(d *roomData) {
+			d.Member = bot.Member{ID: "9", Name: "Mira", Username: "mira", VoiceID: "2", Voice: "Lounge"}
+			d.Greets = []tasks.Task{adhan, adhan}
+		}), []string{"@mira · in Lounge", "2 tasks start when Mira joins", `name="member" value="9"`, `href="/tasks/new?guild=1&amp;member=9"`, "Tasks that leave Mira out"}},
 		{"admin", adminData{Tab: "overview", Admins: []string{"ann"}, Groups: []string{"bot-admins"}}, []string{"BOT_ADMIN_GROUP", "bot-admins"}},
 		{"admin", adminData{Tab: "settings", Settings: store.DefaultSettings, Timezones: commonTimezones}, []string{`name="max_play_minutes" value="10"`, `value="Europe/Berlin"`}},
 		{"admin", adminData{Tab: "audit", Page: 1, Audit: []store.AuditEntry{{At: now, Actor: "ann", Action: "task.run", Target: "Adhan"}}}, []string{"task.run"}},

@@ -32,14 +32,16 @@ type Media struct {
 	Tags        []string
 	GuildID     string   // server group, "" for none
 	GroupOnly   bool     // not suggested to other servers than GuildID
+	Emoji       string   // shown on the soundboard
+	IconID      int64    // an image shown on the soundboard instead of Emoji
 	UsedBy      []string // names of tasks and messages in scope that reference it, filled by FindMedia
 	UsedElse    int      // tasks and messages out of scope that reference it
 }
 
-const mediaCols = `id, name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, created_at, tags, coalesce(guild_id, ''), group_only`
+const mediaCols = `id, name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, created_at, tags, coalesce(guild_id, ''), group_only, emoji, coalesce(icon_media_id, 0)`
 
 func (m *Media) fields() []any {
-	return []any{&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &m.GuildID, &m.GroupOnly}
+	return []any{&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &m.GuildID, &m.GroupOnly, &m.Emoji, &m.IconID}
 }
 
 func scanMedia(r pgx.Row) (Media, error) {
@@ -69,6 +71,58 @@ func (s *Store) UpdateMedia(ctx context.Context, m Media) error {
 	}
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
+	}
+	return err
+}
+
+// SetMediaLook sets the emoji or image a sound shows on the soundboard.
+func (s *Store) SetMediaLook(ctx context.Context, id int64, emoji string, iconID int64) error {
+	var icon *int64
+	if iconID != 0 {
+		icon = &iconID
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE media SET emoji = $2, icon_media_id = $3 WHERE id = $1 AND deleted_at IS NULL`, id, emoji, icon)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
+// Favorites returns the IDs of the sounds a user starred.
+func (s *Store) Favorites(ctx context.Context, username string) (map[int64]bool, error) {
+	rows, err := s.pool.Query(ctx, `SELECT media_id FROM favorite_media WHERE username = $1`, username)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	out := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, err
+}
+
+// FavoriteSounds returns the starred sounds of a user that are not trashed, by name.
+func (s *Store) FavoriteSounds(ctx context.Context, username string) ([]Media, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+mediaCols+` FROM media m JOIN favorite_media f ON f.media_id = m.id
+WHERE f.username = $1 AND m.deleted_at IS NULL ORDER BY lower(m.name)`, username)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Media, error) { return scanMedia(r) })
+}
+
+func (s *Store) SetFavorite(ctx context.Context, username string, mediaID int64, on bool) error {
+	if !on {
+		_, err := s.pool.Exec(ctx, `DELETE FROM favorite_media WHERE username = $1 AND media_id = $2`, username, mediaID)
+		return err
+	}
+	tag, err := s.pool.Exec(ctx, `INSERT INTO favorite_media (username, media_id) SELECT $1, id FROM media WHERE id = $2 AND deleted_at IS NULL
+ON CONFLICT DO NOTHING`, username, mediaID)
+	if err == nil && tag.RowsAffected() == 0 {
+		if _, err := s.Media(ctx, mediaID); err != nil {
+			return err
+		}
 	}
 	return err
 }

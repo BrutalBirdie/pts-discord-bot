@@ -1,12 +1,13 @@
 {{define "navlinks"}}
-{{if .Session.NoAccess}}<a href="/"{{if eq .Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Home</span></a>{{else}}
-<a href="/"{{if eq .Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Dashboard</span></a>
-<a href="/servers"{{if eq .Nav "servers"}} aria-current="page"{{end}}>{{icon "server"}}<span>Servers</span></a>
-<a href="/tasks"{{if eq .Nav "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span>Tasks</span></a>
-<a href="/messages"{{if eq .Nav "messages"}} aria-current="page"{{end}}>{{icon "message-square"}}<span>Messages</span></a>
-<a href="/media"{{if eq .Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>
-<a href="/trash"{{if eq .Nav "trash"}} aria-current="page"{{end}}>{{icon "trash-2"}}<span>Trash</span>{{with .Trash}}<span class="badge">{{.}}</span>{{end}}</a>
-{{if .Session.IsAdmin}}<a href="/admin"{{if eq .Nav "admin"}} aria-current="page"{{end}}>{{icon "shield"}}<span>Admin</span>{{with .Pending}}<span class="badge accent" aria-label="{{.}} open access requests">{{.}}</span>{{end}}</a>{{end}}
+{{if .Session.NoAccess}}<a data-tip="Home" href="/"{{if eq .Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Home</span></a>{{else}}
+<a data-tip="Dashboard" href="/"{{if eq .Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Dashboard</span></a>
+<a data-tip="Control Room" href="/room"{{if eq .Nav "room"}} aria-current="page"{{end}}>{{icon "radio"}}<span>Control Room</span></a>
+<a data-tip="Servers" href="/servers"{{if eq .Nav "servers"}} aria-current="page"{{end}}>{{icon "server"}}<span>Servers</span></a>
+<a data-tip="Tasks" href="/tasks"{{if eq .Nav "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span>Tasks</span></a>
+<a data-tip="Messages" href="/messages"{{if eq .Nav "messages"}} aria-current="page"{{end}}>{{icon "message-square"}}<span>Messages</span></a>
+<a data-tip="Media" href="/media"{{if eq .Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>
+<a data-tip="Trash" href="/trash"{{if eq .Nav "trash"}} aria-current="page"{{end}}>{{icon "trash-2"}}<span>Trash</span>{{with .Trash}}<span class="badge">{{.}}</span>{{end}}</a>
+{{if .Session.IsAdmin}}<a data-tip="Admin" href="/admin"{{if eq .Nav "admin"}} aria-current="page"{{end}}>{{icon "shield"}}<span>Admin</span>{{with .Pending}}<span class="badge accent" aria-label="{{.}} open access requests">{{.}}</span>{{end}}</a>{{end}}
 {{end}}{{end}}
 
 {{define "grouppick"}}

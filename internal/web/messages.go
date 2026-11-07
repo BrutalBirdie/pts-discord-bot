@@ -361,7 +361,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "message.send", m.Name, s.bot.GuildName(guildID)+" · #"+ch.Name)
-	redirect(w, r, fmt.Sprintf("/messages/%d", m.ID), "sent")
+	redirect(w, r, safeNext(r.PostForm.Get("next"), fmt.Sprintf("/messages/%d", m.ID)), "sent")
 }
 
 func (s *Server) duplicateMessage(w http.ResponseWriter, r *http.Request) {

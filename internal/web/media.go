@@ -30,9 +30,9 @@ type mediaData struct {
 	TotalBytes   int64
 	Voice        []voiceGroup
 	MaxUploadMB  int
-	Groups       []bot.Guild   // servers a file can be grouped with
-	Group        string        // list filter: a server, store.NoGroup or "" for all
-	DefaultGroup string        // preselected for uploads: the server of a Discord user
+	Groups       []bot.Guild // servers a file can be grouped with
+	Group        string      // list filter: a server, store.NoGroup or "" for all
+	DefaultGroup string      // preselected for uploads: the server of a Discord user
 	Names        map[string]string
 	Paging       paging
 }
@@ -59,7 +59,6 @@ func groupLabel(names map[string]string, guildID string) string {
 	}
 	return guildID
 }
-
 
 func (s *Server) voiceGroups(r *http.Request) []voiceGroup {
 	var out []voiceGroup

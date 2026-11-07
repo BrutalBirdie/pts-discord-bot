@@ -146,6 +146,13 @@ ALTER TABLE media ADD COLUMN IF NOT EXISTS group_only boolean NOT NULL DEFAULT f
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS group_only boolean NOT NULL DEFAULT false;
 ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS preview_volume integer NOT NULL DEFAULT 100 CHECK (preview_volume BETWEEN 0 AND 100);
 DROP TABLE IF EXISTS preview_volume;
+ALTER TABLE media ADD COLUMN IF NOT EXISTS emoji text NOT NULL DEFAULT '';
+ALTER TABLE media ADD COLUMN IF NOT EXISTS icon_media_id bigint REFERENCES media (id) ON DELETE SET NULL;
+CREATE TABLE IF NOT EXISTS favorite_media (
+    username text NOT NULL,
+    media_id bigint NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+    PRIMARY KEY (username, media_id)
+);
 DO $$
 DECLARE
     r record;
