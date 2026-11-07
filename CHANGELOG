@@ -14,7 +14,7 @@
 * Steps can be moved by drag and drop, lists have search and pages
 * Stop button for running runs, skipped playback shows in the run history
 * Servers in each user's own order, missing bot permissions are shown
-* Pages update live instead of reloading: searches, filters and pages of lists, saving and actions stay in place; notices can be dismissed
+* The web app no longer reloads: links and forms show the next page in place, pages update live, searches, filters and pages of lists work in place; notices can be dismissed
 * Tag picker with suggestions for media tags
 * Playback stops in an empty channel, on a stall and at a run time limit
 * Needs the Presence intent for online status in the Control Room (optional)

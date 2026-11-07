@@ -36,7 +36,9 @@ async function login(page, user, groups) {
     await page.waitForURL(BASE + '/');
 }
 
-const text = (page) => page.locator('main').innerText();
+// pages load in place; settle waits until the page shown last has arrived
+const settle = (page) => page.waitForFunction(() => !document.documentElement.classList.contains('loading'));
+const text = async (page) => { await settle(page); return page.locator('main').innerText(); };
 
 // 1x1 PNG
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -71,14 +73,25 @@ const steps = {
         await page.goto(BASE + '/admin');
         check('admin page shows group', (await text(page)).includes('bot-admins'));
         await page.goto(BASE + '/admin/settings');
+        await page.evaluate(() => { window.stayed = true; });
         await page.fill('input[name=max_upload_mb]', '50');
         await page.click('main form button[type=submit]');
         check('settings saved', (await text(page)).includes('Saved.') && await page.inputValue('input[name=max_upload_mb]') === '50');
         check('a notice leaves the address', !page.url().includes('done='), page.url());
+        check('saving does not load a new page', await page.evaluate(() => window.stayed === true));
         await page.click('.notice .dismiss');
         check('a notice can be dismissed', await page.locator('.notice').count() === 0);
         await page.reload();
         check('a reload does not bring the notice back', await page.locator('.notice').count() === 0);
+        await page.evaluate(() => { window.stayed = true; });
+        await page.click('.nav a[href="/tasks"]');
+        await settle(page);
+        check('navigation shows the page in place', page.url() === BASE + '/tasks' && await page.evaluate(() => window.stayed === true)
+            && await page.locator('.nav a[href="/tasks"][aria-current=page]').count() === 1 && (await page.title()).length > 0);
+        await page.goBack();
+        await settle(page);
+        check('Back shows the page before in place', page.url().endsWith('/admin/settings') && await page.evaluate(() => window.stayed === true)
+            && await page.locator('input[name=max_upload_mb]').count() === 1);
 
         await page.goto(BASE + '/media');
         t = await text(page);
@@ -324,13 +337,12 @@ const steps = {
     async trash() {
         const { page } = await session('ann');
         const post = async (sel) => {
-            const nav = page.waitForNavigation();
             await page.locator(sel).first().evaluate((f) => {
                 const c = f.querySelector('input[name=confirm]');
                 if (c) c.value = c.dataset.confirm;
                 f.requestSubmit();
             });
-            await nav;
+            await settle(page);
         };
         const taskRow = () => page.locator('main .list > li', { has: page.getByRole('link', { name: 'Every minute', exact: true }) });
 
@@ -338,6 +350,7 @@ const steps = {
         await page.goto(BASE + '/tasks');
         const before = await trashCount();
         await page.getByRole('link', { name: 'Every minute', exact: true }).click();
+        await settle(page);
         const taskID = page.url().split('/').pop();
         await post('form[action$="/delete"]');
         let t = await text(page);
@@ -511,7 +524,7 @@ const steps = {
         t = await d.locator('main').innerText();
         check('Discord user sees a sound without server group in the task', (await d.content()).includes('shared-horn.ogg') && !t.includes('Deleted sound'), t.slice(0, 600));
         await d.click('main .btns button[value=save]');
-        check('Discord user saves a task with a sound without server group', (await d.locator('main').innerText()).includes('Saved.'));
+        check('Discord user saves a task with a sound without server group', (await text(d)).includes('Saved.'));
 
         await page.goto(BASE + '/media?q=shared-horn');
         const sheetID = await page.locator('main .list button[popovertarget^="sheet-edit-"]').first().getAttribute('popovertarget');
@@ -599,8 +612,10 @@ const steps = {
         check('x removes a token', await toks() === '111111111111111111' && page.url().includes('/tasks/'));
         await page.unroute('**/members?*');
         await page.click('main .btns button[value=save]');
+        await settle(page);
         await page.goto(BASE + '/tasks');
         await page.getByRole('link', { name: 'Greeting', exact: true }).click();
+        await settle(page);
         check('member tokens saved', await toks() === '111111111111111111', await toks());
 
         await page.click('button[value="add:play"]');

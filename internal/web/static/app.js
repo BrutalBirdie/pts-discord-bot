@@ -5,7 +5,13 @@
 (function () {
     document.documentElement.classList.add('js');
     // the live parts as the server sent them, before scripts changed them, to compare with fresh ones
-    document.querySelectorAll('[data-live]').forEach((el) => { el.liveHTML = el.innerHTML; });
+    const pageSetups = [];
+    // runs a setup now for the page and again for every page shown without a reload
+    function onPage(fn) {
+        pageSetups.push(fn);
+        fn(document);
+    }
+    onPage((root) => root.querySelectorAll('[data-live]').forEach((el) => { el.liveHTML = el.innerHTML; }));
     const toastEl = document.getElementById('toast');
     let toastTimer;
 
@@ -100,15 +106,15 @@
     }
 
     window.botpanel = { init, toast };
-    init(document);
+    onPage(init);
 
     // changing the server of a task loads its channels and members
-    document.querySelectorAll('select[data-reload]').forEach(function (select) {
+    onPage((root) => root.querySelectorAll('select[data-reload]').forEach(function (select) {
         select.addEventListener('change', function () {
             const button = select.form.querySelector('button[name=op][value=reload]');
             if (button) select.form.requestSubmit(button);
         });
-    });
+    }));
 
     function svgIcon(name) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -330,7 +336,7 @@
     }
 
     // pickers: suggestions while typing, from /members or the data-source of a token field
-    document.querySelectorAll('input[data-members], [data-source] input[type=search]').forEach(function (input) {
+    onPage((root) => root.querySelectorAll('input[data-members], [data-source] input[type=search]').forEach(function (input) {
         const list = document.createElement('ul');
         list.className = 'suggestions';
         list.hidden = true;
@@ -506,7 +512,7 @@
             }
         });
         input.addEventListener('blur', close);
-    });
+    }));
 
     // Discord markdown for the message previews, everything is escaped before marks become tags
     const escapeHTML = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -556,10 +562,10 @@
         el.classList.add('md');
         el.innerHTML = markdown(text, namesOf(el));
     }
-    document.querySelectorAll('[data-md]').forEach((el) => renderMarkdown(el, el.dataset.md));
+    onPage((root) => root.querySelectorAll('[data-md]').forEach((el) => renderMarkdown(el, el.dataset.md)));
 
     // live preview of the message editor and the quick message box
-    document.querySelectorAll('form[data-preview-form]').forEach(function (previewForm) {
+    onPage((root) => root.querySelectorAll('form[data-preview-form]').forEach(function (previewForm) {
         previewForm.addEventListener('input', function (event) {
             const key = event.target.dataset.preview;
             if (!key) return;
@@ -587,11 +593,15 @@
                 counter.classList.toggle('over', n > Number(counter.dataset.max));
             }
         });
-    });
+    }));
 
     // a link like /servers/1#sheet-play-2 opens that sheet
-    const target = location.hash.startsWith('#sheet-') && document.getElementById(location.hash.slice(1));
-    if (target && target.showPopover) target.showPopover();
+    onPage(function () {
+        // fetch drops the #fragment of a redirect, ?edit opens the Edit sound sheet as well
+        const target = location.hash.startsWith('#sheet-') && document.getElementById(location.hash.slice(1))
+            || new URLSearchParams(location.search).has('edit') && document.getElementById('sheet-sound');
+        if (target && target.showPopover && !target.matches(':popover-open')) target.showPopover();
+    });
 
     // live parts of a page: the server says on /events that something changed, the page
     // fetches itself and swaps its [data-live] parts, without a reload
@@ -651,12 +661,14 @@
     }
 
     // notices after an action are shown once: a reload does not bring them back, and they can be closed
-    const params = new URLSearchParams(location.search);
-    if (params.has('done') || params.has('undo') || params.has('as')) {
-        ['done', 'undo', 'as'].forEach((k) => params.delete(k));
-        const q = params.toString();
-        history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
-    }
+    onPage(function () {
+        const params = new URLSearchParams(location.search);
+        if (params.has('done') || params.has('undo') || params.has('as')) {
+            ['done', 'undo', 'as'].forEach((k) => params.delete(k));
+            const q = params.toString();
+            history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+        }
+    });
     document.addEventListener('click', function (event) {
         const close = event.target.closest('.notice .dismiss');
         if (close) close.closest('.notice').remove();
@@ -681,7 +693,7 @@
     }
 
     // steps move in the page; the form is saved as it is ordered when submitted
-    document.querySelectorAll('ol[data-steps]').forEach(function (list) {
+    onPage((root) => root.querySelectorAll('ol[data-steps]').forEach(function (list) {
         const items = () => Array.from(list.children).filter((li) => li.classList.contains('step'));
         const prefix = /\bs\d+\./g;
 
@@ -775,10 +787,10 @@
         }
         document.addEventListener('pointerup', drop);
         document.addEventListener('pointercancel', drop);
-    });
+    }));
 
     // editor buttons that post the form come back to the same scroll position
-    document.querySelectorAll('form').forEach(function (form) {
+    onPage((root) => root.querySelectorAll('form').forEach(function (form) {
         if (!form.querySelector('button[name=op]')) return;
         const key = 'scroll:' + location.pathname;
         try {
@@ -790,10 +802,10 @@
             if (!op || op === 'save') return;
             try { sessionStorage.setItem(key, String(window.scrollY)); } catch (e) { /* storage blocked */ }
         });
-    });
+    }));
 
     // server choices of an access request: search and pages, without JavaScript all are listed
-    document.querySelectorAll('[data-pick-list]').forEach(function (box) {
+    onPage((root) => root.querySelectorAll('[data-pick-list]').forEach(function (box) {
         const items = Array.from(box.querySelectorAll('[data-pick]'));
         const search = box.querySelector('[data-pick-search]');
         const pager = box.querySelector('[data-pick-pager]');
@@ -829,10 +841,10 @@
         box.addEventListener('change', count);
         show();
         count();
-    });
+    }));
 
     // one preview volume for every sound, e.g. on the soundboard
-    document.querySelectorAll('input[data-preview-volume]').forEach(function (slider) {
+    onPage((root) => root.querySelectorAll('input[data-preview-volume]').forEach(function (slider) {
         const out = slider.parentElement.querySelector('output');
         slider.addEventListener('input', function () {
             document.body.dataset.previewVol = slider.value;
@@ -840,7 +852,7 @@
             if (preview) preview.audio.volume = Number(slider.value) / 100;
             saveVolume(slider.value);
         });
-    });
+    }));
 
     // forms that act without leaving the page, like playing a sound or starring it
     document.addEventListener('submit', function (event) {
@@ -922,8 +934,9 @@
     });
 
     // the channel and member lists of the Control Room can be made wider or narrower
-    const room = document.querySelector('.room');
-    if (room) {
+    onPage(function (root) {
+        const room = root.querySelector('.room');
+        if (!room) return;
         const limits = { side: [180, 480], members: [180, 420] };
         const setWidth = function (which, px) {
             const [lo, hi] = limits[which];
@@ -969,11 +982,11 @@
                 handle.setAttribute('aria-valuenow', setWidth(which, w));
             });
         });
-    }
+    });
 
     // the soundboard's play volume, saved for the user
     let playTimer;
-    document.querySelectorAll('input[data-play-volume]').forEach(function (slider) {
+    onPage((root) => root.querySelectorAll('input[data-play-volume]').forEach(function (slider) {
         const out = slider.parentElement.querySelector('output');
         slider.addEventListener('input', function () {
             if (out) out.textContent = slider.value + '%';
@@ -985,14 +998,14 @@
                     .then((r) => { if (!r.ok) toast('Volume not saved, reload the page and try again'); }, () => toast('Volume not saved, check your connection'));
             }, 400);
         });
-    });
-    document.querySelectorAll('input[type=range][data-out]').forEach(function (slider) {
+    }));
+    onPage((root) => root.querySelectorAll('input[type=range][data-out]').forEach(function (slider) {
         const out = slider.parentElement.querySelector('output');
         slider.addEventListener('input', function () { out.textContent = slider.value + '%'; });
-    });
+    }));
 
     // Edit sound: waveform with draggable start and end, the number fields stay the source of truth
-    document.querySelectorAll('[data-wave]').forEach(function (wave) {
+    onPage((root) => root.querySelectorAll('[data-wave]').forEach(function (wave) {
         const form = wave.closest('form');
         const startIn = form.querySelector('input[data-trim=start]'), endIn = form.querySelector('input[data-trim=end]');
         const box = wave.querySelector('.wave-box'), canvas = box.querySelector('canvas');
@@ -1093,14 +1106,14 @@
             audio.play().catch(function () { stop(); toast('The preview could not be played'); });
         });
         draw();
-    });
+    }));
 
     // emoji picker: the server's own emojis and the standard ones, searchable by name
     let emojiData = null;
     const loadEmojis = () => emojiData || (emojiData = fetch('/static/emoji.json').then((r) => r.json()).catch(() => []));
     const customRe = /^<(a?):([A-Za-z0-9_~]+):(\d+)>$/;
     const customURL = (m) => 'https://cdn.discordapp.com/emojis/' + m[3] + '.' + (m[1] ? 'gif' : 'png') + '?size=48';
-    document.querySelectorAll('input[data-emoji-picker]').forEach(function (input, n) {
+    onPage((root) => root.querySelectorAll('input[data-emoji-picker]').forEach(function (input, n) {
         let custom = [];
         try { custom = JSON.parse(input.dataset.emojiPicker || '[]') || []; } catch (e) { custom = []; }
         input.type = 'hidden';
@@ -1231,7 +1244,7 @@
             if (!panel.hidden && !panel.contains(event.target) && event.target !== btn && !btn.contains(event.target)) close();
         });
         show();
-    });
+    }));
 
 
     // servers in the user's order: drag in the server list or the Control Room rail
@@ -1304,7 +1317,7 @@
         }, true);
         box.addEventListener('dragstart', (event) => event.preventDefault());
     }
-    document.querySelectorAll('[data-sortable]').forEach(initSortable);
+    onPage((root) => root.querySelectorAll('[data-sortable]').forEach(initSortable));
     document.addEventListener('live:swap', (event) => event.target.querySelectorAll('[data-sortable]').forEach(initSortable));
 
     // the member column shows only the members that fit, it never scrolls
@@ -1334,25 +1347,23 @@
         const n = base + cut;
         more.textContent = n + (n === 1 ? ' more member' : ' more members') + ', search to find them.';
     }
-    if (document.querySelector('[data-fit-members]')) {
-        fitMembers();
-        window.addEventListener('resize', fitMembers);
-        if (document.fonts) document.fonts.ready.then(fitMembers);
-        document.addEventListener('live:swap', fitMembers);
-    }
+    onPage(fitMembers);
+    window.addEventListener('resize', fitMembers);
+    if (document.fonts) document.fonts.ready.then(fitMembers);
+    document.addEventListener('live:swap', fitMembers);
 
-    document.querySelectorAll('input[type=range]').forEach(enhanceRange);
+    onPage((root) => root.querySelectorAll('input[type=range]').forEach(enhanceRange));
 
     // the soundboard's Upload new tile uploads right after the files are picked
-    document.querySelectorAll('form[data-upload-tile]').forEach(function (form) {
+    onPage((root) => root.querySelectorAll('form[data-upload-tile]').forEach(function (form) {
         const input = form.querySelector('input[type=file]');
         input.addEventListener('change', function () {
             if (!input.files.length) return;
             form.querySelector('.nm').textContent = 'Uploading ' + (input.files.length === 1 ? input.files[0].name : input.files.length + ' files') + '…';
             form.classList.add('busy');
-            form.submit();
+            form.requestSubmit();
         });
-    });
+    }));
 
     // searches and the filters and pages of lists show their results in place, without a reload
     function goLive(url, push) {
@@ -1360,7 +1371,7 @@
         liveRunning = false;
         refreshLive();
     }
-    document.querySelectorAll('form[data-live-search]').forEach(function (form) {
+    onPage((root) => root.querySelectorAll('form[data-live-search]').forEach(function (form) {
         if (!document.querySelector('[data-live-list]')) return;
         const input = form.querySelector('input[type=search]');
         let timer;
@@ -1376,7 +1387,7 @@
         input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(run, 250); });
         form.addEventListener('submit', function (event) { event.preventDefault(); clearTimeout(timer); run(); });
         form.querySelectorAll('button[type=submit]').forEach((b) => b.classList.add('no-js'));
-    });
+    }));
     document.addEventListener('click', function (event) {
         const a = event.target.closest('[data-live-list] .pager a[href], [data-live-list] .pills a[href]');
         if (!a || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
@@ -1390,9 +1401,85 @@
         const top = list && list.firstElementChild;
         if (top && top.getBoundingClientRect().top < 0) top.scrollIntoView({ block: 'start' });
     });
-    window.addEventListener('popstate', function () {
-        const search = document.querySelector('form[data-live-search] input[type=search]');
-        if (search) search.value = new URLSearchParams(location.search).get('q') || '';
-        refreshLive();
+
+    // links and forms show the next page in place: the main part, the title and the navigation
+    // change, the browser does not load a new page
+    const outside = (url) => url.origin !== location.origin || /^\/(logout|login|auth|access|static|events)(\/|$)|^\/media\/\d+\/file/.test(url.pathname);
+    function showPage(html, url, how) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const main = doc.querySelector('main'), cur = document.querySelector('main');
+        // another layout, like the login page: load it for real
+        if (!main || !cur || !doc.querySelector('.topbar .nav') !== !document.querySelector('.topbar .nav')) {
+            location.href = url;
+            return;
+        }
+        stopPreview();
+        document.querySelectorAll(':popover-open').forEach((el) => el.hidePopover());
+        if (how === 'push') history.pushState(null, '', url);
+        else if (how === 'replace') history.replaceState(null, '', url);
+        cur.className = main.className;
+        cur.innerHTML = main.innerHTML;
+        document.title = doc.title;
+        ['.topbar .nav', '.tabbar'].forEach(function (sel) {
+            const from = doc.querySelector(sel), to = document.querySelector(sel);
+            if (from && to) to.innerHTML = from.innerHTML;
+        });
+        pageSetups.forEach((fn) => fn(cur));
+    }
+    function scrollAfter(keep) {
+        if (keep) return;
+        const target = location.hash && document.getElementById(location.hash.slice(1));
+        if (target && !target.matches('[popover]')) target.scrollIntoView();
+        else window.scrollTo(0, 0);
+    }
+    function navigate(url, how) {
+        document.documentElement.classList.add('loading');
+        fetch(url, { headers: { Accept: 'text/html' } }).then(function (r) {
+            if (!(r.headers.get('Content-Type') || '').includes('text/html')) {
+                location.href = url;
+                return;
+            }
+            return r.text().then(function (html) {
+                const hash = new URL(url, location.href).hash;
+                showPage(html, r.url + (new URL(r.url).hash ? '' : hash), how);
+                scrollAfter(false);
+            });
+        }).catch(() => { location.href = url; }).finally(() => document.documentElement.classList.remove('loading'));
+    }
+    document.addEventListener('click', function (event) {
+        if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        const a = event.target.closest('a[href]');
+        if (!a || a.target || a.hasAttribute('download')) return;
+        const url = new URL(a.href, location.href);
+        if (outside(url) || url.searchParams.has('download')) return;
+        // a jump within the page
+        if (url.hash && url.pathname === location.pathname && url.search === location.search) return;
+        event.preventDefault();
+        navigate(url.href, 'push');
     });
+    document.addEventListener('submit', function (event) {
+        const form = event.target;
+        if (event.defaultPrevented || form.target || form.hasAttribute('data-fetch')) return;
+        const url = new URL(form.getAttribute('action') || location.href, location.href);
+        if (outside(url)) return;
+        event.preventDefault();
+        const data = new FormData(form, event.submitter);
+        if ((form.getAttribute('method') || 'get').toLowerCase() === 'get') {
+            const q = new URLSearchParams(data).toString();
+            navigate(url.pathname + (q ? '?' + q : ''), 'push');
+            return;
+        }
+        const body = form.enctype === 'multipart/form-data' ? data : new URLSearchParams(data);
+        const before = location.pathname;
+        document.documentElement.classList.add('loading');
+        fetch(url, { method: 'POST', body }).then(function (r) {
+            return r.text().then(function (html) {
+                // a redirect shows a page with its own address, an answer without one shows the result here
+                const where = r.redirected ? r.url : location.href;
+                showPage(html, where, r.redirected ? 'push' : 'stay');
+                scrollAfter(r.redirected && new URL(r.url).pathname !== before);
+            });
+        }).catch(() => toast('Not sent, check your connection')).finally(() => document.documentElement.classList.remove('loading'));
+    });
+    window.addEventListener('popstate', () => navigate(location.href, 'stay'));
 })();

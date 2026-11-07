@@ -720,3 +720,4 @@ output[hidden] { display: none; }
 .notice .dismiss { margin-left: auto; color: inherit; }
 .notice .undo + .dismiss { margin-left: 0; }
 html:not(.js) .notice .dismiss { display: none; }
+html.loading, html.loading * { cursor: progress; }
