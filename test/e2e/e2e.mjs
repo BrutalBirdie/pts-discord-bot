@@ -64,6 +64,11 @@ const steps = {
         await page.fill('input[name=max_upload_mb]', '50');
         await page.click('main form button[type=submit]');
         check('settings saved', (await text(page)).includes('Saved.') && await page.inputValue('input[name=max_upload_mb]') === '50');
+        check('a notice leaves the address', !page.url().includes('done='), page.url());
+        await page.click('.notice .dismiss');
+        check('a notice can be dismissed', await page.locator('.notice').count() === 0);
+        await page.reload();
+        check('a reload does not bring the notice back', await page.locator('.notice').count() === 0);
 
         await page.goto(BASE + '/media');
         t = await text(page);

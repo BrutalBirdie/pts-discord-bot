@@ -50,6 +50,7 @@ type Bot struct {
 	presences   bool
 	handler     atomic.Pointer[Handler]
 	onLeave     atomic.Pointer[func(string)]
+	onChange    atomic.Pointer[func(string)]
 	lastErr     string
 	connectedAt time.Time
 
@@ -105,6 +106,7 @@ func (b *Bot) Run(ctx context.Context) {
 		b.mu.Lock()
 		b.client, b.lastErr, b.connectedAt = client, "", time.Now()
 		b.mu.Unlock()
+		b.changed(ChangeServer)
 		b.log.Info("connected to discord", "members_intent", members, "message_content_intent", messages, "presence_intent", presences)
 
 		select {
@@ -114,6 +116,7 @@ func (b *Bot) Run(ctx context.Context) {
 		b.mu.Lock()
 		b.client = nil
 		b.mu.Unlock()
+		b.changed(ChangeServer)
 		b.vmu.Lock()
 		clear(b.playing)
 		b.vmu.Unlock()

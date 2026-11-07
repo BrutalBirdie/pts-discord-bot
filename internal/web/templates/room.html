@@ -18,7 +18,7 @@
       <h2 id="room-side-title" title="{{$g.Name}}"><a href="/room/{{$g.ID}}">{{$g.Name}}</a></h2>
       <button type="button" class="ib quiet room-close" popovertarget="room-side" popovertargetaction="hide" aria-label="Close" data-tip="Close">{{icon "x"}}</button>
     </div>
-    <div class="side-body">
+    <div class="side-body" data-live="channels">
       {{with $d.Text}}<span class="eyebrow">Text channels</span>
       <ul class="chs">
         {{range .}}
@@ -45,10 +45,10 @@
           <div popover id="menu-c{{.ID}}" class="menu" role="menu" aria-label="{{.Name}}">
             <span class="menu-title">{{.Name}}</span>
             {{if .Usable}}{{if .HasBot}}
-            <form method="post" action="/servers/{{$g.ID}}/leave"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+            <form method="post" action="/servers/{{$g.ID}}/leave" data-fetch data-done="Leaving the voice channel."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
               <button type="submit" role="menuitem">{{icon "log-out"}}Leave {{.Name}}</button></form>
             {{else}}
-            <form method="post" action="/servers/{{$g.ID}}/join"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{.ID}}"><input type="hidden" name="next" value="{{$d.URL "c" .ID}}">
+            <form method="post" action="/servers/{{$g.ID}}/join" data-fetch data-done="Joining."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{.ID}}"><input type="hidden" name="next" value="{{$d.URL "c" .ID}}">
               <button type="submit" role="menuitem">{{icon "log-in"}}Join {{.Name}}</button></form>
             {{end}}{{end}}
             <a role="menuitem" href="{{$d.URL "c" .ID}}">{{icon "music"}}Open soundboard</a>
@@ -70,7 +70,7 @@
         {{end}}
       </ul>{{end}}
       {{with $d.Locked}}
-      <details class="locked">
+      <details class="locked" id="locked">
         <summary>{{icon "chevron-right"}}{{icon "lock"}}<span>No access · {{len .}}</span></summary>
         <ul class="chs">{{range .}}<li class="chrow"><a href="{{$d.URL "c" .ID}}" title="{{.Problem}}">{{if .Voice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}<span class="nm">{{.Name}}</span></a></li>{{end}}</ul>
         <p class="hint">The bot cannot see or use these channels. Give its role access in the channel settings.</p>
@@ -79,10 +79,10 @@
       <p class="hint hint-mouse">Right-click a channel, member or sound for more.</p>
       <p class="hint hint-touch">The … buttons open more for a channel, member or sound.</p>
     </div>
-    <div class="side-foot">
+    <div class="side-foot" data-live="botfoot">
       {{template "roomava" $g.Self}}
       <span class="row-main"><strong>{{with $g.Self.Name}}{{.}}{{else}}PTS Bot{{end}}</strong><span class="row-sub">{{if $g.BotVoice}}In {{$g.BotVoice}}{{else}}Not in voice{{end}}</span></span>
-      {{if $g.BotVoice}}<form method="post" action="/servers/{{$g.ID}}/leave"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+      {{if $g.BotVoice}}<form method="post" action="/servers/{{$g.ID}}/leave" data-fetch data-done="Leaving the voice channel."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
         <button type="submit" class="ib danger" aria-label="Leave {{$g.BotVoice}}" data-tip="Leave {{$g.BotVoice}}">{{icon "log-out"}}</button></form>{{end}}
     </div>
   </aside>
@@ -92,17 +92,17 @@
       <button type="button" class="ib with-label" popovertarget="room-side">{{icon "hash"}}<span class="lbl">Channels</span></button>
       <button type="button" class="ib with-label" popovertarget="room-members">{{icon "users"}}<span class="lbl">Members</span></button>
     </div>
-    {{range $d.Playing}}{{template "playing" .}}{{end}}
+    <div class="contents" data-live="playing">{{range $d.Playing}}{{template "playing" .}}{{end}}</div>
 
     {{if eq $d.View "voice"}}{{$ch := $d.Channel}}
-    <div class="page-head">
+    <div class="page-head" data-live="vhead">
       <h1 class="with-icon">{{icon "volume-2"}}{{$ch.Name}}</h1>
       <div class="btns">
         {{if $ch.Usable}}{{if $ch.HasBot}}
-        <form method="post" action="/servers/{{$g.ID}}/leave"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+        <form method="post" action="/servers/{{$g.ID}}/leave" data-fetch data-done="Leaving the voice channel."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
           <button type="submit" class="ib with-label">{{icon "log-out"}}<span class="lbl">Leave</span></button></form>
         {{else}}
-        <form method="post" action="/servers/{{$g.ID}}/join"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
+        <form method="post" action="/servers/{{$g.ID}}/join" data-fetch data-done="Joining."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
           <button type="submit" class="ib primary with-label">{{icon "log-in"}}<span class="lbl">Join {{$ch.Name}}</span></button></form>
         {{end}}{{end}}
         <a class="ib with-label" href="/tasks/new?guild={{$g.ID}}&amp;join={{$ch.ID}}">{{icon "plus"}}<span class="lbl">Create task here</span></a>
@@ -168,6 +168,7 @@
     </div>
 
     {{else if eq $d.View "member"}}{{$m := $d.Member}}
+    <div class="contents" data-live="mhead">
     <div class="page-head">
       <div class="person">{{if $m.Avatar}}<img class="pava big" src="{{$m.Avatar}}" alt="" width="64" height="64" referrerpolicy="no-referrer">{{else}}<span class="pava big" aria-hidden="true">{{initial $m.Name}}</span>{{end}}
         <div><h1>{{$m.Name}}</h1><span class="row-sub">@{{$m.Username}} · {{with $m.Voice}}in {{.}}{{else}}not in voice{{end}}</span></div></div>
@@ -177,6 +178,7 @@
       </div>
     </div>
     {{if gt (len $d.Greets) 1}}<div class="callout warn">{{icon "triangle-alert"}}<span>{{len $d.Greets}} tasks start when {{$m.Name}} joins a voice channel: {{range $i, $t := $d.Greets}}{{if $i}}, {{end}}<a href="/tasks/{{$t.ID}}">{{$t.Name}}</a>{{end}}. Open one and leave {{$m.Name}} out there if that is too much.</span></div>{{end}}
+    </div>
     <div class="cols2">
       {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks for " $m.Name) "Tasks" $d.Tasks "Empty" "No task names this member.")}}
       {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "except" "Title" (print "Tasks that leave " $m.Name " out") "Tasks" $d.Except "Empty" "None.")}}
@@ -211,6 +213,7 @@
         {{if eq $d.View "member"}}<input type="hidden" name="m" value="{{$d.Member.ID}}">{{else if $d.View}}<input type="hidden" name="c" value="{{$d.Channel.ID}}">{{end}}
         <span class="picker"><input type="search" name="mq" value="{{$d.MQuery}}" placeholder="Search members" aria-label="Search members" autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other" data-members="{{$g.ID}}" data-navigate="/room/{{$g.ID}}?m="></span>
       </form>
+      <div class="contents" data-live="members">
       <div class="mgroups" data-fit-members>
       {{range $d.MGroups}}
       <div class="mgroup">
@@ -222,6 +225,7 @@
       {{else}}<p class="hint">{{if $d.MQuery}}{{template "nomatch" $d.MQuery}}{{else if $d.Presence}}Nobody else is online.{{else}}No members known yet.{{end}}</p>{{end}}
       </div>
       <p class="hint" data-more="{{$d.MHidden}}"{{if not $d.MHidden}} hidden{{end}}>{{plural $d.MHidden "more member" "more members"}}, search to find them.</p>
+      </div>
       {{if or (gt $d.MPage 1) $d.MMore}}<nav class="pager" aria-label="Member pages">
         {{if gt $d.MPage 1}}<a class="ib sm" href="{{$d.MPrev}}" aria-label="Previous members" data-tip="Previous">{{icon "chevron-left"}}</a>{{else}}<span></span>{{end}}
         <span class="hint">Page {{$d.MPage}}</span>
@@ -283,21 +287,21 @@
 {{end}}
 
 {{define "roomtasks"}}{{$d := .D}}{{$csrf := .CSRF}}
-<section class="card" id="{{.ID}}" aria-label="{{.Title}}">
+<section class="card" id="{{.ID}}" aria-label="{{.Title}}" data-live="{{.ID}}">
   <div class="sec-head"><h2>{{.Title}}</h2><span class="chip">{{len .Tasks}}</span></div>
   <ul class="list">
     {{range .Tasks}}{{$run := index $d.Running .ID}}
     <li class="task-row">
       <a class="rowlink with-lead" href="/tasks/{{.ID}}">{{if .UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}<span class="row-main"><span class="row-title">{{.Name}} {{if $run}}<span class="chip accent">running</span>{{else if .Enabled}}<span class="chip ok">active</span>{{else if .PausedReason}}<span class="chip danger">paused after error</span>{{else}}<span class="chip">paused</span>{{end}}</span><span class="row-sub">{{.Trigger.Summary}}</span></span></a>
       <div class="btns">
-        {{if $run}}<form method="post" action="/runs/{{$run}}/stop"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+        {{if $run}}<form method="post" action="/runs/{{$run}}/stop" data-fetch data-done="Stopped."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
           <button type="submit" class="ib danger" aria-label="Stop {{.Name}}" data-tip="Stop">{{icon "square"}}<span class="lbl">Stop</span></button></form>
         {{else if .NeedsMember}}<button type="button" class="ib" aria-disabled="true" aria-label="Run {{.Name}} now" data-tip="Starts only for a member, by an event, /task or a button">{{icon "play"}}<span class="lbl">Run now</span></button>
-        {{else}}<form method="post" action="/tasks/{{.ID}}/run"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+        {{else}}<form method="post" action="/tasks/{{.ID}}/run" data-fetch data-done="Started {{.Name}}."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
           <button type="submit" class="ib" aria-label="Run {{.Name}} now" data-tip="Run now">{{icon "play"}}<span class="lbl">Run now</span></button></form>{{end}}
-        {{if .Enabled}}<form method="post" action="/tasks/{{.ID}}/pause"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+        {{if .Enabled}}<form method="post" action="/tasks/{{.ID}}/pause" data-fetch data-done="Paused {{.Name}}."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
           <button type="submit" class="ib" aria-label="Pause {{.Name}}" data-tip="Pause">{{icon "pause"}}<span class="lbl">Pause</span></button></form>
-        {{else}}<form method="post" action="/tasks/{{.ID}}/resume"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+        {{else}}<form method="post" action="/tasks/{{.ID}}/resume" data-fetch data-done="{{.Name}} is active again."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
           <button type="submit" class="ib" aria-label="Resume {{.Name}}" data-tip="Resume">{{icon "rotate-ccw"}}<span class="lbl">Resume</span></button></form>{{end}}
         <a class="ib quiet" href="/tasks/{{.ID}}" aria-label="Edit {{.Name}}" data-tip="Edit">{{icon "pencil"}}<span class="lbl">Edit</span></a>
       </div>

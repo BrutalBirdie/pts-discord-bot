@@ -19,12 +19,13 @@
   </div>
 </header>
 <main class="wrap{{if eq .Nav "room"}} wide{{end}}" id="main">
-{{if and .Session (not .Session.Discord)}}{{if not .Bot.Connected}}
+<div class="contents"{{if and .Session (not .Session.NoAccess)}} data-live="botstatus"{{end}}>{{if and .Session (not .Session.Discord)}}{{if not .Bot.Connected}}
 <div class="callout warn">{{icon "triangle-alert"}}<span>The bot is not connected to Discord.{{with .Bot.Error}} {{.}}{{end}}</span></div>
-{{end}}{{end}}
+{{end}}{{end}}</div>
 {{with .Notice}}<div class="notice" role="status">{{icon "circle-check"}}<span>{{.}}</span>{{with $.Undo}}
   <form method="post" action="/trash/{{.Kind}}/{{.ID}}/restore" class="undo">{{template "csrf" $}}<input type="hidden" name="next" value="{{$.Path}}">
-    <button type="submit" class="ib sm with-label">{{icon "rotate-ccw"}}<span class="lbl">Undo</span></button></form>{{end}}</div>{{end}}
+    <button type="submit" class="ib sm with-label">{{icon "rotate-ccw"}}<span class="lbl">Undo</span></button></form>{{end}}
+  <button type="button" class="ib sm quiet dismiss" aria-label="Dismiss" data-tip="Dismiss">{{icon "x"}}</button></div>{{end}}
 {{template "content" .}}
 </main>
 {{with .Session}}

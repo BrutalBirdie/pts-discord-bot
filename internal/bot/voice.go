@@ -195,10 +195,12 @@ func (b *Bot) Play(ctx context.Context, guildID snowflake.ID, path string, clip 
 	}
 	b.playing[guildID] = &info
 	b.vmu.Unlock()
+	b.changed(ChangeVoice)
 	defer func() {
 		b.vmu.Lock()
 		delete(b.playing, guildID)
 		b.vmu.Unlock()
+		b.changed(ChangeVoice)
 	}()
 
 	args := []string{"-hide_banner", "-loglevel", "error"}

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/disgoorg/disgo/discord"
@@ -103,6 +104,8 @@ type Runner struct {
 	locks   map[string]chan struct{}
 	wg      sync.WaitGroup
 
+	onChange atomic.Pointer[func()]
+
 	runsMu  sync.Mutex
 	running map[int64]context.CancelCauseFunc // runs in progress, by run ID
 	board   map[string]int64                  // the sound played by hand per server, by run ID
@@ -117,6 +120,15 @@ var runReplaced = errors.New("replaced by the next sound")
 func (e *runStopped) Error() string { return "stopped by " + e.by }
 
 // StopRun ends a run in progress, by is who stopped it. It reports whether the run was in progress.
+// OnChange is called when a run starts or ends, for the live web UI.
+func (r *Runner) OnChange(f func()) { r.onChange.Store(&f) }
+
+func (r *Runner) changed() {
+	if f := r.onChange.Load(); f != nil {
+		(*f)()
+	}
+}
+
 func (r *Runner) StopRun(runID int64, by string) bool {
 	r.runsMu.Lock()
 	defer r.runsMu.Unlock()
@@ -371,6 +383,7 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 	}
 	log := r.log.With("run", runID, "task", t.Name, "source", source)
 	log.Info("run started")
+	r.changed()
 	ctx, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
 	r.runsMu.Lock()
@@ -514,6 +527,7 @@ func (r *Runner) finish(log *slog.Logger, runID int64, status string, failedStep
 	if err := r.st.FinishRun(context.WithoutCancel(r.ctx), runID, status, failedStep, errText); err != nil {
 		log.Error("recording run result", "err", err)
 	}
+	r.changed()
 }
 
 func (r *Runner) afterFailure(t tasks.Task, n int, s tasks.Step, err error, msg string, settings store.Settings) {

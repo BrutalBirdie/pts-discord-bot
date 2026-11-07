@@ -296,6 +296,7 @@ var discordRoutes = map[string]bool{
 	"POST /servers/{id}/leave":        true,
 	"POST /servers/{id}/play":         true,
 	"POST /servers/{id}/join":         true,
+	"GET /events":                     true,
 	"GET /room":                       true,
 	"GET /room/{id}":                  true,
 	"POST /room/{id}/send":            true,

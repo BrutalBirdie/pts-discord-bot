@@ -31,6 +31,22 @@ type Handler interface {
 
 func (b *Bot) SetHandler(h Handler) { b.handler.Store(&h) }
 
+// Kinds of changes the web UI shows live.
+const (
+	ChangeVoice    = "voice"    // voice channels, the bot's voice connection, playback
+	ChangeServer   = "server"   // servers, channels, members, roles
+	ChangePresence = "presence" // who is online and what they do
+)
+
+// OnChange is called with a Change kind whenever something the web UI shows changes.
+func (b *Bot) OnChange(f func(kind string)) { b.onChange.Store(&f) }
+
+func (b *Bot) changed(kind string) {
+	if f := b.onChange.Load(); f != nil {
+		(*f)(kind)
+	}
+}
+
 // OnGuildLeave is called with the guild ID when the bot is removed from a server.
 func (b *Bot) OnGuildLeave(f func(guildID string)) { b.onLeave.Store(&f) }
 
@@ -107,13 +123,22 @@ func (b *Bot) listeners() disgobot.EventListener {
 				b.emit(ev, e.Member.User.Bot)
 			}
 			b.waiters.notify(e.VoiceState.GuildID)
+			b.changed(ChangeVoice)
 		},
+		OnPresenceUpdate:     func(*events.PresenceUpdate) { b.changed(ChangePresence) },
+		OnGuildMemberUpdate:  func(*events.GuildMemberUpdate) { b.changed(ChangeServer) },
+		OnGuildJoin:          func(*events.GuildJoin) { b.changed(ChangeServer) },
+		OnGuildChannelCreate: func(*events.GuildChannelCreate) { b.changed(ChangeServer) },
+		OnGuildChannelUpdate: func(*events.GuildChannelUpdate) { b.changed(ChangeServer) },
+		OnGuildChannelDelete: func(*events.GuildChannelDelete) { b.changed(ChangeServer) },
 		OnGuildLeave: func(e *events.GuildLeave) {
+			b.changed(ChangeServer)
 			if f := b.onLeave.Load(); f != nil {
 				go (*f)(e.GuildID.String())
 			}
 		},
 		OnGuildMemberJoin: func(e *events.GuildMemberJoin) {
+			b.changed(ChangeServer)
 			b.emit(Event{Type: tasks.MemberJoin, GuildID: e.GuildID.String(), UserID: e.Member.User.ID.String(), UserName: e.Member.EffectiveName()}, e.Member.User.Bot)
 		},
 		OnGuildMessageCreate: func(e *events.GuildMessageCreate) {

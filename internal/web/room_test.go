@@ -1,13 +1,16 @@
 package web
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/store"
@@ -226,5 +229,53 @@ func TestPlaceAt(t *testing.T) {
 	got := orderGuilds(gs, []string{"3", "9", "1"})
 	if got[0].ID != "3" || got[1].ID != "1" || got[2].ID != "2" {
 		t.Errorf("orderGuilds: %v", got)
+	}
+}
+
+func TestLiveEvents(t *testing.T) {
+	f := newScopeFixture(t)
+	ts := httptest.NewServer(f.s.Handler())
+	defer ts.Close()
+	req, _ := http.NewRequest("GET", ts.URL+"/events", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: f.discord})
+	res, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if ct := res.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("content type %q", ct)
+	}
+	lines := make(chan string, 32)
+	go func() {
+		sc := bufio.NewScanner(res.Body)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+		close(lines)
+	}()
+	for _, kind := range []string{"voice", "voice", changeRuns} {
+		f.s.live.notify(kind)
+	}
+	got := map[string]int{}
+	deadline := time.After(3 * time.Second)
+	for len(got) < 2 {
+		select {
+		case l, ok := <-lines:
+			if !ok {
+				t.Fatal("stream ended")
+			}
+			if d, ok := strings.CutPrefix(l, "data: "); ok {
+				got[d]++
+			}
+		case <-deadline:
+			t.Fatalf("events: %v", got)
+		}
+	}
+	if got["voice"] != 1 || got[changeRuns] != 1 {
+		t.Errorf("a burst is sent once per kind: %v", got)
+	}
+	f.s.StopLive()
+	for range lines {
 	}
 }

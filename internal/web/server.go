@@ -55,6 +55,8 @@ type Server struct {
 	log   *slog.Logger
 	pages map[string]*template.Template
 
+	live *hub
+
 	oidcMu   sync.Mutex
 	provider *oidc.Provider
 	discord  discordAPI
@@ -63,7 +65,7 @@ type Server struct {
 var pageNames = []string{"login", "error", "dashboard", "servers", "server", "tasks", "task", "messages", "message", "media", "trash", "admin", "access", "room"}
 
 func New(cfg Config, st *store.Store, b *bot.Bot, r *runner.Runner, log *slog.Logger) (*Server, error) {
-	s := &Server{cfg: cfg, store: st, bot: b, run: r, log: log, pages: map[string]*template.Template{}, discord: httpDiscord{client: &http.Client{Timeout: 15 * time.Second}}}
+	s := &Server{cfg: cfg, store: st, bot: b, run: r, log: log, pages: map[string]*template.Template{}, live: newHub(), discord: httpDiscord{client: &http.Client{Timeout: 15 * time.Second}}}
 	for _, page := range pageNames {
 		t, err := template.New("layout.html").Funcs(viewFuncs).ParseFS(assets, "templates/layout.html", "templates/parts.html", "templates/icons.html", "templates/"+page+".html")
 		if err != nil {
@@ -72,6 +74,10 @@ func New(cfg Config, st *store.Store, b *bot.Bot, r *runner.Runner, log *slog.Lo
 		s.pages[page] = t
 	}
 	b.OnGuildLeave(s.guildLeft)
+	b.OnChange(s.live.notify)
+	if r != nil {
+		r.OnChange(func() { s.live.notify(changeRuns) })
+	}
 	return s, nil
 }
 
@@ -90,6 +96,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /access/withdraw", s.requireDiscord(s.withdrawAccess))
 
 	mux.Handle("GET /{$}", s.requireLogin(s.home))
+	mux.Handle("GET /events", s.requireLogin(s.events))
 	mux.Handle("POST /logout", s.requireLogin(s.logout))
 	mux.Handle("POST /account", s.requireLogin(s.saveAccount))
 

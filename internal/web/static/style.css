@@ -716,3 +716,7 @@ output[hidden] { display: none; }
 .snd-upload .snd-play:hover, .snd-upload .snd-play:focus-within { border-color: var(--accent); color: var(--accent); }
 .snd-upload .snd-play:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 .snd-upload .busy .snd-play { cursor: progress; color: var(--accent); }
+.contents { display: contents; }
+.notice .dismiss { margin-left: auto; color: inherit; }
+.notice .undo + .dismiss { margin-left: 0; }
+html:not(.js) .notice .dismiss { display: none; }

@@ -116,6 +116,7 @@ func run(log *slog.Logger) error {
 
 	addr := env("LISTEN_ADDR", ":8000")
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	hs.RegisterOnShutdown(srv.StopLive)
 	go func() {
 		log.Info("web ui listening", "addr", addr)
 		if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

@@ -75,6 +75,10 @@
     }
 
     function init(root) {
+        // role colors of member names, set here because the CSP allows no inline styles
+        root.querySelectorAll('[data-color]').forEach(function (el) {
+            if (/^#[0-9a-f]{6}$/i.test(el.dataset.color)) el.style.color = el.dataset.color;
+        });
         if (navigator.clipboard) {
             root.querySelectorAll('button.copy[data-copy]').forEach(function (button) {
                 button.hidden = false;
@@ -584,24 +588,72 @@
     const target = location.hash.startsWith('#sheet-') && document.getElementById(location.hash.slice(1));
     if (target && target.showPopover) target.showPopover();
 
-    // pages with data-live regions refresh them while they are visible
-    const live = document.querySelectorAll('[data-live]');
-    if (live.length) {
-        setInterval(function () {
-            if (document.hidden || document.querySelector(':popover-open')) return;
-            fetch(location.href, { headers: { Accept: 'text/html' } }).then((r) => r.ok ? r.text() : null).then(function (html) {
-                if (!html) return;
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                document.querySelectorAll('[data-live]').forEach(function (el) {
-                    const fresh = doc.querySelector('[data-live="' + el.dataset.live + '"]');
-                    if (fresh && fresh.innerHTML !== el.innerHTML) {
-                        el.innerHTML = fresh.innerHTML;
-                        init(el);
-                    }
-                });
-            }).catch(() => {});
-        }, 5000);
+    // live parts of a page: the server says on /events that something changed, the page
+    // fetches itself and swaps its [data-live] parts, without a reload
+    const busyInside = (el) => {
+        const a = document.activeElement;
+        return a && el.contains(a) && a.matches('input:not([type=hidden]), textarea, select');
+    };
+    let liveTimer = null, liveRunning = false, liveAgain = false, presenceAt = 0;
+    function refreshLive() {
+        if (!document.querySelector('[data-live]')) return;
+        if (document.hidden || document.querySelector(':popover-open') || liveRunning) {
+            liveAgain = true;
+            return;
+        }
+        liveRunning = true;
+        fetch(location.href, { headers: { Accept: 'text/html' } }).then((r) => r.ok ? r.text() : null).then(function (html) {
+            if (!html) return;
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            document.querySelectorAll('[data-live]').forEach(function (el) {
+                const fresh = doc.querySelector('[data-live="' + el.dataset.live + '"]');
+                if (!fresh || fresh.innerHTML === el.innerHTML || busyInside(el)) return;
+                const open = Array.from(el.querySelectorAll('details[id][open]'), (d) => d.id);
+                el.innerHTML = fresh.innerHTML;
+                open.forEach((id) => { const d = document.getElementById(id); if (d) d.open = true; });
+                init(el);
+                el.dispatchEvent(new CustomEvent('live:swap', { bubbles: true }));
+            });
+        }).catch(() => {}).finally(function () {
+            liveRunning = false;
+            if (liveAgain) { liveAgain = false; scheduleLive(400); }
+        });
     }
+    function scheduleLive(wait) {
+        clearTimeout(liveTimer);
+        liveTimer = setTimeout(refreshLive, wait);
+    }
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && liveAgain) { liveAgain = false; scheduleLive(0); } });
+    document.addEventListener('toggle', function () { if (liveAgain && !document.querySelector(':popover-open')) { liveAgain = false; scheduleLive(200); } }, true);
+    if (document.querySelector('[data-live]')) {
+        if (window.EventSource) {
+            const source = new EventSource('/events');
+            source.addEventListener('message', function (event) {
+                // presence changes come often in large servers, they refresh at most every 10 s
+                if (event.data === 'presence') {
+                    if (Date.now() - presenceAt < 10000) return;
+                    presenceAt = Date.now();
+                }
+                scheduleLive(150);
+            });
+            // after a lost connection, catch up with what happened meanwhile
+            source.addEventListener('open', () => scheduleLive(0));
+        } else {
+            setInterval(refreshLive, 10000);
+        }
+    }
+
+    // notices after an action are shown once: a reload does not bring them back, and they can be closed
+    const params = new URLSearchParams(location.search);
+    if (params.has('done') || params.has('undo') || params.has('as')) {
+        ['done', 'undo', 'as'].forEach((k) => params.delete(k));
+        const q = params.toString();
+        history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+    }
+    document.addEventListener('click', function (event) {
+        const close = event.target.closest('.notice .dismiss');
+        if (close) close.closest('.notice').remove();
+    });
 
     const account = document.querySelector('form[data-autosave]');
     if (account) {
@@ -792,7 +844,13 @@
         const menu = form.closest('.menu[popover]');
         if (menu && menu.matches(':popover-open')) menu.hidePopover();
         fetch(form.action, { method: 'POST', body }).then(function (r) {
-            if (!r.ok) throw new Error(String(r.status));
+            if (!r.ok) {
+                return r.text().then(function (html) {
+                    const msg = new DOMParser().parseFromString(html, 'text/html').querySelector('.callout.danger span');
+                    throw new Error(msg ? msg.textContent : '');
+                });
+            }
+            scheduleLive(100);
             if (form.dataset.done) toast(form.dataset.done);
             if (form.hasAttribute('data-toggle')) {
                 const on = form.querySelector('input[name=on]');
@@ -802,7 +860,7 @@
                 on.value = now ? '0' : '1';
                 toast(now ? 'Added to Favorites' : 'Removed from Favorites');
             }
-        }).catch(function () { toast('That did not work. Reload the page and try again.'); });
+        }).catch(function (err) { toast(err.message || 'That did not work. Reload the page and try again.'); });
     });
 
     // menus of channels, members and sounds: right click or the ... button, arrow keys move
@@ -1166,10 +1224,6 @@
         show();
     });
 
-    // role colors of member names, set here because the CSP allows no inline styles
-    document.querySelectorAll('[data-color]').forEach(function (el) {
-        if (/^#[0-9a-f]{6}$/i.test(el.dataset.color)) el.style.color = el.dataset.color;
-    });
 
     // servers in the user's order: drag in the server list or the Control Room rail
     document.querySelectorAll('[data-sortable]').forEach(function (box) {
@@ -1241,35 +1295,37 @@
     });
 
     // the member column shows only the members that fit, it never scrolls
-    const fitBox = document.querySelector('[data-fit-members]');
-    if (fitBox) {
+    function fitMembers() {
+        const fitBox = document.querySelector('[data-fit-members]');
+        if (!fitBox) return;
         const body = fitBox.closest('.side-body');
         const more = body.querySelector('[data-more]');
         const base = Number(more.dataset.more) || 0;
-        function fit() {
-            const rows = Array.from(fitBox.querySelectorAll('.person-row'));
-            rows.forEach((li) => { li.hidden = false; });
-            fitBox.querySelectorAll('.mgroup').forEach((g) => { g.hidden = false; });
-            more.hidden = base === 0;
-            let cut = 0;
-            // only on wide screens the column has a fixed height
-            if (getComputedStyle(body).overflowY !== 'hidden') return;
-            for (let i = rows.length - 1; i >= 0 && body.scrollHeight > body.clientHeight + 1; i--) {
-                rows[i].hidden = true;
-                cut++;
-                more.hidden = false;
-                const g = rows[i].closest('.mgroup');
-                if (!g.querySelector('.person-row:not([hidden])')) g.hidden = true;
-            }
-            fitBox.querySelectorAll('.mgroup').forEach(function (g) {
-                g.querySelector('[data-count]').textContent = g.querySelectorAll('.person-row:not([hidden])').length;
-            });
-            const n = base + cut;
-            more.textContent = n + (n === 1 ? ' more member' : ' more members') + ', search to find them.';
+        const rows = Array.from(fitBox.querySelectorAll('.person-row'));
+        rows.forEach((li) => { li.hidden = false; });
+        fitBox.querySelectorAll('.mgroup').forEach((g) => { g.hidden = false; });
+        more.hidden = base === 0;
+        // only on wide screens the column has a fixed height
+        if (getComputedStyle(body).overflowY !== 'hidden') return;
+        let cut = 0;
+        for (let i = rows.length - 1; i >= 0 && body.scrollHeight > body.clientHeight + 1; i--) {
+            rows[i].hidden = true;
+            cut++;
+            more.hidden = false;
+            const g = rows[i].closest('.mgroup');
+            if (!g.querySelector('.person-row:not([hidden])')) g.hidden = true;
         }
-        fit();
-        window.addEventListener('resize', fit);
-        document.fonts && document.fonts.ready.then(fit);
+        fitBox.querySelectorAll('.mgroup').forEach(function (g) {
+            g.querySelector('[data-count]').textContent = g.querySelectorAll('.person-row:not([hidden])').length;
+        });
+        const n = base + cut;
+        more.textContent = n + (n === 1 ? ' more member' : ' more members') + ', search to find them.';
+    }
+    if (document.querySelector('[data-fit-members]')) {
+        fitMembers();
+        window.addEventListener('resize', fitMembers);
+        if (document.fonts) document.fonts.ready.then(fitMembers);
+        document.addEventListener('live:swap', fitMembers);
     }
 
     document.querySelectorAll('input[type=range]').forEach(enhanceRange);
