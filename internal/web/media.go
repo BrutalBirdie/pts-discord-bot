@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -157,7 +158,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	csrfOK := false
-	group, only := "", false
+	group, only, next := "", false, ""
 	var added, problems []string
 	var saved []store.Media
 	for {
@@ -177,6 +178,11 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		if part.FormName() == "csrf" {
 			token, _ := io.ReadAll(io.LimitReader(part, 256))
 			csrfOK = s.validCSRF(r, sess, string(token))
+			continue
+		}
+		if part.FormName() == "next" {
+			v, _ := io.ReadAll(io.LimitReader(part, 512))
+			next = safeNext(string(v), "")
 			continue
 		}
 		if part.FormName() == "guild" {
@@ -226,10 +232,14 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	// a single new sound opens Edit sound, to cut it right away
 	if len(saved) == 1 && saved[0].Kind == store.KindSound {
-		http.Redirect(w, r, fmt.Sprintf("/media?edit=%d&done=uploaded#sheet-sound", saved[0].ID), http.StatusSeeOther)
+		back := "/media?"
+		if next != "" {
+			back = next + map[bool]string{true: "&", false: "?"}[strings.Contains(next, "?")]
+		}
+		http.Redirect(w, r, fmt.Sprintf("%sedit=%d&done=uploaded#sheet-sound", back, saved[0].ID), http.StatusSeeOther)
 		return
 	}
-	redirect(w, r, "/media", "uploaded")
+	redirect(w, r, cmp.Or(next, "/media"), "uploaded")
 }
 
 // saveUpload adds a file with the name and server group of want. Names are unique.

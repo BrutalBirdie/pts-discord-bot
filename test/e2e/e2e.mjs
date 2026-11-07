@@ -377,6 +377,12 @@ const steps = {
         await post('form[action="/trash/empty"]');
         t = await text(page);
         check('trash emptied', t.includes('The trash is empty.') && await page.locator('.nav a[href="/trash"] .badge').count() === 0, t.slice(0, 300));
+        const csrf = await page.locator('input[name=csrf]').first().inputValue();
+        const tile = await page.request.post(BASE + '/media', { multipart: { csrf, next: '/servers?x=1', file: { name: 'tile.wav', mimeType: 'audio/wav', buffer: wav } } });
+        check('an upload from the soundboard returns there with Edit sound', tile.ok() && /\/servers\?x=1&edit=\d+&done=uploaded/.test(tile.url()), tile.url());
+        const evil = await page.request.post(BASE + '/media', { multipart: { csrf, next: '//evil.example/', file: { name: 'tile2.wav', mimeType: 'audio/wav', buffer: wav } } });
+        check('an upload ignores a foreign next', evil.ok() && evil.url().startsWith(BASE + '/media?edit='), evil.url());
+
         await page.goto(BASE + '/admin/audit');
         t = await text(page);
         check('trash in the audit log', ['task.restore', 'media.restore', 'media.purge', 'trash.empty'].every((a) => t.includes(a)), t.slice(0, 500));

@@ -122,8 +122,9 @@
       {{template "search" (dict "P" $d.Paging "Label" "Search sounds" "Placeholder" "Search sounds")}}
 
       {{if $d.Favorites}}{{template "soundgroup" (dict "Title" "Favorites" "Icon" "star" "Sounds" $d.Favorites "D" $d "CSRF" $csrf)}}{{end}}
-      {{if $d.Own}}{{template "soundgroup" (dict "Title" $g.Name "Icon" "server" "Sounds" $d.Own "D" $d "CSRF" $csrf)}}{{end}}
-      {{if $d.Rest}}{{template "soundgroup" (dict "Title" "Other sounds" "Icon" "music" "Sounds" $d.Rest "D" $d "CSRF" $csrf)}}{{end}}
+      {{if $d.Own}}{{template "soundgroup" (dict "Title" $g.Name "Icon" "server" "Sounds" $d.Own "D" $d "CSRF" $csrf "Upload" (not $d.Rest))}}{{end}}
+      {{if $d.Rest}}{{template "soundgroup" (dict "Title" "Other sounds" "Icon" "music" "Sounds" $d.Rest "D" $d "CSRF" $csrf "Upload" true)}}{{end}}
+      {{if not (or $d.Own $d.Rest)}}<ul class="sounds">{{template "uploadtile" (dict "D" $d "CSRF" $csrf)}}</ul>{{end}}
       {{if not (or $d.Own $d.Rest)}}<p class="muted">{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}No sounds yet. <a href="/media">Upload some</a>.{{end}}</p>{{end}}
       {{template "pager" $d.Paging}}
       <p class="hint">A click plays the sound in {{$ch.Name}}, the bot joins first and stays. The speaker previews it for you only, the star keeps it under Favorites. Sounds that another server keeps to itself are not listed.</p>
@@ -276,6 +277,7 @@
       </div>
     </li>
     {{end}}
+    {{if .Upload}}{{template "uploadtile" (dict "D" $d "CSRF" $csrf)}}{{end}}
   </ul>
 </details>
 {{end}}
@@ -308,3 +310,15 @@
 {{end}}
 
 
+
+{{define "uploadtile"}}{{$d := .D}}
+<li class="snd snd-upload">
+  <form method="post" action="/media" enctype="multipart/form-data" data-upload-tile>
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="next" value="{{$d.URL "c" $d.Channel.ID}}">
+    <input type="hidden" name="guild" value="{{$d.Guild.ID}}">
+    <label class="snd-play">{{icon "plus"}}<span class="nm">Upload new</span><input type="file" name="file" accept="audio/*,video/*,.ogg,.opus,.mp3,.wav,.flac,.m4a,.webm" multiple class="vh"></label>
+    <button type="submit" class="ib sm no-js">{{icon "upload"}}<span class="lbl">Upload</span></button>
+  </form>
+</li>
+{{end}}

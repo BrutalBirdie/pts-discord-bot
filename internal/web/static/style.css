@@ -711,3 +711,8 @@ input.range-num { width: 3.6em; min-width: 0; max-width: none; min-height: 32px;
 input.range-num::-webkit-inner-spin-button, input.range-num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input.range-num[hidden], button.range-val[hidden] { display: none; }
 output[hidden] { display: none; }
+.snd-upload form { display: grid; gap: 6px; }
+.snd-upload .snd-play { border: 1px dashed var(--line); background: none; color: var(--muted); cursor: pointer; }
+.snd-upload .snd-play:hover, .snd-upload .snd-play:focus-within { border-color: var(--accent); color: var(--accent); }
+.snd-upload .snd-play:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+.snd-upload .busy .snd-play { cursor: progress; color: var(--accent); }

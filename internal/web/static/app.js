@@ -1273,4 +1273,15 @@
     }
 
     document.querySelectorAll('input[type=range]').forEach(enhanceRange);
+
+    // the soundboard's Upload new tile uploads right after the files are picked
+    document.querySelectorAll('form[data-upload-tile]').forEach(function (form) {
+        const input = form.querySelector('input[type=file]');
+        input.addEventListener('change', function () {
+            if (!input.files.length) return;
+            form.querySelector('.nm').textContent = 'Uploading ' + (input.files.length === 1 ? input.files[0].name : input.files.length + ' files') + '…';
+            form.classList.add('busy');
+            form.submit();
+        });
+    });
 })();
