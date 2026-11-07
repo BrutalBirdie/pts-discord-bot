@@ -11,6 +11,7 @@
 
 {{$p := $d.Paging}}
 {{template "search" (dict "P" $p "Label" "Search the trash" "Placeholder" "Name or who deleted it")}}
+<div class="contents" data-live="list" data-live-list>
 <div class="pills">
   <a href="{{$p.With "" ""}}"{{if not $d.Kind}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
   <a href="{{$p.With "kind" "task"}}"{{if eq $d.Kind "task"}} aria-current="page"{{end}}>Tasks {{index $d.Counts "task"}}</a>
@@ -51,5 +52,6 @@
   </ul>
   {{template "pager" $p}}
 </section>
+</div>
 {{if not $admin}}<p class="hint">Only admins can delete items for good before their time is up.</p>{{end}}
 {{end}}

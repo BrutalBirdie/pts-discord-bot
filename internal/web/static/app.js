@@ -4,6 +4,8 @@
 
 (function () {
     document.documentElement.classList.add('js');
+    // the live parts as the server sent them, before scripts changed them, to compare with fresh ones
+    document.querySelectorAll('[data-live]').forEach((el) => { el.liveHTML = el.innerHTML; });
     const toastEl = document.getElementById('toast');
     let toastTimer;
 
@@ -124,6 +126,7 @@
     // members have a username, sounds a length
     function subText(h) {
         if (h.username !== undefined) return '@' + h.username;
+        if (h.tag) return h.new ? 'new tag' : '';
         const len = h.duration_ms ? clock(h.duration_ms) : 'length unknown';
         return h.file ? len + ' · ' + h.file : len;
     }
@@ -361,6 +364,8 @@
             tok.title = h.label || h.name;
             if (h.username !== undefined) {
                 tok.append(avatarOf(h, 'av'));
+            } else if (h.tag) {
+                tok.append(svgIcon('hash'));
             } else {
                 tok.dataset.ms = h.duration_ms || 0;
                 const pv = document.createElement('button');
@@ -376,7 +381,7 @@
             }
             const nm = document.createElement('span');
             nm.className = 'nm';
-            if (h.username === undefined) nm.dataset.previewDetail = '';
+            if (h.username === undefined && !h.tag) nm.dataset.previewDetail = '';
             const un = document.createElement('span');
             un.className = 'un';
             un.textContent = subText(h);
@@ -592,9 +597,9 @@
     // fetches itself and swaps its [data-live] parts, without a reload
     const busyInside = (el) => {
         const a = document.activeElement;
-        return a && el.contains(a) && a.matches('input:not([type=hidden]), textarea, select');
+        return el.querySelector('.armed') !== null || a && el.contains(a) && a.matches('input:not([type=hidden]), textarea, select');
     };
-    let liveTimer = null, liveRunning = false, liveAgain = false, presenceAt = 0;
+    let liveTimer = null, liveRunning = false, liveAgain = false, presenceAt = 0, liveSeq = 0;
     function refreshLive() {
         if (!document.querySelector('[data-live]')) return;
         if (document.hidden || document.querySelector(':popover-open') || liveRunning) {
@@ -602,14 +607,16 @@
             return;
         }
         liveRunning = true;
+        const seq = ++liveSeq;
         fetch(location.href, { headers: { Accept: 'text/html' } }).then((r) => r.ok ? r.text() : null).then(function (html) {
-            if (!html) return;
+            if (!html || seq !== liveSeq) return;
             const doc = new DOMParser().parseFromString(html, 'text/html');
             document.querySelectorAll('[data-live]').forEach(function (el) {
                 const fresh = doc.querySelector('[data-live="' + el.dataset.live + '"]');
-                if (!fresh || fresh.innerHTML === el.innerHTML || busyInside(el)) return;
+                if (!fresh || fresh.innerHTML === el.liveHTML || busyInside(el)) return;
                 const open = Array.from(el.querySelectorAll('details[id][open]'), (d) => d.id);
                 el.innerHTML = fresh.innerHTML;
+                el.liveHTML = el.innerHTML;
                 open.forEach((id) => { const d = document.getElementById(id); if (d) d.open = true; });
                 init(el);
                 el.dispatchEvent(new CustomEvent('live:swap', { bubbles: true }));
@@ -843,6 +850,7 @@
         const body = new URLSearchParams(new FormData(form, event.submitter));
         const menu = form.closest('.menu[popover]');
         if (menu && menu.matches(':popover-open')) menu.hidePopover();
+        const sheet = form.closest('.sheet[popover]');
         fetch(form.action, { method: 'POST', body }).then(function (r) {
             if (!r.ok) {
                 return r.text().then(function (html) {
@@ -850,6 +858,7 @@
                     throw new Error(msg ? msg.textContent : '');
                 });
             }
+            if (sheet && sheet.matches(':popover-open')) sheet.hidePopover();
             scheduleLive(100);
             if (form.dataset.done) toast(form.dataset.done);
             if (form.hasAttribute('data-toggle')) {
@@ -1226,7 +1235,9 @@
 
 
     // servers in the user's order: drag in the server list or the Control Room rail
-    document.querySelectorAll('[data-sortable]').forEach(function (box) {
+    function initSortable(box) {
+        if (box.sortReady) return;
+        box.sortReady = true;
         const items = () => Array.from(box.querySelectorAll(':scope > [data-sort-id]'));
         const handles = box.querySelector('.sort-handle') !== null;
         let drag = null, justDragged = false;
@@ -1292,7 +1303,9 @@
             if (justDragged) { event.preventDefault(); event.stopPropagation(); }
         }, true);
         box.addEventListener('dragstart', (event) => event.preventDefault());
-    });
+    }
+    document.querySelectorAll('[data-sortable]').forEach(initSortable);
+    document.addEventListener('live:swap', (event) => event.target.querySelectorAll('[data-sortable]').forEach(initSortable));
 
     // the member column shows only the members that fit, it never scrolls
     function fitMembers() {
@@ -1339,5 +1352,47 @@
             form.classList.add('busy');
             form.submit();
         });
+    });
+
+    // searches and the filters and pages of lists show their results in place, without a reload
+    function goLive(url, push) {
+        if (push) history.pushState(null, '', url); else history.replaceState(null, '', url);
+        liveRunning = false;
+        refreshLive();
+    }
+    document.querySelectorAll('form[data-live-search]').forEach(function (form) {
+        if (!document.querySelector('[data-live-list]')) return;
+        const input = form.querySelector('input[type=search]');
+        let timer;
+        const run = function () {
+            // the filters picked in place since the page loaded are in the address, not in the form
+            const params = new URLSearchParams(location.search);
+            params.delete('page');
+            params.delete('q');
+            if (input.value.trim()) params.set('q', input.value.trim());
+            const q = params.toString();
+            goLive(form.getAttribute('action') + (q ? '?' + q : ''), false);
+        };
+        input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(run, 250); });
+        form.addEventListener('submit', function (event) { event.preventDefault(); clearTimeout(timer); run(); });
+        form.querySelectorAll('button[type=submit]').forEach((b) => b.classList.add('no-js'));
+    });
+    document.addEventListener('click', function (event) {
+        const a = event.target.closest('[data-live-list] .pager a[href], [data-live-list] .pills a[href]');
+        if (!a || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+        const url = new URL(a.href, location.href);
+        if (url.pathname !== location.pathname) return;
+        event.preventDefault();
+        const search = document.querySelector('form[data-live-search] input[type=search]');
+        if (search) search.value = url.searchParams.get('q') || '';
+        goLive(url.pathname + url.search, true);
+        const list = a.closest('[data-live-list]');
+        const top = list && list.firstElementChild;
+        if (top && top.getBoundingClientRect().top < 0) top.scrollIntoView({ block: 'start' });
+    });
+    window.addEventListener('popstate', function () {
+        const search = document.querySelector('form[data-live-search] input[type=search]');
+        if (search) search.value = new URLSearchParams(location.search).get('q') || '';
+        refreshLive();
     });
 })();

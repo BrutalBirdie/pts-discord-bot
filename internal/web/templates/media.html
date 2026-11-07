@@ -28,6 +28,7 @@
 
 {{$p := $d.Paging}}
 {{template "search" (dict "P" $p "Label" "Search media" "Placeholder" "Name or tag")}}
+<div class="contents" data-live="list" data-live-list>
 <div class="pills">
   <a href="{{$p.With "" ""}}"{{if not (or $d.Kind $d.Tag)}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
   <a href="{{$p.With "kind" "sound"}}"{{if eq $d.Kind "sound"}} aria-current="page"{{end}}>Sounds {{index $d.Counts "sound"}}</a>
@@ -40,7 +41,7 @@
 
 <section class="card">
   {{if $d.Items}}
-  <form method="post" action="/media/group" id="group-bulk" class="btns bulk">
+  <form method="post" action="/media/group" id="group-bulk" class="btns bulk" data-fetch data-done="Server group saved.">
     <input type="hidden" name="csrf" value="{{$csrf}}">
     <input type="hidden" name="next" value="{{$p.Self}}">
     <select name="guild" aria-label="Server group for the selected files"><option value="">No server</option>{{range $d.Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
@@ -85,23 +86,22 @@
 <div popover id="sheet-edit-{{.ID}}" class="sheet" aria-labelledby="sheet-edit-{{.ID}}-title">
   {{template "sheethead" (dict "ID" (print "sheet-edit-" .ID) "Icon" "pencil" "Title" "Edit" "Name" .Name)}}
   <div class="sheet-body">
-    <form method="post" action="/media/{{.ID}}" class="form">
+    <form method="post" action="/media/{{.ID}}" class="form" data-fetch data-done="Saved {{.Label}}.">
       <input type="hidden" name="csrf" value="{{$csrf}}">
       <label class="field"><span>Display name</span><input type="text" name="display_name" value="{{.DisplayName}}" maxlength="80" placeholder="{{.Name}}"><span class="help">Optional. Shown on the soundboard, in pickers and in /play instead of the file name.</span></label>
       <label class="field"><span>File name</span><input type="text" name="name" value="{{.Name}}" maxlength="200" required><span class="help">Also the file name in Discord messages.</span></label>
-      <label class="field"><span>Tags</span><input type="text" name="tags" value="{{join .Tags ", "}}" list="media-tags" autocomplete="off"><span class="help">Separated by commas. A Play step or /play can pick a random sound with a tag.</span></label>
+      {{template "tokens" (tagTokens .)}}
       {{template "grouppick" (dict "Groups" ($d.GroupsWith .GuildID) "Current" .GuildID "Only" .GroupOnly)}}
       <div class="btns"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>
     </form>
   </div>
 </div>
 {{end}}
-<datalist id="media-tags">{{range $d.Tags}}<option value="{{.}}">{{end}}</datalist>
 {{range $d.Items}}{{if or (eq .Kind "sound") (eq .Kind "video")}}
 <div popover id="sheet-play-{{.ID}}" class="sheet" aria-labelledby="sheet-play-{{.ID}}-title">
   {{template "sheethead" (dict "ID" (print "sheet-play-" .ID) "Icon" "volume-2" "Title" "Play" "Name" .Name)}}
   <div class="sheet-body">
-    <form method="post" action="/media/{{.ID}}/play" class="form">
+    <form method="post" action="/media/{{.ID}}/play" class="form" data-fetch data-done="Playing {{.Label}}.">
       <input type="hidden" name="csrf" value="{{$csrf}}">
       <input type="hidden" name="next" value="/media">
       {{if $d.Voice}}
@@ -117,4 +117,5 @@
   </div>
 </div>
 {{end}}{{end}}
+</div>
 {{end}}

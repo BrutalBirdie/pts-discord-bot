@@ -5,7 +5,7 @@
   <div><span class="eyebrow">{{if $e.New}}New task{{else}}Task{{end}}</span><h1>{{if $t.Name}}{{$t.Name}}{{else}}Untitled task{{end}}</h1></div>
   {{if not $e.New}}
   <div class="btns">
-    <form method="post" action="/tasks/{{$t.ID}}/run"><input type="hidden" name="csrf" value="{{$csrf}}">
+    <form method="post" action="/tasks/{{$t.ID}}/run" data-fetch data-done="Started. The run shows up below in a moment."><input type="hidden" name="csrf" value="{{$csrf}}">
       {{if $t.NeedsMember}}<button type="button" class="ib" aria-disabled="true" aria-label="Run now, not possible: a step uses the member who started the run" data-tip="Only its event or /task can start it: a step uses the member who started the run">{{icon "play"}}<span class="lbl">Run now</span></button>
       {{else}}<button type="submit" class="ib" aria-label="Run now" data-tip="Run the saved version now">{{icon "play"}}<span class="lbl">Run now</span></button>{{end}}</form>
     <form method="post" action="/tasks/{{$t.ID}}/duplicate"><input type="hidden" name="csrf" value="{{$csrf}}">

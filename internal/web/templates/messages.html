@@ -5,6 +5,7 @@
   <div class="btns"><a class="ib primary with-label" href="/messages/new">{{icon "plus"}}<span class="lbl">New message</span></a></div>
 </div>
 {{template "search" (dict "P" $d.Paging "Label" "Search messages" "Placeholder" "Name or text")}}
+<div class="contents" data-live="list" data-live-list>
 {{template "groupfilter" (dict "P" $d.Paging "Groups" $d.Groups "Group" $d.Group)}}
 <section class="card">
   <ul class="list">
@@ -33,4 +34,5 @@
   </ul>
   {{template "pager" $d.Paging}}
 </section>
+</div>
 {{end}}

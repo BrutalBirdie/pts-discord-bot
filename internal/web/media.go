@@ -2,6 +2,7 @@ package web
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -333,6 +334,45 @@ func ParseTags(s string) []string {
 	return out
 }
 
+const maxTags = 20
+
+// tagTokens is the tag picker of a file.
+func tagTokens(m store.Media) tokenField {
+	f := tokenField{Field: "tag", Find: "tag_find", Label: "Tags", LabelID: fmt.Sprintf("tags-%d", m.ID), Placeholder: "Search or add tags", Empty: "No tags",
+		Help: "A Play step or /play can pick a random sound with a tag.", Source: "/tags", Max: maxTags, Plain: true}
+	for _, t := range m.Tags {
+		f.Items = append(f.Items, token{Value: t, Name: t, Title: t, Icon: "hash"})
+	}
+	return f
+}
+
+// searchTags feeds the tag pickers: the tags in use that contain q, and q itself as a new tag.
+func (s *Server) searchTags(w http.ResponseWriter, r *http.Request) {
+	sum, err := s.store.MediaSummary(r.Context())
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	type hit struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		Tag  bool   `json:"tag"`
+		New  bool   `json:"new,omitempty"`
+	}
+	q := ParseTags(r.URL.Query().Get("q"))
+	hits := []hit{}
+	for _, t := range sum.Tags {
+		if (len(q) == 0 || strings.Contains(t, q[0])) && len(hits) < 14 {
+			hits = append(hits, hit{ID: t, Name: t, Tag: true})
+		}
+	}
+	if len(q) == 1 && !slices.Contains(sum.Tags, q[0]) {
+		hits = append(hits, hit{ID: q[0], Name: q[0], Tag: true, New: true})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(hits)
+}
+
 // maxDisplayName fits a soundboard tile and Discord's 100 characters of an autocomplete choice.
 const maxDisplayName = 80
 
@@ -346,8 +386,8 @@ func (s *Server) updateMedia(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, http.StatusBadRequest, err.Error()+".")
 		return
 	}
-	tags := ParseTags(r.PostForm.Get("tags"))
-	if len(tags) > 20 {
+	tags := ParseTags(strings.Join(append(r.PostForm["tag"], r.PostForm.Get("tags"), r.PostForm.Get("tag_find")), ","))
+	if len(tags) > maxTags {
 		s.fail(w, r, http.StatusBadRequest, "At most 20 tags.")
 		return
 	}

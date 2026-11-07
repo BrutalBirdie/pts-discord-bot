@@ -660,7 +660,7 @@ func TestListSearchAndPager(t *testing.T) {
 	}{
 		{"media", "/media?kind=sound&q=beep&page=2", mediaData{Kind: "sound", Items: []store.Media{sound}, Counts: map[string]int{"": 1}, Tags: []string{"fun"},
 			Paging: more(paged("/media?kind=sound&q=beep&page=2", "kind", "sound"))},
-			[]string{`<form class="search" method="get" action="/media">`, `<input type="hidden" name="kind" value="sound">`, `type="search" name="q" value="beep"`, `aria-label="Search media"`,
+			[]string{`<form class="search" method="get" action="/media" data-live-search>`, `<input type="hidden" name="kind" value="sound">`, `type="search" name="q" value="beep"`, `aria-label="Search media"`,
 				`href="/media?kind=sound&amp;q=beep" rel="prev"`, `href="/media?kind=sound&amp;page=3&amp;q=beep" rel="next"`, "Page 2",
 				`href="/media?kind=video&amp;q=beep"`, `href="/media?q=beep&amp;tag=fun"`, `href="/media?q=beep"`}},
 		{"media", "/media?q=nope", mediaData{Counts: map[string]int{}, Paging: paged("/media?q=nope")}, []string{`Nothing matches "nope".`}},

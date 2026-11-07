@@ -7,6 +7,7 @@
 
 {{$p := $d.Paging}}
 {{template "search" (dict "P" $p "Label" "Search tasks" "Placeholder" "Task name")}}
+<div class="contents" data-live="list" data-live-list>
 <div class="pills">
   <a href="{{$p.With "" ""}}"{{if not $d.Filter}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
   <a href="{{$p.With "filter" "active"}}"{{if eq $d.Filter "active"}} aria-current="page"{{end}}>Active {{index $d.Counts "active"}}</a>
@@ -30,15 +31,15 @@
         {{with $t.PausedReason}}<div class="callout danger">{{icon "circle-x"}}<span>{{.}} Fix it and save the task, or resume it.</span></div>{{end}}
       </div>
       <div class="btns">
-        <form method="post" action="/tasks/{{$t.ID}}/run"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
+        <form method="post" action="/tasks/{{$t.ID}}/run" data-fetch data-done="Started {{$t.Name}}."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
           {{if $t.NeedsMember}}<button type="button" class="ib" aria-disabled="true" aria-label="Run {{$t.Name}} now, not possible: a step uses the member who started the run" data-tip="Only its event or /task can start it">{{icon "play"}}<span class="lbl">Run now</span></button>
           {{else}}<button type="submit" class="ib" aria-label="Run {{$t.Name}} now" data-tip="Run now">{{icon "play"}}<span class="lbl">Run now</span></button>{{end}}</form>
         {{if ne $t.Trigger.Kind "manual"}}
         {{if $t.Enabled}}
-        <form method="post" action="/tasks/{{$t.ID}}/pause"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
+        <form method="post" action="/tasks/{{$t.ID}}/pause" data-fetch data-done="Paused {{$t.Name}}."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
           <button type="submit" class="ib" aria-label="Pause {{$t.Name}}" data-tip="Pause">{{icon "pause"}}<span class="lbl">Pause</span></button></form>
         {{else}}
-        <form method="post" action="/tasks/{{$t.ID}}/resume"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
+        <form method="post" action="/tasks/{{$t.ID}}/resume" data-fetch data-done="{{$t.Name}} is active again."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
           <button type="submit" class="ib" aria-label="Resume {{$t.Name}}" data-tip="Resume">{{icon "clock"}}<span class="lbl">Resume</span></button></form>
         {{end}}{{end}}
         <a class="ib" href="/tasks/{{$t.ID}}" aria-label="Edit {{$t.Name}}" data-tip="Edit">{{icon "pencil"}}<span class="lbl">Edit</span></a>
@@ -50,5 +51,6 @@
   </ul>
   {{template "pager" $p}}
 </section>
+</div>
 <p class="hint">Times are in each task's timezone. Runs missed while the app was down are not repeated, they show up as skipped.</p>
 {{end}}

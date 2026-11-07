@@ -41,6 +41,16 @@ const text = (page) => page.locator('main').innerText();
 // 1x1 PNG
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
+// until polls a condition that a live update makes true
+async function until(fn, ms = 6000) {
+    const end = Date.now() + ms;
+    for (;;) {
+        try { if (await fn()) return true; } catch (e) { /* not there yet */ }
+        if (Date.now() > end) return false;
+        await new Promise((r) => setTimeout(r, 100));
+    }
+}
+
 const steps = {
     async admin() {
         const { page, save } = await session('ann');
@@ -122,16 +132,29 @@ const steps = {
         check('media shows usage', (await text(page)).includes('used by message Friday reminder'));
         await page.locator('[popovertarget^="sheet-edit-"]').first().click();
         const editSheet = page.locator('[id^="sheet-edit-"]:popover-open');
-        await editSheet.locator('input[name=tags]').fill('Greeting, funny');
-        await editSheet.locator('button[type=submit]').click();
-        t = await text(page);
-        check('tags saved', t.includes('Saved.') && await page.locator('.list a.chip', { hasText: 'greeting' }).count() === 1);
+        const tagInput = editSheet.locator('[data-tokens=tag] input[type=search]');
+        await tagInput.fill('Greeting');
+        await editSheet.locator('.suggestions li', { hasText: 'new tag' }).waitFor();
+        await tagInput.press('Enter');
+        await tagInput.fill('funny');
+        await editSheet.locator('.suggestions li', { hasText: 'new tag' }).waitFor();
+        await tagInput.press('Enter');
+        check('tags picked as chips', await editSheet.locator('[data-tokens=tag] .tok').count() === 2);
+        const scrolled = await page.evaluate(() => { window.scrollTo(0, 400); return window.scrollY; });
+        await editSheet.locator('.btns button[type=submit]').click();
+        check('tags saved without a reload', await until(async () => await page.locator('.list a.chip', { hasText: 'greeting' }).count() === 1)
+            && await page.evaluate(() => window.scrollY) === scrolled && !(await editSheet.isVisible()));
+        await page.goto(BASE + '/media');
+        await page.locator('[popovertarget^="sheet-edit-"]').nth(1).click();
+        const tagInput2 = page.locator('[id^="sheet-edit-"]:popover-open [data-tokens=tag] input[type=search]');
+        await tagInput2.fill('gre');
+        check('the tag picker suggests tags in use', await until(async () => (await page.locator('[id^="sheet-edit-"]:popover-open .suggestions li').first().innerText()).startsWith('greeting')));
+        await page.keyboard.press('Escape');
+        await page.goto(BASE + '/media');
         await page.click('.pills a:has-text("greeting")');
-        check('tag filter', (await page.locator('main .list > li').count()) === 1);
+        check('tag filter in place', await until(async () => page.url().includes('tag=greeting') && (await page.locator('main .list > li').count()) === 1), page.url());
         await page.fill('main input[name=q]', 'zzz');
-        await page.press('main input[name=q]', 'Enter');
-        await page.waitForURL(/q=zzz/);
-        check('search keeps the tag filter', page.url().includes('tag=greeting') && (await text(page)).includes('Nothing matches "zzz".'), page.url());
+        check('search as you type keeps the tag filter', await until(async () => page.url().includes('q=zzz') && page.url().includes('tag=greeting') && (await text(page)).includes('Nothing matches "zzz".')), page.url());
         await page.goto(BASE + '/media?q=BEEP');
         t = await text(page);
         check('media search', await page.locator('main .list > li').count() === 1 && t.includes('beep.ogg') && await page.inputValue('main input[name=q]') === 'BEEP', t.slice(0, 300));
@@ -351,7 +374,7 @@ const steps = {
         await page.locator('#sheet-sound .emoji-grid button[title="fire"]').click();
         await page.fill('#sheet-sound input[name=trim_start]', '0.1');
         await page.click('#sheet-sound button[type=submit]');
-        check('Edit sound saves emoji and start', (await text(page)).includes('Saved.') && await chimes().locator('.face', { hasText: '🔥' }).count() === 1);
+        check('Edit sound saves emoji and start', await until(async () => await chimes().locator('.face', { hasText: '🔥' }).count() === 1));
         const action = await chimes().locator('form[action$="/delete"]').getAttribute('action');
         const mediaID = action.split('/')[2];
         await post(`form[action="${action}"]`);
@@ -400,10 +423,11 @@ const steps = {
         check('first page has 25 messages and a pager', await rows().count() === 25 && await page.locator('.pager a[rel=next]').count() === 1
             && await page.locator('.pager a[rel=prev]').count() === 0);
         await page.click('.pager a[rel=next]');
-        check('next page', page.url().includes('page=2') && (await page.locator('.pager .hint').innerText()) === 'Page 2' && await page.locator('.pager a[rel=prev]').count() === 1);
+        check('next page in place', await until(async () => page.url().includes('page=2') && (await page.locator('.pager .hint').innerText()) === 'Page 2' && await page.locator('.pager a[rel=prev]').count() === 1));
+        await page.goBack();
+        check('back goes to the first page', await until(async () => !page.url().includes('page=') && await page.locator('.pager a[rel=prev]').count() === 0));
         await page.fill('main input[name=q]', 'bulk 1');
-        await page.press('main input[name=q]', 'Enter');
-        await page.waitForURL(/q=bulk/);
+        await until(async () => page.url().includes('q=bulk') && await rows().count() === 10);
         const t = await text(page);
         check('search starts on page 1 and keeps the term', !page.url().includes('page=') && await page.inputValue('main input[name=q]') === 'bulk 1'
             && await rows().count() === 10 && t.includes('Bulk 10') && !t.includes('Bulk 20') && await page.locator('.pager').count() === 0, t.slice(0, 300));
@@ -495,8 +519,8 @@ const steps = {
         const sheet = page.locator('#' + sheetID);
         await sheet.locator('select[name=guild]').selectOption('2');
         await sheet.locator('input[name=group_only]').check();
-        await sheet.locator('button[type=submit]').click();
-        await page.waitForURL(/done=saved/);
+        await sheet.locator('.btns button[type=submit]').click();
+        await until(async () => (await text(page)).includes('only this server'));
         t = await text(page);
         check('Cloudron user groups a sound with server 2, only there', t.includes('shared-horn.ogg') && t.includes('only this server'), t.slice(0, 600));
         await d.goto(BASE + '/media?server=2');

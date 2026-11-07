@@ -164,7 +164,7 @@
     </div>
   </div>
   {{if not $e.New}}
-  <form method="post" action="/messages/{{$m.ID}}/send" class="card form">
+  <form method="post" action="/messages/{{$m.ID}}/send" class="card form" data-fetch data-done="Sent.">
     <input type="hidden" name="csrf" value="{{$csrf}}">
     <span class="eyebrow">Send the saved version now</span>
     <label class="field"><span>Channel</span>

@@ -140,6 +140,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /media/url", s.requireLogin(s.fetchMedia))
 	mux.Handle("GET /media/{id}/file", s.requireLogin(s.mediaFile))
 	mux.Handle("GET /sounds", s.requireLogin(s.searchSounds))
+	mux.Handle("GET /tags", s.requireLogin(s.searchTags))
 	mux.Handle("POST /prefs/preview-volume", s.requireLogin(s.savePreviewVolume))
 	mux.Handle("POST /prefs/play-volume", s.requireLogin(s.savePlayVolume))
 	mux.Handle("POST /media/{id}", s.requireLogin(s.updateMedia))

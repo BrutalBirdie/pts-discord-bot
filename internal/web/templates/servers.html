@@ -3,7 +3,7 @@
 <div class="page-head">
   <div><span class="eyebrow">Discord</span><h1>Servers</h1></div>
   <div class="btns">
-    {{if not .Session.Discord}}<form method="post" action="/servers/refresh">{{template "csrf" .}}
+    {{if not .Session.Discord}}<form method="post" action="/servers/refresh" data-fetch data-done="Members requested from Discord.">{{template "csrf" .}}
       <button type="submit" class="ib" aria-label="Reload members from Discord" data-tip="Reload members from Discord">{{icon "refresh-cw"}}<span class="lbl">Reload members</span></button>
     </form>{{end}}
   </div>
@@ -14,6 +14,7 @@
 {{end}}
 
 {{template "search" (dict "P" $d.Paging "Label" "Search servers" "Placeholder" "Server name or ID")}}
+<div class="contents" data-live="list" data-live-list>
 <section class="card">
   {{if and (gt (len $d.Guilds) 1) (not $d.Paging.Query)}}<p class="hint">Drag the servers{{if gt (len $d.Guilds) 1}} or use the arrows{{end}} to put them in your order. The first one is your default, for new tasks and the Control Room.</p>{{end}}
   <ul class="list"{{if not $d.Paging.Query}} data-sortable="/servers/order"{{end}}>
@@ -47,6 +48,7 @@
   </ul>
   {{template "pager" $d.Paging}}
 </section>
+</div>
 
 <section class="card stack">
   <div><span class="eyebrow">Add the bot</span><h2>Invite link</h2></div>

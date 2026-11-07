@@ -1,6 +1,7 @@
 {{define "content"}}
 {{$d := .Data}}{{$g := $d.Guild}}{{$csrf := .Session.CSRFToken}}
 <a class="back" href="/servers">{{icon "arrow-left"}}Servers</a>
+<div class="contents" data-live="shead">
 <div class="page-head">
   <div class="person">
     <span class="guild big">{{$g.Initials}}</span>
@@ -8,7 +9,7 @@
   </div>
   <div class="btns">
     {{if $g.BotVoice}}
-    <form method="post" action="/servers/{{$g.ID}}/leave">{{template "csrf" $}}
+    <form method="post" action="/servers/{{$g.ID}}/leave" data-fetch data-done="Leaving the voice channel.">{{template "csrf" $}}
       <button type="submit" class="ib" aria-label="Leave {{$g.BotVoice}}" data-tip="Leave {{$g.BotVoice}}">{{icon "log-out"}}<span class="lbl">Leave voice</span></button>
     </form>
     {{end}}
@@ -22,6 +23,7 @@
 {{with $g.Missing}}<div class="callout warn">{{icon "triangle-alert"}}<div><span>The bot lacks these server permissions: {{join . ", "}}. Steps that need them fail.{{if $g.MissingNick}} Change Nickname is needed by Change profile steps that set a nickname.{{end}} Give the bot's role these permissions in the server settings, or add the bot again with the invite link, which asks for all of them.</span>
   {{with $d.Invite}}<div class="mt">{{template "copybox" (dict "Text" . "Label" "Copy invite link")}}</div>{{end}}</div></div>{{end}}
 {{range $d.Playing}}{{template "playing" .}}{{end}}
+</div>
 
 <nav class="tabs" aria-label="Server">
   <a class="tab" href="/servers/{{$g.ID}}"{{if eq $d.Tab "channels"}} aria-current="page"{{end}}>{{icon "hash"}}Channels</a>
@@ -29,6 +31,7 @@
 </nav>
 
 {{if eq $d.Tab "channels"}}
+<div class="contents" data-live="schannels">
 <div class="cols2">
   <section class="card">
     <div class="sec-head"><h2 class="with-icon">{{icon "volume-2"}}Voice channels</h2><span class="chip">{{len $d.Voice}}</span></div>
@@ -38,7 +41,7 @@
           <span class="row-sub">{{with .Category}}{{.}} · {{end}}{{if .Problem}}{{.Problem}}{{else if or .HasBot .InVoice}}{{if .HasBot}}Bot{{if .InVoice}} and {{end}}{{end}}{{with .InVoice}}{{join . ", "}}{{end}} connected{{else}}empty{{end}}</span></div>
         <div class="btns">
           {{if .Usable}}<button type="button" class="ib" popovertarget="sheet-play-{{.ID}}" aria-label="Play a sound in {{.Name}}" data-tip="Play a sound in {{.Name}}">{{icon "play"}}<span class="lbl">Play</span></button>
-          {{if not .HasBot}}<form method="post" action="/servers/{{$g.ID}}/join"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{.ID}}">
+          {{if not .HasBot}}<form method="post" action="/servers/{{$g.ID}}/join" data-fetch data-done="Joining."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{.ID}}">
             <button type="submit" class="ib" aria-label="Join {{.Name}}" data-tip="Join {{.Name}}">{{icon "log-in"}}<span class="lbl">Join</span></button></form>{{end}}
           {{else}}<span class="chip warn">no access</span>{{end}}
           <button type="button" class="ib quiet copy" data-copy="{{.ID}}" aria-label="Copy channel ID" data-tip="Copy channel ID" hidden>{{icon "copy"}}</button>
@@ -62,11 +65,12 @@
     </ul>
   </section>
 </div>
+</div>
 {{range $d.Voice}}{{if .Usable}}
 <div popover id="sheet-play-{{.ID}}" class="sheet" aria-labelledby="sheet-play-{{.ID}}-title">
   {{template "sheethead" (dict "ID" (print "sheet-play-" .ID) "Icon" "volume-2" "Title" "Play in" "Name" .Name)}}
   <div class="sheet-body">
-    <form method="post" action="/servers/{{$g.ID}}/play" class="form">
+    <form method="post" action="/servers/{{$g.ID}}/play" class="form" data-fetch data-done="Playing.">
       <input type="hidden" name="csrf" value="{{$csrf}}">
       <input type="hidden" name="channel" value="{{.ID}}">
       <input type="hidden" name="next" value="/servers/{{$g.ID}}">
@@ -85,6 +89,7 @@
 
 {{if eq $d.Tab "tasks"}}
 {{template "search" (dict "P" $d.Paging "Label" "Search the tasks of this server" "Placeholder" "Task name")}}
+<div class="contents" data-live="list" data-live-list>
 <section class="card">
   <ul class="list">
     {{range $d.Tasks}}
@@ -95,5 +100,6 @@
   </ul>
   {{template "pager" $d.Paging}}
 </section>
+</div>
 {{end}}
 {{end}}

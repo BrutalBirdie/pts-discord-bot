@@ -120,6 +120,7 @@
       </div>
       <span id="vol-help" class="vh">Play volume is how loud the bot plays a sound in the channel, unless the sound has its own volume. Only you hear previews.</span>
       {{template "search" (dict "P" $d.Paging "Label" "Search sounds" "Placeholder" "Search sounds")}}
+      <div class="contents" data-live="sounds" data-live-list>
 
       {{if $d.Favorites}}{{template "soundgroup" (dict "Title" "Favorites" "Icon" "star" "Sounds" $d.Favorites "D" $d "CSRF" $csrf)}}{{end}}
       {{if $d.Own}}{{template "soundgroup" (dict "Title" $g.Name "Icon" "server" "Sounds" $d.Own "D" $d "CSRF" $csrf "Upload" (not $d.Rest))}}{{end}}
@@ -127,6 +128,7 @@
       {{if not (or $d.Own $d.Rest)}}<ul class="sounds">{{template "uploadtile" (dict "D" $d "CSRF" $csrf)}}</ul>{{end}}
       {{if not (or $d.Own $d.Rest)}}<p class="muted">{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}No sounds yet. <a href="/media">Upload some</a>.{{end}}</p>{{end}}
       {{template "pager" $d.Paging}}
+      </div>
       <p class="hint">A click plays the sound in {{$ch.Name}}, the bot joins first and stays. The speaker previews it for you only, the star keeps it under Favorites. Sounds that another server keeps to itself are not listed.</p>
     </section>
     {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks in " $ch.Name) "Tasks" $d.Tasks "Empty" "No task uses this channel yet.")}}

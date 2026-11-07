@@ -80,6 +80,7 @@ type token struct {
 	Title  string
 	Avatar string // initial of a member
 	Img    string // profile picture of a member
+	Icon   string // icon in front of the name, like hash for tags
 	Media  int64  // sounds get a preview button
 	MS     int    // length, for the live total
 }
@@ -99,6 +100,7 @@ type tokenField struct {
 	Class       string
 	Max         int
 	Dupes       bool
+	Plain       bool // not in an editor with form ops: removing needs JavaScript
 	Items       []token
 }
 

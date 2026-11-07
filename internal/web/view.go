@@ -81,6 +81,7 @@ var viewFuncs = template.FuncMap{
 	"untils":     func() []string { return tasks.Untils },
 	"hasID":      func(list []int64, id int64) bool { return slices.Contains(list, id) },
 	"emojiURL":   emojiURL,
+	"tagTokens":  tagTokens,
 	"statusLabel": func(s string) string {
 		return map[string]string{"online": "Online", "idle": "Away", "dnd": "Do not disturb", "offline": "Offline"}[s]
 	},
