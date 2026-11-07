@@ -44,7 +44,7 @@ expect() { # expect <name> <regex> <output>
 
 browser() {
     docker run --rm --network "container:${app}" -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${PWD}:/e2e" -v "${work}:/work" -w /e2e \
-        mcr.microsoft.com/playwright:v1.64.1-noble node e2e.mjs "$1" || failures=$((failures + 1))
+        mcr.microsoft.com/playwright:v1.65.0-noble node e2e.mjs "$1" || failures=$((failures + 1))
 }
 
 wait_healthy() {
@@ -58,7 +58,7 @@ wait_healthy() {
 
 echo "==> Building"
 docker build -q -t "${img}" "${root}" >/dev/null
-docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${PWD}:/e2e" -w /e2e mcr.microsoft.com/playwright:v1.64.1-noble npm install --no-audit --no-fund --silent
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "${PWD}:/e2e" -w /e2e mcr.microsoft.com/playwright:v1.65.0-noble npm install --no-audit --no-fund --silent
 chmod 0777 "${work}"
 
 docker network create "${net}" >/dev/null
