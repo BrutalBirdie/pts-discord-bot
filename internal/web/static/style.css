@@ -687,3 +687,12 @@ html:not(.js) .list > li.sort-row { grid-template-columns: minmax(0, 1fr) auto; 
 .list > li.sorting { background: var(--surface); box-shadow: 0 6px 18px rgb(16 24 40 / .18); border-radius: var(--r-sm); }
 .room-rail .rail-g { touch-action: pan-x; }
 .rail-g.sorting { box-shadow: 0 6px 18px rgb(0 0 0 / .35); }
+
+/* the Control Room fills the window, its columns scroll on their own */
+@media (min-width: 721px) {
+  main.wrap.wide { height: calc(100dvh - 61px - env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; gap: 16px; padding-top: 16px; padding-bottom: 16px; }
+  main.wrap.wide > .room { flex: 1 1 auto; min-height: 360px; height: auto; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+  .room-rail { overflow-y: auto; scrollbar-width: none; }
+  .room-main { overflow-y: auto; }
+  .room .room-side[popover], .room .room-members[popover] { min-height: 0; }
+}
