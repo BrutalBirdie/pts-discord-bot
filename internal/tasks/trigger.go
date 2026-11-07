@@ -300,3 +300,64 @@ func (o onceSchedule) Next(t time.Time) time.Time {
 	}
 	return time.Time{}
 }
+
+// Overlap is another event task that starts on the same events as a task.
+type Overlap struct {
+	Task    Task
+	UserIDs []string // the members both start for, nil for (nearly) every member
+}
+
+// EventOverlaps lists the enabled event tasks of others that start on the
+// same event, channel and keyword as t for some members.
+func EventOverlaps(t Task, others []Task) []Overlap {
+	tr := t.Trigger
+	if tr.Kind != Event {
+		return nil
+	}
+	var out []Overlap
+	for _, o := range others {
+		ot := o.Trigger
+		if o.ID == t.ID || !o.Enabled || o.GuildID != t.GuildID || ot.Kind != Event || ot.Event != tr.Event ||
+			tr.ChannelID != "" && ot.ChannelID != "" && tr.ChannelID != ot.ChannelID || tr.Event == MessageIn && !keywordsOverlap(tr.Keyword, ot.Keyword) {
+			continue
+		}
+		ids, ok := sharedMembers(tr, ot)
+		if ok {
+			out = append(out, Overlap{Task: o, UserIDs: ids})
+		}
+	}
+	return out
+}
+
+func keywordsOverlap(a, b string) bool {
+	a, b = strings.ToLower(strings.TrimSpace(a)), strings.ToLower(strings.TrimSpace(b))
+	return strings.Contains(a, b) || strings.Contains(b, a)
+}
+
+// sharedMembers are the members both triggers start for: a list when one
+// names its members, nil when both start for every member or all but some.
+func sharedMembers(a, b Trigger) ([]string, bool) {
+	aOnly, bOnly := len(a.UserIDs) > 0 && !a.Except, len(b.UserIDs) > 0 && !b.Except
+	switch {
+	case !aOnly && !bOnly:
+		return nil, true
+	case aOnly && bOnly:
+		var ids []string
+		for _, id := range a.UserIDs {
+			if slices.Contains(b.UserIDs, id) {
+				ids = append(ids, id)
+			}
+		}
+		return ids, len(ids) > 0
+	case aOnly:
+		a, b = b, a
+	}
+	// b names its members, a starts for all or all but some
+	var ids []string
+	for _, id := range b.UserIDs {
+		if !a.Except || !slices.Contains(a.UserIDs, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, len(ids) > 0
+}

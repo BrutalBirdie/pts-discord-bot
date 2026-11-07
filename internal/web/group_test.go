@@ -145,3 +145,34 @@ func TestRunNowAndStop(t *testing.T) {
 		t.Error("dashboard has no Stop button for a running run")
 	}
 }
+
+func TestEventOverlapHint(t *testing.T) {
+	f := newScopeFixture(t)
+	ctx := context.Background()
+	add := func(name string, users []string) int64 {
+		id, err := f.st.CreateTask(ctx, tasks.Task{Name: name + "-" + f.tag, GuildID: f.a, Enabled: true, Busy: tasks.BusyWait,
+			Trigger: tasks.Trigger{Kind: tasks.Event, Event: tasks.VoiceJoin, Cooldown: 30, UserIDs: users},
+			Steps:   []tasks.Step{{Type: tasks.Message, ChannelID: "1", Text: "hi"}}}, "ann")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	everyone, mira := add("welcome", nil), add("greet-mira", []string{"123456789012345678"})
+	body := f.do(f.cloud, "GET", fmt.Sprintf("/tasks/%d", everyone), nil).Body.String()
+	for _, want := range []string{"Other tasks start on the same event", fmt.Sprintf(`href="/tasks/%d">greet-mira-%s</a>`, mira, f.tag), `value="except:123456789012345678"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("editor of the task for everyone: missing %q", want)
+		}
+	}
+	form := url.Values{"op": {"except:123456789012345678"}, "guild": {f.a}, "name": {"welcome"}, "kind": {"event"}, "event": {tasks.VoiceJoin}, "cooldown": {"30"},
+		"steps": {"1"}, "s0.type": {"message"}, "s0.channel": {"1"}, "s0.message": {"0"}, "s0.text": {"hi"}}
+	body = f.do(f.cloud, "POST", fmt.Sprintf("/tasks/%d", everyone), form).Body.String()
+	if !strings.Contains(body, `name="ev_except" value="on" checked`) || !strings.Contains(body, `<input type="hidden" name="ev_member" value="123456789012345678">`) {
+		t.Error("Leave out here does not switch to all members except the member")
+	}
+	body = f.do(f.cloud, "GET", fmt.Sprintf("/tasks/%d", mira), nil).Body.String()
+	if !strings.Contains(body, fmt.Sprintf(`also starts <a href="/tasks/%d">welcome-%s</a>`, everyone, f.tag)) || strings.Contains(body, `value="except:`) {
+		t.Error("editor of the task for one member")
+	}
+}

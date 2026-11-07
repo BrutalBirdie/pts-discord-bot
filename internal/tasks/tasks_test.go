@@ -2,7 +2,9 @@ package tasks
 
 import (
 	"encoding/json"
+	"maps"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -280,5 +282,41 @@ func TestParseCooldown(t *testing.T) {
 		if _, err := ParseCooldown(in); err == nil {
 			t.Errorf("%q: no error", in)
 		}
+	}
+}
+
+func TestEventOverlaps(t *testing.T) {
+	ev := func(id int64, users []string, except bool) Task {
+		return Task{ID: id, GuildID: "g", Enabled: true, Trigger: Trigger{Kind: Event, Event: VoiceJoin, UserIDs: users, Except: except}}
+	}
+	all, mira, notMira, jonas := ev(1, nil, false), ev(2, []string{"mira"}, false), ev(3, []string{"mira"}, true), ev(4, []string{"jonas", "mira"}, false)
+	other := ev(5, nil, false)
+	other.GuildID = "h"
+	paused := ev(6, nil, false)
+	paused.Enabled = false
+	text := ev(7, nil, false)
+	text.Trigger.Event = VoiceLeave
+	got := func(t Task) map[int64]string {
+		out := map[int64]string{}
+		for _, o := range EventOverlaps(t, []Task{all, mira, notMira, jonas, other, paused, text}) {
+			out[o.Task.ID] = strings.Join(o.UserIDs, ",")
+		}
+		return out
+	}
+	for name, c := range map[string]struct {
+		t    Task
+		want map[int64]string
+	}{
+		"everyone":     {all, map[int64]string{2: "mira", 3: "", 4: "jonas,mira"}},
+		"only mira":    {mira, map[int64]string{1: "mira", 4: "mira"}},
+		"except mira":  {notMira, map[int64]string{1: "", 4: "jonas"}},
+		"jonas & mira": {jonas, map[int64]string{1: "jonas,mira", 2: "mira", 3: "jonas"}},
+	} {
+		if g := got(c.t); !maps.Equal(g, c.want) {
+			t.Errorf("%s: %v", name, g)
+		}
+	}
+	if EventOverlaps(Task{Trigger: Trigger{Kind: Daily}}, []Task{all}) != nil {
+		t.Error("overlap of a timed task")
 	}
 }

@@ -178,6 +178,7 @@ type taskEditor struct {
 	Kinds     []tasks.TriggerKind
 	Events    []string
 	Tags      []string
+	Overlaps  []overlapView // event tasks that start on the same events
 
 	// play steps: per account preview volume of the picked sounds, and the longest playback
 	PreviewVol     map[int64]int
@@ -245,6 +246,23 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 	}
 	if e.Tags, err = s.store.Tags(ctx, t.GuildID); err != nil {
 		return e, err
+	}
+	if t.Trigger.Kind == tasks.Event && t.GuildID != "" {
+		list, err := s.store.ListTasks(ctx, store.GuildScope(t.GuildID))
+		if err != nil {
+			return e, err
+		}
+		for _, o := range tasks.EventOverlaps(t, list) {
+			v := overlapView{Task: o.Task, Fix: len(t.Trigger.UserIDs) == 0 || t.Trigger.Except}
+			for _, id := range o.UserIDs {
+				m, ok := s.bot.ResolveMember(t.GuildID, id)
+				if !ok {
+					m = bot.Member{ID: id, Name: id}
+				}
+				v.Members = append(v.Members, m)
+			}
+			e.Overlaps = append(e.Overlaps, v)
+		}
 	}
 	e.Next = t.Trigger.Next(time.Now(), 5)
 	if !isNew {
@@ -522,6 +540,15 @@ func applyOp(t *tasks.Task, op string) {
 		}
 	case "tokdel":
 		removeToken(t, arg)
+	case "except":
+		tr := &t.Trigger
+		if (len(tr.UserIDs) == 0 || tr.Except) && arg != "" && !slices.Contains(tr.UserIDs, arg) && len(tr.UserIDs) < tasks.MaxEventMembers {
+			tr.Except = true
+			tr.UserIDs = append(tr.UserIDs, arg)
+			for i := range tr.UserIDs {
+				tr.UserIDs[i] = strings.TrimSpace(tr.UserIDs[i])
+			}
+		}
 	case "del":
 		if i >= 0 && i < len(t.Steps) {
 			t.Steps = slices.Delete(t.Steps, i, i+1)
@@ -818,6 +845,15 @@ type avatarView struct {
 	Images  []store.Media // usable as avatar
 	Picked  string        // name of a picked image that is not in Images
 	Problem string
+}
+
+// overlapView is another event task that starts with this one, for the
+// members listed or nearly every member when Members is empty. Fix offers to
+// leave the listed members out of this task.
+type overlapView struct {
+	Task    tasks.Task
+	Members []bot.Member
+	Fix     bool
 }
 
 // MissingNick tells whether the bot cannot change its nickname in the task's server.

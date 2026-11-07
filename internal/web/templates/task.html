@@ -78,6 +78,11 @@
         <label><input type="radio" name="ev_except" value="on"{{if $t.Trigger.Except}} checked{{end}}>All members except these</label>
       </div>
       {{template "tokens" $e.MemberTokens}}
+      {{with $e.Overlaps}}<div class="callout info">{{icon "info"}}<div><strong>Other tasks start on the same event</strong>
+        <ul class="problems">{{range .}}<li>{{if .Members}}{{range $i, $m := .Members}}{{if $i}}, {{end}}{{$m.Name}}{{end}} also {{if eq (len .Members) 1}}starts{{else}}start{{end}} <a href="/tasks/{{.Task.ID}}">{{.Task.Name}}</a>.
+          {{if .Fix}}{{range .Members}}<button type="submit" name="op" value="except:{{.ID}}" class="ib sm with-label">{{icon "user"}}<span class="lbl">Leave {{.Name}} out here</span></button> {{end}}{{end}}
+          {{else}}<a href="/tasks/{{.Task.ID}}">{{.Task.Name}}</a> also starts for every member, or nearly.{{end}}</li>{{end}}</ul>
+        <span class="help">Both tasks run. Each member gets both, one after the other when both use voice.</span></div></div>{{end}}
       <label class="field"><span>Cooldown</span><input type="text" name="cooldown" value="{{$e.CooldownText}}" placeholder="30s" autocomplete="off" spellcheck="false"><span class="help">The same member starts the task at most once in this time, like 30 (seconds), 2m or 1h. Each task counts on its own. Bots never start tasks.</span></label>
       <p class="hint">Steps can use the member who started the run: Join voice channel and Direct message have an option for it, and <span class="mono">{member}</span> mentions them in texts.</p>
     </div>
