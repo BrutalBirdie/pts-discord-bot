@@ -305,6 +305,7 @@ var discordRoutes = map[string]bool{
 	"POST /tasks/{id}/resume":         true,
 	"POST /tasks/{id}/duplicate":      true,
 	"POST /tasks/{id}/delete":         true,
+	"POST /runs/{id}/stop":            true,
 	"GET /messages":                   true,
 	"GET /messages/new":               true,
 	"POST /messages/new":              true,

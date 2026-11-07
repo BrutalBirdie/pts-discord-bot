@@ -112,6 +112,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /tasks/{id}/resume", s.requireLogin(s.resumeTask))
 	mux.Handle("POST /tasks/{id}/duplicate", s.requireLogin(s.duplicateTask))
 	mux.Handle("POST /tasks/{id}/delete", s.requireLogin(s.deleteTask))
+	mux.Handle("POST /runs/{id}/stop", s.requireLogin(s.stopRun))
 
 	mux.Handle("GET /messages", s.requireLogin(s.messagesList))
 	mux.Handle("GET /messages/new", s.requireLogin(s.newMessage))
@@ -315,6 +316,7 @@ var notices = map[string]string{
 	"refreshed":     "Members requested from Discord. Large servers take a few seconds.",
 	"copied":        "Copy created.",
 	"grouped":       "Server group saved.",
+	"stopped-run":   "Run stopped.",
 	"trashed":       "Moved to the Trash.",
 	"restored":      "Restored.",
 	"restored-task": "Restored. It stays paused until you resume it.",

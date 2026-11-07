@@ -31,7 +31,8 @@
       </div>
       <div class="btns">
         <form method="post" action="/tasks/{{$t.ID}}/run"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
-          <button type="submit" class="ib" aria-label="Run {{$t.Name}} now" data-tip="Run now">{{icon "play"}}<span class="lbl">Run now</span></button></form>
+          {{if $t.NeedsMember}}<button type="button" class="ib" aria-disabled="true" aria-label="Run {{$t.Name}} now, not possible: a step uses the member who started the run" data-tip="Only its event or /task can start it">{{icon "play"}}<span class="lbl">Run now</span></button>
+          {{else}}<button type="submit" class="ib" aria-label="Run {{$t.Name}} now" data-tip="Run now">{{icon "play"}}<span class="lbl">Run now</span></button>{{end}}</form>
         {{if ne $t.Trigger.Kind "manual"}}
         {{if $t.Enabled}}
         <form method="post" action="/tasks/{{$t.ID}}/pause"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">

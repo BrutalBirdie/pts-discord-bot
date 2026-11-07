@@ -102,11 +102,30 @@ type Runner struct {
 	locksMu sync.Mutex
 	locks   map[string]chan struct{}
 	wg      sync.WaitGroup
+
+	runsMu  sync.Mutex
+	running map[int64]context.CancelCauseFunc // runs in progress, by run ID
+}
+
+// runStopped is the cause of a run a user stopped.
+type runStopped struct{ by string }
+
+func (e *runStopped) Error() string { return "stopped by " + e.by }
+
+// StopRun ends a run in progress, by is who stopped it. It reports whether the run was in progress.
+func (r *Runner) StopRun(runID int64, by string) bool {
+	r.runsMu.Lock()
+	defer r.runsMu.Unlock()
+	stop, ok := r.running[runID]
+	if ok {
+		stop(&runStopped{by: by})
+	}
+	return ok
 }
 
 func New(st *store.Store, b *bot.Bot, dir media.Dir, log *slog.Logger) *Runner {
 	return &Runner{st: st, bot: b, media: dir, log: log, entries: map[int64]cron.EntryID{}, locks: map[string]chan struct{}{},
-		events: map[int64]tasks.Task{}, cooldown: map[string]time.Time{},
+		events: map[int64]tasks.Task{}, cooldown: map[string]time.Time{}, running: map[int64]context.CancelCauseFunc{},
 		cron: cron.New(cron.WithLocation(time.UTC))}
 }
 
@@ -327,6 +346,23 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 	}
 	log := r.log.With("run", runID, "task", t.Name, "source", source)
 	log.Info("run started")
+	ctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
+	r.runsMu.Lock()
+	r.running[runID] = stop
+	r.runsMu.Unlock()
+	defer func() {
+		r.runsMu.Lock()
+		delete(r.running, runID)
+		r.runsMu.Unlock()
+	}()
+	stopped := func() (string, bool) {
+		var s *runStopped
+		if errors.As(context.Cause(ctx), &s) {
+			return "Stopped by " + s.by + ".", true
+		}
+		return "", false
+	}
 
 	if t.UsesVoice() {
 		l := r.lock(t.GuildID)
@@ -343,6 +379,10 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 				r.finish(log, runID, store.RunSkipped, nil, "The bot was busy with voice in this server.")
 				return errors.New("the bot is busy with voice in this server")
 			case <-ctx.Done():
+				if msg, ok := stopped(); ok {
+					r.finish(log, runID, store.RunSkipped, nil, msg)
+					return nil
+				}
 				r.finish(log, runID, store.RunFailed, nil, "The app stopped.")
 				return ctx.Err()
 			}
@@ -359,8 +399,16 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 	defer cancel()
 	var notes []string
 	for i, s := range t.Steps {
+		if msg, ok := stopped(); ok {
+			r.finish(log, runID, store.RunSkipped, nil, fmt.Sprintf("Before step %d: %s", i+1, msg))
+			return nil
+		}
 		if err := r.step(rctx, t, s, settings, ev); err != nil {
 			n := i + 1
+			if msg, ok := stopped(); ok {
+				r.finish(log, runID, store.RunSkipped, nil, fmt.Sprintf("Step %d: %s", n, msg))
+				return nil
+			}
 			var note *stepNote
 			if errors.As(err, &note) {
 				log.Info("step note", "step", n, "note", note.msg)

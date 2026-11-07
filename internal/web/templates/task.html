@@ -6,7 +6,8 @@
   {{if not $e.New}}
   <div class="btns">
     <form method="post" action="/tasks/{{$t.ID}}/run"><input type="hidden" name="csrf" value="{{$csrf}}">
-      <button type="submit" class="ib" aria-label="Run now" data-tip="Run the saved version now">{{icon "play"}}<span class="lbl">Run now</span></button></form>
+      {{if $t.NeedsMember}}<button type="button" class="ib" aria-disabled="true" aria-label="Run now, not possible: a step uses the member who started the run" data-tip="Only its event or /task can start it: a step uses the member who started the run">{{icon "play"}}<span class="lbl">Run now</span></button>
+      {{else}}<button type="submit" class="ib" aria-label="Run now" data-tip="Run the saved version now">{{icon "play"}}<span class="lbl">Run now</span></button>{{end}}</form>
     <form method="post" action="/tasks/{{$t.ID}}/duplicate"><input type="hidden" name="csrf" value="{{$csrf}}">
       <button type="submit" class="ib" aria-label="Duplicate" data-tip="Duplicate">{{icon "copy"}}<span class="lbl">Duplicate</span></button></form>
   </div>
@@ -210,7 +211,7 @@
   <section class="card" data-live="runs">
     <div class="sec-head"><h2>Run history</h2><span class="hint">{{$e.RunCount}} runs</span></div>
     <ul class="list">
-      {{range $e.Runs}}{{template "runrow" (dict "R" . "ShowTitle" false)}}{{else}}<li><span class="muted small">No runs yet.</span></li>{{end}}
+      {{range $e.Runs}}{{template "runrow" (dict "R" . "ShowTitle" false "CSRF" $csrf "Next" (print "/tasks/" $t.ID))}}{{else}}<li><span class="muted small">No runs yet.</span></li>{{end}}
     </ul>
     {{if gt $e.Pages 1}}
     <div class="pager mt">

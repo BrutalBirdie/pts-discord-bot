@@ -114,6 +114,11 @@ func scanRun(r pgx.Row) (Run, error) {
 	return run, err
 }
 
+func (s *Store) Run(ctx context.Context, id int64) (Run, error) {
+	run, err := scanRun(s.pool.QueryRow(ctx, `SELECT `+runCols+` FROM runs WHERE id = $1`, id))
+	return run, noRows(err)
+}
+
 func (s *Store) StartRun(ctx context.Context, r Run) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `INSERT INTO runs (task_id, title, guild_id, source, actor, detail) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,

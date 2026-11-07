@@ -110,3 +110,38 @@ func TestServerGroups(t *testing.T) {
 		t.Error("media without a group shows a grouped file")
 	}
 }
+
+func TestRunNowAndStop(t *testing.T) {
+	f := newScopeFixture(t)
+	ctx := context.Background()
+	task, err := f.st.CreateTask(ctx, tasks.Task{Name: "greet-" + f.tag, GuildID: f.a, Busy: tasks.BusyWait,
+		Trigger: tasks.Trigger{Kind: tasks.Event, Event: tasks.VoiceJoin, Cooldown: 30},
+		Steps:   []tasks.Step{{Type: tasks.DM, ToTrigger: true, Text: "hi"}}}, "ann")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := fmt.Sprint(task)
+	if rec := f.do(f.cloud, "GET", "/tasks/"+id, nil); !strings.Contains(rec.Body.String(), `aria-disabled="true" aria-label="Run now, not possible`) {
+		t.Error("Run now is not disabled for a task that needs a member")
+	}
+	if rec := f.do(f.cloud, "POST", "/tasks/"+id+"/run", url.Values{}); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), runNeedsMember) {
+		t.Errorf("run a task that needs a member: %d", rec.Code)
+	}
+	runA, err := f.st.StartRun(ctx, store.Run{Title: "run-" + f.tag, GuildID: f.a, Source: store.SourceManual})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runB, err := f.st.StartRun(ctx, store.Run{Title: "run-" + f.tag, GuildID: f.b, Source: store.SourceManual})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := f.do(f.discord, "POST", "/runs/"+fmt.Sprint(runB)+"/stop", url.Values{}); rec.Code != http.StatusNotFound {
+		t.Errorf("Discord user stops a run of server B: %d", rec.Code)
+	}
+	if rec := f.do(f.discord, "POST", "/runs/"+fmt.Sprint(runA)+"/stop", url.Values{}); rec.Code != http.StatusConflict {
+		t.Errorf("stop a run this app is not running: %d", rec.Code)
+	}
+	if rec := f.do(f.cloud, "GET", "/", nil); !strings.Contains(rec.Body.String(), `action="/runs/`+fmt.Sprint(runA)+`/stop"`) {
+		t.Error("dashboard has no Stop button for a running run")
+	}
+}

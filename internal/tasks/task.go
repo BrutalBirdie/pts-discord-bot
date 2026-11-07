@@ -169,6 +169,17 @@ type Task struct {
 	UpdatedAt    time.Time
 }
 
+// NeedsMember tells whether a step uses the member who started the run, so
+// only an event or a slash command can start it.
+func (t Task) NeedsMember() bool {
+	for _, s := range t.Steps {
+		if s.ToTrigger {
+			return true
+		}
+	}
+	return false
+}
+
 func (t Task) UsesVoice() bool {
 	for _, s := range t.Steps {
 		if s.Type.Voice() {

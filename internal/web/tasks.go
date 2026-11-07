@@ -694,6 +694,36 @@ func (s *Server) loadTask(w http.ResponseWriter, r *http.Request) (tasks.Task, b
 	return t, true
 }
 
+// stopRun ends a run in progress, from the run lists.
+func (s *Server) stopRun(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		s.notFound(w, r)
+		return
+	}
+	sess := sessionFrom(r)
+	run, err := s.store.Run(r.Context(), id)
+	if err == nil && !sess.Scope().Has(run.GuildID) {
+		err = store.ErrNotFound
+	}
+	if err != nil {
+		s.storeErr(w, r, err)
+		return
+	}
+	by := sess.DisplayName
+	if by == "" {
+		by = sess.Username
+	}
+	if !s.run.StopRun(run.ID, by) {
+		s.fail(w, r, http.StatusConflict, "The run has finished already.")
+		return
+	}
+	s.audit(r, "run.stop", run.Title, "")
+	redirect(w, r, safeNext(r.PostForm.Get("next"), "/"), "stopped-run")
+}
+
+const runNeedsMember = "A step uses the member who started the run, so only its event or /task can start it."
+
 func (s *Server) runTask(w http.ResponseWriter, r *http.Request) {
 	t, ok := s.loadTask(w, r)
 	if !ok {
@@ -701,6 +731,10 @@ func (s *Server) runTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if problems := t.Problems(); len(problems) > 0 {
 		s.fail(w, r, http.StatusBadRequest, "The task cannot run: "+strings.Join(problems, " "))
+		return
+	}
+	if t.NeedsMember() {
+		s.fail(w, r, http.StatusBadRequest, runNeedsMember)
 		return
 	}
 	s.run.RunNow(t, sessionFrom(r).Username)

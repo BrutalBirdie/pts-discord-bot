@@ -38,7 +38,7 @@
   <section class="card" data-live="runs">
     <div class="sec-head"><h2>Recent runs</h2>{{if .Session.IsAdmin}}<a class="small" href="/admin/audit">Audit log</a>{{end}}</div>
     <ul class="list">
-      {{range $d.Runs}}{{template "runrow" (dict "R" . "ShowTitle" true)}}{{else}}<li><span class="muted">No runs yet.</span></li>{{end}}
+      {{range $d.Runs}}{{template "runrow" (dict "R" . "ShowTitle" true "CSRF" $.Session.CSRFToken "Next" "/")}}{{else}}<li><span class="muted">No runs yet.</span></li>{{end}}
     </ul>
   </section>
 </div>
