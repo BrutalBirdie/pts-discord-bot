@@ -73,7 +73,7 @@
       {{if not .Bot.MessageIntent}}<div class="callout warn ev-keyword">{{icon "triangle-alert"}}<span>The bot cannot read messages: Discord refused the Message Content intent, or it is off in <span class="mono">/app/data/env.sh</span>. Switch on <strong>Message Content Intent</strong> under Bot in the Discord Developer Portal and restart the app.</span></div>{{end}}
       {{if not .Bot.MembersIntent}}<div class="callout warn ev-members">{{icon "triangle-alert"}}<span>New members are only reported with the Server Members intent. Switch it on in the Discord Developer Portal and restart the app.</span></div>{{end}}
       {{template "tokens" $e.MemberTokens}}
-      <label class="field"><span>Cooldown, seconds</span><input type="number" name="cooldown" value="{{if eq $t.Trigger.Kind "event"}}{{$t.Trigger.Cooldown}}{{else}}30{{end}}" min="0" max="86400"><span class="help">The same member starts the task at most once in this time. Bots never start tasks.</span></label>
+      <label class="field"><span>Cooldown</span><input type="text" name="cooldown" value="{{$e.CooldownText}}" placeholder="30s" autocomplete="off" spellcheck="false"><span class="help">The same member starts the task at most once in this time, like 30 (seconds), 2m or 1h. Each task counts on its own. Bots never start tasks.</span></label>
       <p class="hint">Steps can use the member who started the run: Join voice channel and Direct message have an option for it, and <span class="mono">{member}</span> mentions them in texts.</p>
     </div>
     <div class="grid2">
@@ -116,6 +116,7 @@
             </div>
             <span class="hint total{{if $pv.Over}} over{{end}}" data-total data-cap="{{$pv.Cap}}">Total {{clock $pv.Total}} / {{clock $pv.Cap}}{{if $pv.Unknown}}, some lengths unknown{{end}}</span>
             <label class="inline small"><span>Volume</span><input type="number" name="{{$p}}volume" value="{{$s.Volume}}" min="1" max="200" aria-label="Volume in percent"><span>%</span></label>
+            {{if $e.NoJoinBefore $i}}<p class="hint mt">No Join step before this one: it plays in the channel the bot is in already, and nothing plays when the bot is in no channel or alone there.</p>{{end}}
           {{else if eq $s.Type "message"}}
             <select name="{{$p}}channel" aria-label="Text channel">
               {{if not $s.ChannelID}}<option value="" selected>Pick a channel</option>{{end}}

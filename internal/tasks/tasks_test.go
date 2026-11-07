@@ -262,3 +262,16 @@ func TestPlayStep(t *testing.T) {
 		t.Error("invalid play steps accepted")
 	}
 }
+
+func TestParseCooldown(t *testing.T) {
+	for in, want := range map[string]int{"30": 30, "0": 0, "2m": 120, "1h": 3600, "1m30s": 90, "1,5m": 90, "24h": 86400, "0.4s": 0} {
+		if got, err := ParseCooldown(in); err != nil || got != want {
+			t.Errorf("%q: %d %v, want %d", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "x", "25h", "2w", "-5"} {
+		if _, err := ParseCooldown(in); err == nil {
+			t.Errorf("%q: no error", in)
+		}
+	}
+}

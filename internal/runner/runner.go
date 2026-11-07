@@ -357,9 +357,16 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 	limit := runLimit(t.Steps, r.soundTime(ctx), time.Duration(settings.MaxPlayMinutes)*time.Minute)
 	rctx, cancel := context.WithTimeoutCause(ctx, limit, errRunLimit)
 	defer cancel()
+	var notes []string
 	for i, s := range t.Steps {
 		if err := r.step(rctx, t, s, settings, ev); err != nil {
 			n := i + 1
+			var note *stepNote
+			if errors.As(err, &note) {
+				log.Info("step note", "step", n, "note", note.msg)
+				notes = append(notes, fmt.Sprintf("Step %d: %s", n, note.msg))
+				continue
+			}
 			if context.Cause(rctx) == errRunLimit {
 				msg := fmt.Sprintf("The run took longer than its estimated %s, stopped.", tasks.FormatDuration(limit))
 				r.finish(log, runID, store.RunFailed, &n, msg)
@@ -384,7 +391,7 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 			return fmt.Errorf("step %d, %s: %s", n, strings.ToLower(s.Type.Label()), msg)
 		}
 	}
-	r.finish(log, runID, store.RunDone, nil, "")
+	r.finish(log, runID, store.RunDone, nil, strings.Join(notes, " "))
 	if t.ID != 0 && t.Trigger.Kind == tasks.Once && source == store.SourceSchedule {
 		if err := r.st.SetTaskEnabled(context.WithoutCancel(ctx), t.ID, false, "", "system"); err != nil {
 			log.Error("pausing one-off task", "err", err)
@@ -433,6 +440,12 @@ func truncate(s string, n int) string {
 	}
 	return s
 }
+
+// stepNote lets a run go on after a step that did not do its part, the note
+// shows in the run history of the finished run.
+type stepNote struct{ msg string }
+
+func (e *stepNote) Error() string { return e.msg }
 
 // stopRun ends a run as skipped, a wait step returns it when its condition timed out.
 type stopRun struct{ msg string }
@@ -508,7 +521,7 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 			info := bot.Playing{Name: m.Name, By: t.Name, Duration: time.Duration(m.DurationMS) * time.Millisecond}
 			err := r.bot.Play(pctx, guildID, r.media.Path(m.ID), info, s.Volume)
 			if errors.Is(err, bot.ErrChannelEmpty) {
-				return nil
+				return &stepNote{"nothing played, nobody else was in the voice channel."}
 			}
 			if err != nil {
 				return err

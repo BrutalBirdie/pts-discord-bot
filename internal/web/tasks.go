@@ -376,8 +376,9 @@ func parseTask(r *http.Request) (tasks.Task, []string) {
 			}
 		}
 		if v := strings.TrimSpace(f.Get("cooldown")); v != "" {
-			if ev.Cooldown, err = strconv.Atoi(v); err != nil {
-				bad = append(bad, "Cooldown: enter a number of seconds.")
+			if ev.Cooldown, err = tasks.ParseCooldown(v); err != nil {
+				ev.Cooldown = tasks.DefaultCooldown
+				bad = append(bad, "Cooldown: "+err.Error()+".")
 			}
 		}
 		t.Trigger = ev
@@ -782,6 +783,28 @@ type avatarView struct {
 	Images  []store.Media // usable as avatar
 	Picked  string        // name of a picked image that is not in Images
 	Problem string
+}
+
+// NoJoinBefore tells whether no Join step comes before step i.
+func (e taskEditor) NoJoinBefore(i int) bool {
+	for _, st := range e.Task.Steps[:min(i, len(e.Task.Steps))] {
+		if st.Type == tasks.Join {
+			return false
+		}
+	}
+	return true
+}
+
+// CooldownText is the cooldown of an event trigger as typed, like 30s or 2m.
+func (e taskEditor) CooldownText() string {
+	n := tasks.DefaultCooldown
+	if e.Task.Trigger.Kind == tasks.Event {
+		n = e.Task.Trigger.Cooldown
+	}
+	if n == 0 {
+		return "0"
+	}
+	return tasks.FormatDuration(time.Duration(n) * time.Second)
 }
 
 func (e taskEditor) Avatar(i int) avatarView {

@@ -136,14 +136,47 @@ func checkWait(d time.Duration) error {
 var durationUnits = map[string]time.Duration{"ms": time.Millisecond, "s": time.Second, "sec": time.Second, "m": time.Minute, "min": time.Minute,
 	"h": time.Hour, "d": 24 * time.Hour}
 
-// ParseDuration reads durations like 500ms, 1.5s, 1m30s or 2h. A bare number
-// is seconds and a comma works as decimal point.
+// ParseDuration reads wait durations like 500ms, 1.5s, 1m30s or 2h. A bare
+// number is seconds and a comma works as decimal point.
 func ParseDuration(in string) (time.Duration, error) {
-	s := strings.ReplaceAll(strings.ToLower(strings.Join(strings.Fields(in), "")), ",", ".")
-	if s == "" {
+	if strings.TrimSpace(in) == "" {
 		return 0, errors.New("enter how long to wait, e.g. 1.5s or 5m")
 	}
+	d, err := parseSpan(in)
+	if errors.Is(err, errTooLong) {
+		return 0, errors.New("wait at most 24h")
+	}
+	if err != nil {
+		return 0, err
+	}
+	if err := checkWait(d); err != nil {
+		return 0, err
+	}
+	return d, nil
+}
+
+// ParseCooldown reads a cooldown in the format of ParseDuration, rounded to
+// whole seconds, from 0 to MaxCooldown.
+func ParseCooldown(in string) (int, error) {
+	d, err := parseSpan(in)
+	if errors.Is(err, errTooLong) || err == nil && d > MaxCooldown*time.Second {
+		return 0, errors.New("the cooldown is at most 24h")
+	}
+	if err != nil {
+		return 0, err
+	}
+	return int(d.Round(time.Second) / time.Second), nil
+}
+
+var errTooLong = errors.New("too long")
+
+// parseSpan reads the format of ParseDuration without limits but errTooLong for days and more past 24h.
+func parseSpan(in string) (time.Duration, error) {
+	s := strings.ReplaceAll(strings.ToLower(strings.Join(strings.Fields(in), "")), ",", ".")
 	bad := fmt.Errorf("%q is not a duration, use e.g. 500ms, 1.5s, 5m or 2h", strings.TrimSpace(in))
+	if s == "" {
+		return 0, bad
+	}
 	var total float64
 	for rest := s; rest != ""; {
 		i := strings.IndexFunc(rest, func(r rune) bool { return (r < '0' || r > '9') && r != '.' })
@@ -165,7 +198,7 @@ func ParseDuration(in string) (time.Duration, error) {
 			unit = "s"
 		}
 		if unit == "y" || unit == "w" {
-			return 0, errors.New("wait at most 24h")
+			return 0, errTooLong
 		}
 		u, ok := durationUnits[unit]
 		if !ok {
@@ -174,13 +207,9 @@ func ParseDuration(in string) (time.Duration, error) {
 		total += n * float64(u)
 	}
 	if total > float64(MaxWait) {
-		return 0, errors.New("wait at most 24h")
+		return 0, errTooLong
 	}
-	d := time.Duration(math.Round(total/float64(time.Millisecond))) * time.Millisecond
-	if err := checkWait(d); err != nil {
-		return 0, err
-	}
-	return d, nil
+	return time.Duration(math.Round(total/float64(time.Millisecond))) * time.Millisecond, nil
 }
 
 // FormatDuration is the shortest form ParseDuration reads back, like 1.5s or 1h30m.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/voice"
 	"github.com/disgoorg/snowflake/v2"
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
@@ -45,8 +46,9 @@ func (b *Bot) VoiceChannelOf(guildID, userID snowflake.ID) (snowflake.ID, bool) 
 	return *vs.ChannelID, true
 }
 
-// Join connects to a voice channel. A connection to another channel of the
-// same guild is closed first.
+// Join connects to a voice channel. A ready connection to the channel stays,
+// one to another channel of the guild or one whose voice gateway is not ready
+// is closed first.
 func (b *Bot) Join(ctx context.Context, guildID, channelID snowflake.ID) error {
 	c, err := b.get()
 	if err != nil {
@@ -66,7 +68,7 @@ func (b *Bot) Join(ctx context.Context, guildID, channelID snowflake.ID) error {
 		}
 	}
 	if conn := c.VoiceManager.GetConn(guildID); conn != nil {
-		if cur := conn.ChannelID(); cur != nil && *cur == channelID {
+		if cur := conn.ChannelID(); cur != nil && *cur == channelID && conn.Gateway().Status() == voice.StatusReady {
 			return nil
 		}
 		closeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)

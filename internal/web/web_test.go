@@ -195,7 +195,7 @@ func TestWhen(t *testing.T) {
 func TestParseEventTask(t *testing.T) {
 	form := url.Values{
 		"name": {"Greeting"}, "guild": {"1"}, "slash": {"on"}, "kind": {"event"}, "event": {"message"}, "event_channel": {"5"}, "keyword": {" adhan "},
-		"cooldown": {"60"}, "times": {"05:00"}, "steps": {"3"}, "ev_member": {" Amira (@amira) ", "", "Amira (@amira)", "Bilal"},
+		"cooldown": {"1m"}, "times": {"05:00"}, "steps": {"3"}, "ev_member": {" Amira (@amira) ", "", "Amira (@amira)", "Bilal"},
 		"s0.type": {"join"}, "s0.target": {"trigger"},
 		"s1.type": {"play"}, "s1.media": {"tag:greeting"}, "s1.volume": {"100"},
 		"s2.type": {"dm"}, "s2.to": {"trigger"}, "s2.user": {"Amira"}, "s2.message": {"0"}, "s2.text": {"Hi {member}"},
@@ -248,7 +248,7 @@ func TestEventEditorRenders(t *testing.T) {
 	s.render(rec, req, http.StatusOK, "task", e)
 	body := rec.Body.String()
 	for _, want := range []string{`value="event" checked`, `<option value="voice_join" selected>A member joins a voice channel`, `<option value="2" selected>lounge`,
-		`name="cooldown" value="45"`, `<input type="hidden" name="ev_member" value="9">`, `value="tokdel:ev_member:0"`, `<span class="av" aria-hidden="true">A</span>`, "1 of 25", `name="slash" checked`, `<option value="trigger" selected>The channel of the member who started the run`,
+		`name="cooldown" value="45s"`, `<input type="hidden" name="ev_member" value="9">`, `value="tokdel:ev_member:0"`, `<span class="av" aria-hidden="true">A</span>`, "1 of 25", `name="slash" checked`, `<option value="trigger" selected>The channel of the member who started the run`,
 		`<input type="hidden" name="s1.media" value="tag:greeting">`, "random sound tagged greeting", `<option value="trigger" selected>To the member who started the run`, "Runs when the event happens."} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
