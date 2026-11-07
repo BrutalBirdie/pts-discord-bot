@@ -165,6 +165,9 @@ func TestMemberList(t *testing.T) {
 		if i == 4 {
 			m.Group, m.GroupPos = "Mods", 3
 		}
+		if i == 24 {
+			m.Group, m.GroupPos = "Owner", 9
+		}
 		all = append(all, m)
 	}
 	all = append(all, bot.Member{ID: "99", Name: "Bot", Bot: true, Online: true})
@@ -176,10 +179,10 @@ func TestMemberList(t *testing.T) {
 		return out
 	}
 	groups, hidden, _ := memberList(all, "", 1, true)
-	if got := names(groups); !slices.Equal(got, []string{"Admins:2", "Mods:1", "Online:12", "Offline:3"}) || hidden != 12 {
+	if got := names(groups); !slices.Equal(got, []string{"Owner:1", "Admins:2", "Mods:1", "Online:11", "Offline:3"}) || hidden != 12 {
 		t.Errorf("groups %v, hidden %d", got, hidden)
 	}
-	if groups, _, _ := memberList(all, "", 1, false); !slices.Equal(names(groups), []string{"Admins:4", "Mods:1", "Members:15"}) {
+	if groups, _, _ := memberList(all, "", 1, false); !slices.Equal(names(groups), []string{"Owner:1", "Admins:4", "Mods:1", "Members:14"}) {
 		t.Errorf("without presences: %v", names(groups))
 	}
 	groups, _, more := memberList(all, "m1", 1, true)

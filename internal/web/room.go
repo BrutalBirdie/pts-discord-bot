@@ -437,6 +437,8 @@ func memberList(members []bot.Member, query string, page int, presence bool) (gr
 		}
 		return []memberGroup{{Name: "Matches", Members: hits[from:to]}}, 0, to < len(hits)
 	}
+	// higher roles first when not everyone fits
+	slices.SortStableFunc(humans, func(a, b bot.Member) int { return cmp.Compare(groupRank(b), groupRank(a)) })
 	var picked []bot.Member
 	for _, m := range humans {
 		if m.VoiceID != "" && len(picked) < membersPerPage {
@@ -495,4 +497,11 @@ func millis(v string) int {
 		return 0
 	}
 	return int(f*1000 + 0.5)
+}
+
+func groupRank(m bot.Member) int {
+	if m.Group == "" {
+		return -1
+	}
+	return m.GroupPos
 }

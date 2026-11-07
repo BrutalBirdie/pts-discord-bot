@@ -38,7 +38,7 @@
       </a>
       {{if not $d.Paging.Query}}<form method="post" action="/servers/order" class="sort-btns">{{template "csrf" $}}<input type="hidden" name="move" value="{{.ID}}"><input type="hidden" name="next" value="{{$d.Paging.Self}}">
         <button type="submit" name="dir" value="up" class="ib sm quiet" aria-label="Move {{.Name}} up" data-tip="Move up"{{if and (not $i) (eq $d.Paging.Page 1)}} disabled{{end}}>{{icon "arrow-up"}}</button>
-        <button type="submit" name="dir" value="down" class="ib sm quiet" aria-label="Move {{.Name}} down" data-tip="Move down">{{icon "arrow-down"}}</button>
+        <button type="submit" name="dir" value="down" class="ib sm quiet" aria-label="Move {{.Name}} down" data-tip="Move down"{{if and (eq (add $i 1) (len $d.Guilds)) (not $d.Paging.More)}} disabled{{end}}>{{icon "arrow-down"}}</button>
       </form>{{end}}
     </li>
     {{else}}
