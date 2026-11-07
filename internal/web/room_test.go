@@ -44,7 +44,7 @@ func TestSoundLookAndFavorite(t *testing.T) {
 	if code := post(f.cloud, edit, "emoji", "<:salt:123456789012345678>"); code != http.StatusSeeOther {
 		t.Errorf("custom emoji: %d", code)
 	}
-	for _, bad := range [][]string{{"icon", fmt.Sprint(f.trashS)}, {"emoji", "not an emoji at all"}, {"emoji", "<img src=x>"}, {"trim_start", "2", "trim_end", "1"},
+	for _, bad := range [][]string{{"icon", fmt.Sprint(f.trashS)}, {"emoji", "not an emoji at all"}, {"emoji", "<img src=x>"}, {"emoji", "E"}, {"trim_start", "2", "trim_end", "1"},
 		{"own_volume", "on", "volume", "300"}, {"name", "media-shared-" + f.tag + ".png"}} {
 		if code := post(f.cloud, edit, bad...); code != http.StatusBadRequest && code != http.StatusConflict {
 			t.Errorf("%v: %d", bad, code)
@@ -172,5 +172,18 @@ func TestMemberList(t *testing.T) {
 	}
 	if _, hits, _, more := memberList(all, "u", 2, true); len(hits) != 10 || more {
 		t.Errorf("second page: %d %v", len(hits), more)
+	}
+}
+
+func TestValidEmoji(t *testing.T) {
+	for _, ok := range []string{"", "🔥", "☀️", "👨‍👩‍👧", "🇩🇪", "1️⃣", "<:salt:123456789012345678>", "<a:dance:123456789012345678>"} {
+		if !validEmoji(ok) {
+			t.Errorf("%q refused", ok)
+		}
+	}
+	for _, bad := range []string{"E", "ab", "🔥 x", "<:x:1>", "<b>", strings.Repeat("🔥", 11)} {
+		if validEmoji(bad) {
+			t.Errorf("%q accepted", bad)
+		}
 	}
 }

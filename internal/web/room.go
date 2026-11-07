@@ -331,7 +331,18 @@ var customEmojiRe = regexp.MustCompile(`^<a?:[A-Za-z0-9_~]{2,32}:[0-9]{15,21}>$`
 
 // validEmoji accepts one emoji or a custom emoji of a server like <:name:id>.
 func validEmoji(s string) bool {
-	return s == "" || customEmojiRe.MatchString(s) || utf8.RuneCountInString(s) <= maxEmojiRunes && !strings.ContainsAny(s, " \t\r\n<>:")
+	if s == "" || customEmojiRe.MatchString(s) {
+		return true
+	}
+	if utf8.RuneCountInString(s) > maxEmojiRunes {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x2000 && r != 0x00a9 && r != 0x00ae && r != '#' && r != '*' && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
 }
 
 // editSound saves the Edit sound sheet: name, emoji or image, own volume and the part to play.
