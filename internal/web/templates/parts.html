@@ -50,7 +50,7 @@
 {{define "runrow"}}
 <li><div class="row-main">
     <div class="row-title"><span class="when">{{when .R.StartedAt}}</span>{{if .ShowTitle}}{{if .R.TaskID}}<a href="/tasks/{{.R.TaskID}}">{{.R.Title}}</a>{{else}}{{.R.Title}}{{end}}{{end}}</div>
-    <div class="row-sub">{{if and .R.Error (ne .R.Status "done")}}{{with .R.FailedStep}}Step {{.}}: {{end}}{{.R.Error}}{{else}}{{if eq .R.Status "running"}}running for {{dur .R.Duration}}{{else}}{{dur .R.Duration}}{{end}} · {{if eq .R.Source "schedule"}}schedule{{else if eq .R.Source "event"}}event by {{.R.Actor}}{{else if eq .R.Source "discord"}}slash command by {{.R.Actor}}{{else}}run by {{.R.Actor}}{{end}}{{with .R.Error}} · {{.}}{{end}}{{end}}</div>
+    <div class="row-sub">{{if and .R.Error (ne .R.Status "done")}}{{with .R.FailedStep}}Step {{.}}: {{end}}{{.R.Error}}{{else}}{{if eq .R.Status "running"}}running for {{dur .R.Duration}}{{else}}{{dur .R.Duration}}{{end}} · {{if eq .R.Source "schedule"}}schedule{{else if eq .R.Source "event"}}event by {{.R.Actor}}{{else if eq .R.Source "discord"}}started in Discord by {{.R.Actor}}{{else}}run by {{.R.Actor}}{{end}}{{with .R.Error}} · {{.}}{{end}}{{end}}</div>
   </div>
   {{if and .CSRF (eq .R.Status "running")}}<form method="post" action="/runs/{{.R.ID}}/stop"><input type="hidden" name="csrf" value="{{.CSRF}}">{{with .Next}}<input type="hidden" name="next" value="{{.}}">{{end}}
     <button type="submit" class="ib sm danger" aria-label="Stop this run" data-tip="Stop">{{icon "square"}}<span class="lbl">Stop</span></button></form>{{end}}
