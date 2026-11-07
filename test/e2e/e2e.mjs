@@ -519,7 +519,7 @@ const steps = {
         check('missed runs in the history', (await page.locator('[data-live=runs]').innerText()).includes('Missed, the app was not running.'));
         await page.goto(BASE + '/tasks');
         await page.getByRole('link', { name: 'Greeting', exact: true }).click();
-        check('event task in the editor', await page.locator('input[name=kind][value=event]').isChecked() && await page.inputValue('input[name=cooldown]') === '45'
+        check('event task in the editor', await page.locator('input[name=kind][value=event]').isChecked() && await page.inputValue('input[name=cooldown]') === '45s'
             && await page.locator('select[name="s0.to"]').inputValue() === 'trigger' && await page.locator('.picker.dm-member').isHidden());
         check('event task summary', (await page.locator('main').innerText()).includes('Runs when the event happens.'));
         const greeting = page.url();
