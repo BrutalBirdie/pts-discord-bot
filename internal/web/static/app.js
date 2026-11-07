@@ -243,6 +243,23 @@
         if (!same) startPreview(btn);
     });
 
+    // a member's profile picture, or their initial without one
+    function avatarOf(h, cls) {
+        if (h.avatar) {
+            const img = document.createElement('img');
+            img.className = cls;
+            img.src = h.avatar;
+            img.alt = '';
+            img.referrerPolicy = 'no-referrer';
+            return img;
+        }
+        const av = document.createElement('span');
+        av.className = cls;
+        av.setAttribute('aria-hidden', 'true');
+        av.textContent = (h.name.trim()[0] || '?').toUpperCase();
+        return av;
+    }
+
     // pickers: suggestions while typing, from /members or the data-source of a token field
     document.querySelectorAll('input[data-members], [data-source] input[type=search]').forEach(function (input) {
         const list = document.createElement('ul');
@@ -277,11 +294,7 @@
             tok.className = 'tok';
             tok.title = h.label || h.name;
             if (h.username !== undefined) {
-                const av = document.createElement('span');
-                av.className = 'av';
-                av.setAttribute('aria-hidden', 'true');
-                av.textContent = (h.name.trim()[0] || '?').toUpperCase();
-                tok.append(av);
+                tok.append(avatarOf(h, 'av'));
             } else {
                 tok.dataset.ms = h.duration_ms || 0;
                 const pv = document.createElement('button');
@@ -344,7 +357,8 @@
             list.replaceChildren(...hits.map(function (h, i) {
                 const li = document.createElement('li');
                 li.setAttribute('role', 'option');
-                li.textContent = h.name;
+                if (h.username !== undefined) li.append(avatarOf(h, 'sav'));
+                li.append(h.name);
                 const small = document.createElement('small');
                 small.textContent = subText(h);
                 li.append(small);
@@ -370,6 +384,9 @@
                 area.dispatchEvent(new Event('input', { bubbles: true }));
                 input.value = '';
                 window.botpanel.toast('Mention of ' + h.name + ' inserted');
+            } else if (input.dataset.navigate) {
+                input.value = h.name;
+                location.href = input.dataset.navigate + encodeURIComponent(h.id);
             } else {
                 input.value = h.label;
             }

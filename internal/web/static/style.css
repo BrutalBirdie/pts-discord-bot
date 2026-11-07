@@ -650,3 +650,6 @@ img.dava { object-fit: cover; }
 .emoji-grid button { height: 40px; border: 0; border-radius: 6px; background: none; font-size: 1.5rem; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0; }
 .emoji-grid button:hover, .emoji-grid button:focus-visible { background: var(--surface-2); }
 .emoji-grid img { width: 30px; height: 30px; object-fit: contain; }
+.suggestions li { display: flex; align-items: center; gap: 8px; }
+.suggestions .sav { flex: none; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-size: .75rem; font-weight: 700; }
+img.av { object-fit: cover; padding: 0; }

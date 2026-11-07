@@ -208,7 +208,7 @@
     <div class="side-body">
       <form class="search" method="get" action="/room/{{$g.ID}}">
         {{if eq $d.View "member"}}<input type="hidden" name="m" value="{{$d.Member.ID}}">{{else if $d.View}}<input type="hidden" name="c" value="{{$d.Channel.ID}}">{{end}}
-        <input type="search" name="mq" value="{{$d.MQuery}}" placeholder="Search members" aria-label="Search members">
+        <span class="picker"><input type="search" name="mq" value="{{$d.MQuery}}" placeholder="Search members" aria-label="Search members" autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other" data-members="{{$g.ID}}" data-navigate="/room/{{$g.ID}}?m="></span>
       </form>
       {{with $d.InVoice}}<span class="eyebrow">In voice · {{len .}}</span>
       <ul class="chs">{{range .}}<li class="chrow person-row" data-menu="menu-m{{.ID}}">

@@ -74,6 +74,7 @@ type token struct {
 	Sub    string // muted text after the name
 	Title  string
 	Avatar string // initial of a member
+	Img    string // profile picture of a member
 	Media  int64  // sounds get a preview button
 	MS     int    // length, for the live total
 }
@@ -100,7 +101,7 @@ func (e taskEditor) MemberTokens() tokenField {
 	f := tokenField{Field: "ev_member", Find: "ev_member", Label: "Members", LabelID: "ev-members", Placeholder: "Search members",
 		Empty: "Any member", Help: "Empty: any member starts the task.", Guild: e.Task.GuildID, Max: tasks.MaxEventMembers}
 	for _, m := range e.EvMembers {
-		k := token{Value: m.ID, Name: m.Name, Title: m.Name, Avatar: initial(m.Name)}
+		k := token{Value: m.ID, Name: m.Name, Title: m.Name, Avatar: initial(m.Name), Img: m.Avatar}
 		if m.Username != "" {
 			k.Sub = "@" + m.Username
 			k.Title += " (@" + m.Username + ")"

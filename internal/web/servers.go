@@ -119,6 +119,7 @@ type memberHit struct {
 	Label    string `json:"label"`
 	Name     string `json:"name"`
 	Username string `json:"username"`
+	Avatar   string `json:"avatar,omitempty"`
 }
 
 // searchMembers feeds the member pickers. Without a guild it searches all of them.
@@ -142,7 +143,7 @@ func (s *Server) searchMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	hits := []memberHit{}
 	for _, m := range bot.SearchMembers(all, q.Get("q"), 15) {
-		hits = append(hits, memberHit{ID: m.ID, Label: m.Label(), Name: m.Name, Username: m.Username})
+		hits = append(hits, memberHit{ID: m.ID, Label: m.Label(), Name: m.Name, Username: m.Username, Avatar: m.Avatar})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(hits)
