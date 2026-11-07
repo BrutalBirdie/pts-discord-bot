@@ -29,10 +29,10 @@ func TestSoundLookAndFavorite(t *testing.T) {
 		return f.do(cookie, "POST", path, v).Code
 	}
 	edit := fmt.Sprintf("/media/%d/sound", horn)
-	if code := post(f.discord, edit, "name", "horn-"+f.tag+".ogg", "emoji", "🎺", "trim_start", "0.5", "trim_end", "1.25", "own_volume", "on", "volume", "150", "next", "/room/1"); code != http.StatusSeeOther {
+	if code := post(f.discord, edit, "name", "horn-"+f.tag+".ogg", "display_name", "Big Horn", "emoji", "🎺", "trim_start", "0.5", "trim_end", "1.25", "own_volume", "on", "volume", "150", "next", "/room/1"); code != http.StatusSeeOther {
 		t.Errorf("edit by a Discord user: %d", code)
 	}
-	if m, _ := f.st.Media(ctx, horn); m.Emoji != "🎺" || m.TrimStartMS != 500 || m.TrimEndMS != 1250 || m.Volume != 150 {
+	if m, _ := f.st.Media(ctx, horn); m.Label() != "Big Horn" || m.Emoji != "🎺" || m.TrimStartMS != 500 || m.TrimEndMS != 1250 || m.Volume != 150 {
 		t.Errorf("edited: %+v", m)
 	}
 	if code := post(f.cloud, edit, "emoji", "<:salt:123456789012345678>", "icon", fmt.Sprint(f.medS)); code != http.StatusSeeOther {

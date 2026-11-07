@@ -24,6 +24,16 @@ func TestLookFavoritesAndPreviewVolume(t *testing.T) {
 	if m, _ := s.Media(ctx, horn); m.Emoji != "🎺" || m.IconID != pic || m.Volume != 80 || m.PlayMS() != 1000 {
 		t.Errorf("edit: %+v", m)
 	}
+	must(s.EditSound(ctx, SoundEdit{ID: horn, Name: "horn.ogg", DisplayName: "Big Horn", Volume: 80, TrimStartMS: 500, TrimEndMS: 1500}))
+	if hits, _ := s.SearchSounds(ctx, "", "big h", 5); len(hits) != 1 || hits[0].Label() != "Big Horn" {
+		t.Errorf("search by display name: %v", hits)
+	}
+	if hits, _ := s.FindMedia(ctx, MediaQuery{Scope: All, Search: "big"}); len(hits) != 1 {
+		t.Errorf("media search by display name: %v", hits)
+	}
+	if (Media{Name: "x.ogg"}).Label() != "x.ogg" {
+		t.Error("label without a display name")
+	}
 	if err := s.EditSound(ctx, SoundEdit{ID: horn, Name: "face.png"}); err != ErrNameTaken {
 		t.Errorf("taken name: %v", err)
 	}

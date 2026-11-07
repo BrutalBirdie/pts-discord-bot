@@ -18,6 +18,7 @@ import (
 type soundHit struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
+	File       string `json:"file,omitempty"` // the file name when the display name differs
 	DurationMS int    `json:"duration_ms"`
 }
 
@@ -31,7 +32,11 @@ func (s *Server) searchSounds(w http.ResponseWriter, r *http.Request) {
 	}
 	hits := []soundHit{}
 	for _, m := range list {
-		hits = append(hits, soundHit{ID: m.ID, Name: m.Name, DurationMS: m.DurationMS})
+		h := soundHit{ID: m.ID, Name: m.Label(), DurationMS: m.PlayMS()}
+		if m.DisplayName != "" {
+			h.File = m.Name
+		}
+		hits = append(hits, h)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(hits)
@@ -135,7 +140,7 @@ func (e taskEditor) Play(i int) playView {
 		if ref.Tag != "" {
 			k.Value, k.Name = "tag:"+ref.Tag, "random sound tagged "+ref.Tag
 		} else if m, ok := byID[ref.MediaID]; ok {
-			k.Value, k.Name, k.Media = strconv.FormatInt(m.ID, 10), m.Name, m.ID
+			k.Value, k.Name, k.Media = strconv.FormatInt(m.ID, 10), m.Label(), m.ID
 		} else {
 			k.Value, k.Name, k.Sub = strconv.FormatInt(ref.MediaID, 10), "Deleted sound", ""
 		}
@@ -164,13 +169,13 @@ func soundsByID(sounds []store.Media) map[int64]store.Media {
 func refLength(ref tasks.SoundRef, byID map[int64]store.Media, sounds []store.Media) (ms int, unknown bool) {
 	if ref.Tag == "" {
 		m := byID[ref.MediaID]
-		return m.DurationMS, m.DurationMS == 0
+		return m.PlayMS(), m.DurationMS == 0
 	}
 	found := false
 	for _, m := range sounds {
 		if slices.Contains(m.Tags, ref.Tag) {
 			found = true
-			ms = max(ms, m.DurationMS)
+			ms = max(ms, m.PlayMS())
 			unknown = unknown || m.DurationMS == 0
 		}
 	}

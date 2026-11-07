@@ -255,19 +255,19 @@
   <ul class="sounds">
     {{range .Sounds}}
     <li class="snd" data-menu="menu-s{{.ID}}">
-      <form method="post" action="/servers/{{$g.ID}}/play" data-fetch data-done="Playing {{.Name}} in {{$ch.Name}}">
+      <form method="post" action="/servers/{{$g.ID}}/play" data-fetch data-done="Playing {{.Label}} in {{$ch.Name}}">
         <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="media" value="{{.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
-        <button type="submit" class="snd-play" aria-label="Play {{.Name}} in {{$ch.Name}}">{{template "soundface" .Media}}<span class="nm">{{.Name}}</span></button>
+        <button type="submit" class="snd-play" aria-label="Play {{.Label}} in {{$ch.Name}}">{{template "soundface" .Media}}<span class="nm">{{.Label}}</span></button>
       </form>
-      <button type="button" class="snd-pv js-only" data-preview-media="{{.ID}}" data-name="{{.Name}}" data-icon="volume-2" data-no-slider data-start="{{.TrimStartMS}}" data-end="{{.TrimEndMS}}" aria-label="Preview {{.Name}}" data-tip="Preview" aria-pressed="false">{{icon "volume-2"}}</button>
+      <button type="button" class="snd-pv js-only" data-preview-media="{{.ID}}" data-name="{{.Label}}" data-icon="volume-2" data-no-slider data-start="{{.TrimStartMS}}" data-end="{{.TrimEndMS}}" aria-label="Preview {{.Label}}" data-tip="Preview" aria-pressed="false">{{icon "volume-2"}}</button>
       <form method="post" action="/media/{{.ID}}/favorite" data-fetch data-toggle>
         <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="on" value="{{if .Fav}}0{{else}}1{{end}}"><input type="hidden" name="next" value="{{$d.Self}}">
-        <button type="submit" class="snd-fav" aria-pressed="{{.Fav}}" aria-label="Favorite {{.Name}}" data-tip="Favorite">{{icon "star"}}</button>
+        <button type="submit" class="snd-fav" aria-pressed="{{.Fav}}" aria-label="Favorite {{.Label}}" data-tip="Favorite">{{icon "star"}}</button>
       </form>
-      <button type="button" class="snd-more" popovertarget="menu-s{{.ID}}" aria-label="More for {{.Name}}">{{icon "more"}}</button>
-      <div popover id="menu-s{{.ID}}" class="menu" role="menu" aria-label="{{.Name}}">
-        <span class="menu-title">{{.Name}}</span>
-        <form method="post" action="/servers/{{$g.ID}}/play" data-fetch data-done="Playing {{.Name}} in {{$ch.Name}}">
+      <button type="button" class="snd-more" popovertarget="menu-s{{.ID}}" aria-label="More for {{.Label}}">{{icon "more"}}</button>
+      <div popover id="menu-s{{.ID}}" class="menu" role="menu" aria-label="{{.Label}}">
+        <span class="menu-title">{{.Label}}</span>
+        <form method="post" action="/servers/{{$g.ID}}/play" data-fetch data-done="Playing {{.Label}} in {{$ch.Name}}">
           <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="media" value="{{.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
           <button type="submit" role="menuitem">{{icon "play"}}Play in {{$ch.Name}}</button></form>
         <a role="menuitem" href="{{$d.URL "c" $ch.ID}}&amp;edit={{.ID}}#sheet-sound">{{icon "pencil"}}Edit sound</a>

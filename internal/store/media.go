@@ -21,6 +21,7 @@ var ErrNameTaken = errors.New("name taken")
 type Media struct {
 	ID          int64
 	Name        string
+	DisplayName string // shown instead of Name when set
 	Kind        string
 	ContentType string
 	SizeBytes   int64
@@ -41,10 +42,10 @@ type Media struct {
 	UsedElse    int      // tasks and messages out of scope that reference it
 }
 
-const mediaCols = `id, name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, created_at, tags, coalesce(guild_id, ''), group_only, emoji, coalesce(icon_media_id, 0), volume, trim_start_ms, trim_end_ms`
+const mediaCols = `id, name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, created_at, tags, coalesce(guild_id, ''), group_only, emoji, coalesce(icon_media_id, 0), volume, trim_start_ms, trim_end_ms, display_name`
 
 func (m *Media) fields() []any {
-	return []any{&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &m.GuildID, &m.GroupOnly, &m.Emoji, &m.IconID, &m.Volume, &m.TrimStartMS, &m.TrimEndMS}
+	return []any{&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &m.GuildID, &m.GroupOnly, &m.Emoji, &m.IconID, &m.Volume, &m.TrimStartMS, &m.TrimEndMS, &m.DisplayName}
 }
 
 func scanMedia(r pgx.Row) (Media, error) {
@@ -66,8 +67,8 @@ func (s *Store) UpdateMedia(ctx context.Context, m Media) error {
 	if tags == nil {
 		tags = []string{}
 	}
-	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, tags = $3, guild_id = $4, group_only = $5 WHERE id = $1 AND deleted_at IS NULL`,
-		m.ID, m.Name, tags, nullable(m.GuildID), m.GroupOnly && m.GuildID != "")
+	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, tags = $3, guild_id = $4, group_only = $5, display_name = $6 WHERE id = $1 AND deleted_at IS NULL`,
+		m.ID, m.Name, tags, nullable(m.GuildID), m.GroupOnly && m.GuildID != "", m.DisplayName)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return ErrNameTaken
@@ -76,6 +77,14 @@ func (s *Store) UpdateMedia(ctx context.Context, m Media) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+// Label is the display name, or the file name without one.
+func (m Media) Label() string {
+	if m.DisplayName != "" {
+		return m.DisplayName
+	}
+	return m.Name
 }
 
 // PlayMS is how long a playback of the file lasts, 0 when unknown.
@@ -91,6 +100,7 @@ func (m Media) PlayMS() int {
 type SoundEdit struct {
 	ID          int64
 	Name        string
+	DisplayName string
 	Emoji       string
 	IconID      int64
 	Volume      int
@@ -103,8 +113,8 @@ func (s *Store) EditSound(ctx context.Context, e SoundEdit) error {
 	if e.IconID != 0 {
 		icon = &e.IconID
 	}
-	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, emoji = $3, icon_media_id = $4, volume = $5, trim_start_ms = $6, trim_end_ms = $7
-WHERE id = $1 AND deleted_at IS NULL`, e.ID, e.Name, e.Emoji, icon, e.Volume, e.TrimStartMS, e.TrimEndMS)
+	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, emoji = $3, icon_media_id = $4, volume = $5, trim_start_ms = $6, trim_end_ms = $7, display_name = $8
+WHERE id = $1 AND deleted_at IS NULL`, e.ID, e.Name, e.Emoji, icon, e.Volume, e.TrimStartMS, e.TrimEndMS, e.DisplayName)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return ErrNameTaken
@@ -208,7 +218,7 @@ SELECT ` + mediaCols + `,
   ARRAY(SELECT u.name FROM users u WHERE u.media_id = m.id AND (u.open OR ` + inScope("u.owner", "6") + `) ORDER BY u.name),
   (SELECT count(*) FROM users u WHERE u.media_id = m.id AND NOT (u.open OR ` + inScope("u.owner", "6") + `))
 FROM media m WHERE m.deleted_at IS NULL AND ` + offered("m", "7") + ` AND ` + inGroup("m", "8") + ` AND ($1 = '' OR kind = $1) AND ($2 = '' OR $2 = ANY (tags))
-  AND ($3 = '' OR name ILIKE '%' || $3 || '%' OR array_to_string(tags, ' ') ILIKE '%' || $3 || '%')
+  AND ($3 = '' OR name ILIKE '%' || $3 || '%' OR display_name ILIKE '%' || $3 || '%' OR array_to_string(tags, ' ') ILIKE '%' || $3 || '%')
 ORDER BY ` + ownFirst("m", "7") + `, kind, lower(name), id LIMIT NULLIF($4, 0) OFFSET $5`
 
 // MediaQuery filters the media library. Search matches names and tags, a zero
@@ -250,8 +260,8 @@ func (s *Store) DeleteMedia(ctx context.Context, id int64) error {
 // to itself is found by its exact name.
 func (s *Store) SearchSounds(ctx context.Context, guildID, q string, limit int) ([]Media, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+mediaCols+` FROM media m WHERE kind IN ('sound', 'video') AND deleted_at IS NULL
-  AND (name ILIKE '%' || $1 || '%' AND `+offered("m", "3")+` OR $4 <> '' AND lower(name) = lower($4))
-ORDER BY `+ownFirst("m", "3")+`, name NOT ILIKE $1 || '%', lower(name) LIMIT $2`, likeEscaper.Replace(q), limit, guildID, q)
+  AND ((name ILIKE '%' || $1 || '%' OR display_name ILIKE '%' || $1 || '%') AND `+offered("m", "3")+` OR $4 <> '' AND (lower(name) = lower($4) OR lower(display_name) = lower($4)))
+ORDER BY `+ownFirst("m", "3")+`, coalesce(nullif(display_name, ''), name) NOT ILIKE $1 || '%', lower(coalesce(nullif(display_name, ''), name)) LIMIT $2`, likeEscaper.Replace(q), limit, guildID, q)
 	if err != nil {
 		return nil, err
 	}

@@ -152,7 +152,7 @@
 
 {{define "soundsheet"}}{{$m := .M}}
 <div popover id="sheet-sound" class="sheet" aria-labelledby="sheet-sound-title">
-  {{template "sheethead" (dict "ID" "sheet-sound" "Icon" "pencil" "Title" "Edit sound" "Name" $m.Name)}}
+  {{template "sheethead" (dict "ID" "sheet-sound" "Icon" "pencil" "Title" "Edit sound" "Name" $m.Label)}}
   <form method="post" action="/media/{{$m.ID}}/sound" class="sheet-body form">
     <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="next" value="{{.Next}}">
     <section>
@@ -168,7 +168,8 @@
       <p class="hint">Drag the edges in the preview to cut the sound. The file stays as it is, only the selected part plays.</p>
     </section>
     <section>
-      <label class="field"><span>Name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="200" required></label>
+      <label class="field"><span>Display name</span><input type="text" name="display_name" value="{{$m.DisplayName}}" maxlength="80" placeholder="{{$m.Name}}"><span class="help">Optional. Shown on the soundboard, in pickers and in /play instead of the file name.</span></label>
+      <label class="field"><span>File name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="200" required></label>
       <div class="field"><span id="emoji-label">Emoji</span>
         <input type="text" name="emoji" value="{{$m.Emoji}}" maxlength="64" autocomplete="off" aria-labelledby="emoji-label" data-emoji-picker="{{json .Emojis}}">
       </div>

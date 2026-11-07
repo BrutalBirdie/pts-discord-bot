@@ -3,6 +3,8 @@ package web
 import (
 	"cmp"
 	"errors"
+	"fmt"
+	"github.com/BrutalBirdie/pts-discord-bot/internal/media"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -359,9 +361,21 @@ func (s *Server) editSound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f := r.PostForm
-	e := store.SoundEdit{ID: id, Name: strings.TrimSpace(f.Get("name")), Emoji: strings.TrimSpace(f.Get("emoji"))}
+	e := store.SoundEdit{ID: id, Name: strings.TrimSpace(f.Get("name")), DisplayName: strings.TrimSpace(f.Get("display_name")), Emoji: strings.TrimSpace(f.Get("emoji"))}
 	if e.Name == "" {
 		e.Name = m.Name
+	}
+	if e.Name != m.Name {
+		name, err := media.CleanName(e.Name)
+		if err != nil {
+			s.fail(w, r, http.StatusBadRequest, err.Error()+".")
+			return
+		}
+		e.Name = name
+	}
+	if utf8.RuneCountInString(e.DisplayName) > maxDisplayName {
+		s.fail(w, r, http.StatusBadRequest, fmt.Sprintf("The display name is longer than %d characters.", maxDisplayName))
+		return
 	}
 	if !validEmoji(e.Emoji) {
 		s.fail(w, r, http.StatusBadRequest, "Use one emoji.")

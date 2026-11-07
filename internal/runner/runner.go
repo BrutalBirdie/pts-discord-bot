@@ -308,7 +308,7 @@ func PlayTask(guildID, channelID, title string, play tasks.Step, leave bool) tas
 }
 
 func (r *Runner) PlayNow(guildID, channelID string, m store.Media, volume int, leave bool, actor string) {
-	r.RunNow(PlayTask(guildID, channelID, "Play "+m.Name, tasks.Step{MediaIDs: []int64{m.ID}, Volume: volume}, leave), actor)
+	r.RunNow(PlayTask(guildID, channelID, "Play "+m.Label(), tasks.Step{MediaIDs: []int64{m.ID}, Volume: volume}, leave), actor)
 }
 
 // soundVolume is the volume of a sound when it has its own, else the volume of the step.
@@ -583,7 +583,7 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 		pctx, cancel := context.WithTimeout(ctx, time.Duration(settings.MaxPlayMinutes)*time.Minute)
 		defer cancel()
 		for _, m := range list {
-			info := bot.Playing{Name: m.Name, By: t.Name, Duration: time.Duration(m.PlayMS()) * time.Millisecond}
+			info := bot.Playing{Name: m.Label(), By: t.Name, Duration: time.Duration(m.PlayMS()) * time.Millisecond}
 			err := r.bot.Play(pctx, guildID, r.media.Path(m.ID), clipOf(m), info, soundVolume(m, s.Volume))
 			if errors.Is(err, bot.ErrChannelEmpty) {
 				return &stepNote{"nothing played, nobody else was in the voice channel."}

@@ -60,7 +60,8 @@
     // members have a username, sounds a length
     function subText(h) {
         if (h.username !== undefined) return '@' + h.username;
-        return h.duration_ms ? clock(h.duration_ms) : 'length unknown';
+        const len = h.duration_ms ? clock(h.duration_ms) : 'length unknown';
+        return h.file ? len + ' · ' + h.file : len;
     }
 
     // play steps: the sum of the sounds, or the longest when one is picked at random

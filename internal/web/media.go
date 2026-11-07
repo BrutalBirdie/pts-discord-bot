@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/media"
@@ -322,6 +323,9 @@ func ParseTags(s string) []string {
 	return out
 }
 
+// maxDisplayName fits a soundboard tile and Discord's 100 characters of an autocomplete choice.
+const maxDisplayName = 80
+
 func (s *Server) updateMedia(w http.ResponseWriter, r *http.Request) {
 	m, ok := s.loadMedia(w, r)
 	if !ok {
@@ -343,7 +347,12 @@ func (s *Server) updateMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	only := r.PostForm.Get("group_only") == "on" && group != ""
-	err = s.store.UpdateMedia(r.Context(), store.Media{ID: m.ID, Name: name, Tags: tags, GuildID: group, GroupOnly: only})
+	display := strings.TrimSpace(r.PostForm.Get("display_name"))
+	if utf8.RuneCountInString(display) > maxDisplayName {
+		s.fail(w, r, http.StatusBadRequest, fmt.Sprintf("The display name is longer than %d characters.", maxDisplayName))
+		return
+	}
+	err = s.store.UpdateMedia(r.Context(), store.Media{ID: m.ID, Name: name, DisplayName: display, Tags: tags, GuildID: group, GroupOnly: only})
 	if errors.Is(err, store.ErrNameTaken) {
 		s.fail(w, r, http.StatusConflict, "A file named "+name+" exists already.")
 		return

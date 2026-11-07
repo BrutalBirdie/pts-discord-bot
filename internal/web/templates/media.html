@@ -54,10 +54,10 @@
     <li>
       <div class="person">
         <input type="checkbox" class="pick" name="id" value="{{.ID}}" form="group-bulk" aria-label="Select {{.Name}}">
-        {{if eq .Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Name)}}{{template "soundface" .}}
+        {{if eq .Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Label)}}{{template "soundface" .}}
         {{else}}<span class="thumb">{{if eq .Kind "image"}}<img src="/media/{{.ID}}/file" alt="" loading="lazy">{{else if eq .Kind "video"}}{{icon "film"}}{{else}}{{icon "file"}}{{end}}</span>{{end}}
         <div class="row-main">
-          <span class="row-title mono">{{.Name}}{{if gt .SizeBytes 20971520}} <span class="chip warn">{{icon "triangle-alert"}}over 20 MB for Discord messages</span>{{end}}</span>
+          <span class="row-title">{{if .DisplayName}}{{.DisplayName}} <span class="row-sub mono">{{.Name}}</span>{{else}}<span class="mono">{{.Name}}</span>{{end}}{{if gt .SizeBytes 20971520}} <span class="chip warn">{{icon "triangle-alert"}}over 20 MB for Discord messages</span>{{end}}</span>
           <span class="row-sub" data-preview-detail>{{if .DurationMS}}{{clock .DurationMS}} · {{end}}{{if .Width}}{{.Width}} × {{.Height}} · {{end}}{{bytes .SizeBytes}} · {{if or .UsedBy .UsedElse}}used by {{join .UsedBy ", "}}{{if and .UsedBy .UsedElse}}, {{end}}{{with .UsedElse}}{{plural . "task" "tasks"}} in other servers{{end}}{{else}}not used{{end}}</span>
           {{if or .Tags .GuildID}}<span class="meta">{{with $d.GroupName .}}<span class="chip">{{icon "server"}}{{.}}</span>{{end}}{{if .GroupOnly}}<span class="chip" data-tip="Not suggested to other servers">{{icon "lock"}}only this server</span>{{end}}{{range .Tags}}<a class="chip accent" href="{{$p.With "tag" .}}">{{.}}</a>{{end}}</span>{{end}}
         </div>
@@ -87,7 +87,8 @@
   <div class="sheet-body">
     <form method="post" action="/media/{{.ID}}" class="form">
       <input type="hidden" name="csrf" value="{{$csrf}}">
-      <label class="field"><span>Name</span><input type="text" name="name" value="{{.Name}}" maxlength="200" required><span class="help">Also the file name in Discord messages.</span></label>
+      <label class="field"><span>Display name</span><input type="text" name="display_name" value="{{.DisplayName}}" maxlength="80" placeholder="{{.Name}}"><span class="help">Optional. Shown on the soundboard, in pickers and in /play instead of the file name.</span></label>
+      <label class="field"><span>File name</span><input type="text" name="name" value="{{.Name}}" maxlength="200" required><span class="help">Also the file name in Discord messages.</span></label>
       <label class="field"><span>Tags</span><input type="text" name="tags" value="{{join .Tags ", "}}" list="media-tags" autocomplete="off"><span class="help">Separated by commas. A Play step or /play can pick a random sound with a tag.</span></label>
       {{template "grouppick" (dict "Groups" ($d.GroupsWith .GuildID) "Current" .GuildID "Only" .GroupOnly)}}
       <div class="btns"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>
