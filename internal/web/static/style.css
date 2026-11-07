@@ -705,9 +705,9 @@ html:not(.js) .list > li.sort-row { grid-template-columns: minmax(0, 1fr) auto; 
 .list > li.task-row { grid-template-columns: minmax(0, 1fr) auto; }
 .task-row .rowlink { padding: 0; grid-template-columns: auto minmax(0, 1fr); }
 @media (max-width: 720px) { .list > li.task-row { grid-template-columns: minmax(0, 1fr); } }
-.range-num { width: 4.2em; min-height: 32px; padding: 0 4px; border: 1px solid transparent; border-radius: 6px; background: none; color: inherit; font: inherit; font-variant-numeric: tabular-nums; text-align: right; -moz-appearance: textfield; appearance: textfield; cursor: text; }
-.range-num::-webkit-inner-spin-button, .range-num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.range-num:hover { border-color: var(--line); background: var(--bg); }
-.range-num:focus { border-color: var(--accent); background: var(--bg); }
-.range-unit { margin-left: -4px; color: var(--muted); }
+button.range-val { min-width: 3.2em; min-height: 32px; padding: 0 4px; border: 1px dashed transparent; border-radius: 6px; background: none; color: inherit; font: inherit; font-variant-numeric: tabular-nums; text-align: right; cursor: text; position: relative; }
+button.range-val:hover { border-color: var(--line); }
+input.range-num { width: 3.6em; min-width: 0; max-width: none; min-height: 32px; height: 32px; padding: 0 4px; border: 1px solid var(--accent); border-radius: 6px; background: var(--bg); color: inherit; font: inherit; font-variant-numeric: tabular-nums; text-align: right; -moz-appearance: textfield; appearance: textfield; }
+input.range-num::-webkit-inner-spin-button, input.range-num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input.range-num[hidden], button.range-val[hidden] { display: none; }
 output[hidden] { display: none; }

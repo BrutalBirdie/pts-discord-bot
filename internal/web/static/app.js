@@ -14,41 +14,64 @@
         toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600);
     }
 
-    // the value next to a slider is a number field too: click it and type, for everyone who finds sliders hard
+    // the value next to a slider can be clicked and typed, for everyone who finds sliders hard
     function enhanceRange(slider) {
         const out = slider.parentElement && slider.parentElement.querySelector('output');
         if (!out || out.dataset.enhanced) return;
         out.dataset.enhanced = '1';
+        const label = slider.getAttribute('aria-label') || (slider.closest('label') && slider.closest('label').textContent.trim().replace(/\s*\d+%$/, '')) || 'Value';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'range-val';
+        btn.dataset.tip = 'Click to type a value';
         const num = document.createElement('input');
         num.type = 'number';
         num.className = 'range-num';
         num.min = slider.min;
         num.max = slider.max;
         num.step = slider.step || '1';
-        num.value = slider.value;
         num.inputMode = 'numeric';
-        const label = slider.getAttribute('aria-label') || (slider.closest('label') && slider.closest('label').textContent.trim()) || 'Value';
+        num.hidden = true;
         num.setAttribute('aria-label', label + ' in percent');
-        const unit = document.createElement('span');
-        unit.className = 'range-unit';
-        unit.textContent = '%';
-        unit.setAttribute('aria-hidden', 'true');
-        out.hidden = true;
-        out.after(num, unit);
-        const apply = function () {
-            if (num.value === '') return;
-            const v = Math.min(Number(slider.max), Math.max(Number(slider.min), Math.round(Number(num.value))));
-            if (String(v) === slider.value) return;
-            slider.value = String(v);
-            slider.dispatchEvent(new Event('input', { bubbles: true }));
+        const show = function () {
+            btn.textContent = slider.value + '%';
+            btn.setAttribute('aria-label', label + ' ' + slider.value + '%, type a value');
         };
-        num.addEventListener('change', function () { apply(); num.value = slider.value; });
-        num.addEventListener('keydown', function (event) {
-            if (event.key === 'Enter') { event.preventDefault(); apply(); num.value = slider.value; num.select(); }
+        show();
+        out.hidden = true;
+        out.after(btn, num);
+        let editing = false;
+        const close = function (save) {
+            if (!editing) return;
+            editing = false;
+            if (save && num.value !== '') {
+                const v = Math.min(Number(slider.max), Math.max(Number(slider.min), Math.round(Number(num.value))));
+                if (String(v) !== slider.value) {
+                    slider.value = String(v);
+                    slider.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+            num.hidden = true;
+            btn.hidden = false;
+            show();
+        };
+        btn.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            editing = true;
+            num.value = slider.value;
+            btn.hidden = true;
+            num.hidden = false;
+            num.focus();
+            num.select();
         });
         num.addEventListener('click', (event) => event.stopPropagation());
-        num.addEventListener('focus', () => num.select());
-        slider.addEventListener('input', function () { if (document.activeElement !== num) num.value = slider.value; });
+        num.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') { event.preventDefault(); close(true); btn.focus(); }
+            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(false); btn.focus(); }
+        });
+        num.addEventListener('blur', () => close(true));
+        slider.addEventListener('input', show);
     }
 
     function init(root) {
