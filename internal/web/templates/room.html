@@ -128,7 +128,7 @@
       {{template "pager" $d.Paging}}
       <p class="hint">A click plays the sound in {{$ch.Name}}, the bot joins first and stays. The speaker previews it for you only, the star keeps it under Favorites. Sounds that another server keeps to itself are not listed.</p>
     </section>
-    {{template "roomtasks" (dict "ID" "tasks" "Title" (print "Tasks in " $ch.Name) "Tasks" $d.Tasks "Empty" "No task uses this channel yet.")}}
+    {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks in " $ch.Name) "Tasks" $d.Tasks "Empty" "No task uses this channel yet.")}}
     {{with $d.Edit}}{{template "soundsheet" (dict "M" . "Next" ($d.URL "c" $d.Channel.ID) "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf)}}{{end}}
 
     {{else if eq $d.View "text"}}{{$ch := $d.Channel}}
@@ -163,7 +163,7 @@
         </form>
         {{end}}
       </section>
-      {{template "roomtasks" (dict "ID" "tasks" "Title" (print "Tasks that use #" $ch.Name) "Tasks" $d.Tasks "Empty" "No task posts here yet.")}}
+      {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks that use #" $ch.Name) "Tasks" $d.Tasks "Empty" "No task posts here yet.")}}
     </div>
 
     {{else if eq $d.View "member"}}{{$m := $d.Member}}
@@ -177,8 +177,8 @@
     </div>
     {{if gt (len $d.Greets) 1}}<div class="callout warn">{{icon "triangle-alert"}}<span>{{len $d.Greets}} tasks start when {{$m.Name}} joins a voice channel: {{range $i, $t := $d.Greets}}{{if $i}}, {{end}}<a href="/tasks/{{$t.ID}}">{{$t.Name}}</a>{{end}}. Open one and leave {{$m.Name}} out there if that is too much.</span></div>{{end}}
     <div class="cols2">
-      {{template "roomtasks" (dict "ID" "tasks" "Title" (print "Tasks for " $m.Name) "Tasks" $d.Tasks "Empty" "No task names this member.")}}
-      {{template "roomtasks" (dict "ID" "except" "Title" (print "Tasks that leave " $m.Name " out") "Tasks" $d.Except "Empty" "None.")}}
+      {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks for " $m.Name) "Tasks" $d.Tasks "Empty" "No task names this member.")}}
+      {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "except" "Title" (print "Tasks that leave " $m.Name " out") "Tasks" $d.Except "Empty" "None.")}}
     </div>
     <section class="card stack" id="dm" aria-labelledby="dm-title">
       <h2 id="dm-title">Direct message to {{$m.Name}}</h2>
@@ -280,12 +280,26 @@
 </details>
 {{end}}
 
-{{define "roomtasks"}}
+{{define "roomtasks"}}{{$d := .D}}{{$csrf := .CSRF}}
 <section class="card" id="{{.ID}}" aria-label="{{.Title}}">
   <div class="sec-head"><h2>{{.Title}}</h2><span class="chip">{{len .Tasks}}</span></div>
   <ul class="list">
-    {{range .Tasks}}
-    <li class="link-row"><a class="rowlink with-lead" href="/tasks/{{.ID}}">{{if .UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}<span class="row-main"><span class="row-title">{{.Name}} {{if .Enabled}}<span class="chip ok">active</span>{{else}}<span class="chip">paused</span>{{end}}</span><span class="row-sub">{{.Trigger.Summary}}</span></span><span class="go" aria-hidden="true">{{icon "chevron-right"}}</span></a></li>
+    {{range .Tasks}}{{$run := index $d.Running .ID}}
+    <li class="task-row">
+      <a class="rowlink with-lead" href="/tasks/{{.ID}}">{{if .UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}<span class="row-main"><span class="row-title">{{.Name}} {{if $run}}<span class="chip accent">running</span>{{else if .Enabled}}<span class="chip ok">active</span>{{else if .PausedReason}}<span class="chip danger">paused after error</span>{{else}}<span class="chip">paused</span>{{end}}</span><span class="row-sub">{{.Trigger.Summary}}</span></span></a>
+      <div class="btns">
+        {{if $run}}<form method="post" action="/runs/{{$run}}/stop"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+          <button type="submit" class="ib danger" aria-label="Stop {{.Name}}" data-tip="Stop">{{icon "square"}}<span class="lbl">Stop</span></button></form>
+        {{else if .NeedsMember}}<button type="button" class="ib" aria-disabled="true" aria-label="Run {{.Name}} now" data-tip="Starts only for a member, by an event, /task or a button">{{icon "play"}}<span class="lbl">Run now</span></button>
+        {{else}}<form method="post" action="/tasks/{{.ID}}/run"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+          <button type="submit" class="ib" aria-label="Run {{.Name}} now" data-tip="Run now">{{icon "play"}}<span class="lbl">Run now</span></button></form>{{end}}
+        {{if .Enabled}}<form method="post" action="/tasks/{{.ID}}/pause"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+          <button type="submit" class="ib" aria-label="Pause {{.Name}}" data-tip="Pause">{{icon "pause"}}<span class="lbl">Pause</span></button></form>
+        {{else}}<form method="post" action="/tasks/{{.ID}}/resume"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
+          <button type="submit" class="ib" aria-label="Resume {{.Name}}" data-tip="Resume">{{icon "rotate-ccw"}}<span class="lbl">Resume</span></button></form>{{end}}
+        <a class="ib quiet" href="/tasks/{{.ID}}" aria-label="Edit {{.Name}}" data-tip="Edit">{{icon "pencil"}}<span class="lbl">Edit</span></a>
+      </div>
+    </li>
     {{else}}
     <li><span class="muted">{{.Empty}}</span></li>
     {{end}}

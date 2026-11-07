@@ -702,3 +702,12 @@ html:not(.js) .list > li.sort-row { grid-template-columns: minmax(0, 1fr) auto; 
 .mgroups, .mgroup { display: grid; gap: 4px; min-width: 0; }
 .mgroups { gap: 6px; }
 .mgroup[hidden], .person-row[hidden], [data-more][hidden] { display: none; }
+.list > li.task-row { grid-template-columns: minmax(0, 1fr) auto; }
+.task-row .rowlink { padding: 0; grid-template-columns: auto minmax(0, 1fr); }
+@media (max-width: 720px) { .list > li.task-row { grid-template-columns: minmax(0, 1fr); } }
+.range-num { width: 4.2em; min-height: 32px; padding: 0 4px; border: 1px solid transparent; border-radius: 6px; background: none; color: inherit; font: inherit; font-variant-numeric: tabular-nums; text-align: right; -moz-appearance: textfield; appearance: textfield; cursor: text; }
+.range-num::-webkit-inner-spin-button, .range-num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.range-num:hover { border-color: var(--line); background: var(--bg); }
+.range-num:focus { border-color: var(--accent); background: var(--bg); }
+.range-unit { margin-left: -4px; color: var(--muted); }
+output[hidden] { display: none; }

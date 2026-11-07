@@ -51,6 +51,7 @@ type roomData struct {
 	query   url.Values
 
 	MGroups  []memberGroup
+	Running  map[int64]int64 // run in progress per task
 	MQuery   string
 	MPage    int
 	MMore    bool
@@ -135,6 +136,17 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	all = slices.DeleteFunc(all, func(t tasks.Task) bool { return t.GuildID != g.ID })
+	last, err := s.store.LastRuns(ctx)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	d.Running = map[int64]int64{}
+	for id, run := range last {
+		if run.Status == store.RunRunning {
+			d.Running[id] = run.ID
+		}
+	}
 
 	if c := q.Get("c"); c != "" {
 		ch, chGuild, ok := s.bot.Channel(c)

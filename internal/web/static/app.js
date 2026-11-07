@@ -14,6 +14,43 @@
         toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600);
     }
 
+    // the value next to a slider is a number field too: click it and type, for everyone who finds sliders hard
+    function enhanceRange(slider) {
+        const out = slider.parentElement && slider.parentElement.querySelector('output');
+        if (!out || out.dataset.enhanced) return;
+        out.dataset.enhanced = '1';
+        const num = document.createElement('input');
+        num.type = 'number';
+        num.className = 'range-num';
+        num.min = slider.min;
+        num.max = slider.max;
+        num.step = slider.step || '1';
+        num.value = slider.value;
+        num.inputMode = 'numeric';
+        const label = slider.getAttribute('aria-label') || (slider.closest('label') && slider.closest('label').textContent.trim()) || 'Value';
+        num.setAttribute('aria-label', label + ' in percent');
+        const unit = document.createElement('span');
+        unit.className = 'range-unit';
+        unit.textContent = '%';
+        unit.setAttribute('aria-hidden', 'true');
+        out.hidden = true;
+        out.after(num, unit);
+        const apply = function () {
+            if (num.value === '') return;
+            const v = Math.min(Number(slider.max), Math.max(Number(slider.min), Math.round(Number(num.value))));
+            if (String(v) === slider.value) return;
+            slider.value = String(v);
+            slider.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        num.addEventListener('change', function () { apply(); num.value = slider.value; });
+        num.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') { event.preventDefault(); apply(); num.value = slider.value; num.select(); }
+        });
+        num.addEventListener('click', (event) => event.stopPropagation());
+        num.addEventListener('focus', () => num.select());
+        slider.addEventListener('input', function () { if (document.activeElement !== num) num.value = slider.value; });
+    }
+
     function init(root) {
         if (navigator.clipboard) {
             root.querySelectorAll('button.copy[data-copy]').forEach(function (button) {
@@ -227,6 +264,7 @@
         } else {
             btn.after(vol);
         }
+        enhanceRange(slider);
         setPreviewButton(btn, true);
         preview = { audio, btn, vol, detail };
         audio.addEventListener('ended', function () { if (preview && preview.audio === audio) stopPreview(); });
@@ -1210,4 +1248,6 @@
         window.addEventListener('resize', fit);
         document.fonts && document.fonts.ready.then(fit);
     }
+
+    document.querySelectorAll('input[type=range]').forEach(enhanceRange);
 })();
