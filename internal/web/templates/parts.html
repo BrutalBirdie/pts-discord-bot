@@ -9,18 +9,24 @@
 {{if .Session.IsAdmin}}<a href="/admin"{{if eq .Nav "admin"}} aria-current="page"{{end}}>{{icon "shield"}}<span>Admin</span>{{with .Pending}}<span class="badge accent" aria-label="{{.}} open access requests">{{.}}</span>{{end}}</a>{{end}}
 {{end}}{{end}}
 
-{{define "ownerpick"}}{{if or .Shared (gt (len .Owners) 1)}}
-<label class="field"><span>Server</span>
+{{define "grouppick"}}
+<label class="field"><span>Server group</span>
   <select name="guild">
-    {{if .Shared}}<option value="">Shared, for Cloudron users only</option>{{end}}
-    {{range .Owners}}<option value="{{.ID}}"{{if eq .ID $.Current}} selected{{end}}>{{.Name}}</option>{{end}}
+    <option value="">No server</option>
+    {{range .Groups}}<option value="{{.ID}}"{{if eq .ID $.Current}} selected{{end}}>{{.Name}}</option>{{end}}
   </select>
-  <span class="help">Discord users see only the items of the servers they manage.</span>
+  <span class="help">Optional. Tasks and messages of this server list it first. Every server can use it.</span>
 </label>
-{{else}}{{range .Owners}}<input type="hidden" name="guild" value="{{.ID}}">{{end}}{{end}}{{end}}
+<label class="switch-row"><span>Do not suggest to other servers<small>Other servers find it only by its exact name. Needs a server group.</small></span><input type="checkbox" class="switch" name="group_only"{{if .Only}} checked{{end}}></label>
+{{end}}
 
-{{define "moveopts"}}{{range .Targets}}<option value="{{.ID}}"{{if eq .ID $.Current}} selected{{end}}>{{.Name}}</option>{{end}}
-<option value=""{{if eq .Current ""}} selected{{end}}>Shared, for Cloudron users only</option>{{end}}
+{{define "groupfilter"}}{{if .Groups}}
+<div class="pills" aria-label="Server group">
+  <a href="{{.P.With "server" ""}}"{{if not .Group}} aria-current="page"{{end}}>All servers</a>
+  {{range .Groups}}<a href="{{$.P.With "server" .ID}}"{{if eq .ID $.Group}} aria-current="page"{{end}}>{{icon "server"}}{{.Name}}</a>{{end}}
+  <a href="{{.P.With "server" "none"}}"{{if eq .Group "none"}} aria-current="page"{{end}}>No server</a>
+</div>
+{{end}}{{end}}
 
 {{define "sheethead"}}
 <div class="sheet-head">

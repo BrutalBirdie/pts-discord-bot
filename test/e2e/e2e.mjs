@@ -147,7 +147,7 @@ const steps = {
         check('moved step renumbered', await page.locator('.step').nth(1).locator('button[data-move="-1"]').getAttribute('value') === 'up:1'
             && await page.locator('.step').nth(1).locator('.num').innerText() === '2'
             && await page.locator('.step').nth(0).locator('button[data-move="-1"]').isDisabled());
-        const handle = page.locator('.step').nth(2).locator('.handle');
+        const handle = page.locator('.step').nth(2).locator('.handle').first();
         const target = await page.locator('.step').nth(0).boundingBox();
         const from = await handle.boundingBox();
         await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
@@ -246,7 +246,7 @@ const steps = {
         await page.goto(BASE + '/admin');
         check('admin page refused', (await text(page)).includes('Only admins'));
         await page.goto(BASE + '/messages');
-        check('user sees shared messages', (await text(page)).includes('Friday reminder'));
+        check('user sees all messages', (await text(page)).includes('Friday reminder'));
         await save();
     },
 
@@ -441,49 +441,41 @@ const steps = {
         const only = async (path, mine, others) => {
             const res = await d.goto(BASE + path);
             const body = await d.locator('main').innerText();
-            check(`Discord user sees only server 1 on ${path}`, res.status() === 200 && mine.every((s) => body.includes(s)) && !others.some((s) => body.includes(s)), body.slice(0, 400));
+            check(`Discord user list ${path}`, res.status() === 200 && mine.every((s) => body.includes(s)) && !others.some((s) => body.includes(s)), body.slice(0, 400));
         };
         await only('/tasks', ['Guild one task', 'Every minute'], ['Guild two task']);
-        await only('/messages', ['Guild one msg'], ['Guild two msg', 'Bulk 01', 'Friday']);
-        await only('/media', ['guild-one.ogg'], ['guild-two.ogg', 'beep.ogg', 'friday_card.png']);
-        await only('/trash', ['Trash one'], ['Trash two', 'New trash']);
+        await only('/messages?q=Guild', ['Guild one msg', 'Guild two msg'], []);
+        await only('/media?q=guild', ['guild-one.ogg', 'guild-two.ogg'], []);
+        await only('/trash', ['Trash one', 'Trash two'], []);
         await d.goto(BASE + '/tasks');
         await d.getByRole('link', { name: 'Guild one task' }).first().click();
-        check('Discord user opens a task of server 1', (await d.locator('main').innerText()).includes('Guild one task') && !(await d.content()).includes('beep.ogg'));
-        for (const [path, name] of [['/tasks?q=Guild+two', 'Guild two task'], ['/messages?q=Guild+two', 'Guild two msg'], ['/messages?q=Bulk+01', 'Bulk 01']]) {
-            await page.goto(BASE + path);
-            const href = await page.getByRole('link', { name }).first().getAttribute('href');
-            check(`Discord user gets 404 for ${name}`, (await d.goto(BASE + href)).status() === 404, href);
-        }
+        check('Discord user opens a task of server 1', (await d.locator('main').innerText()).includes('Guild one task'));
+        await page.goto(BASE + '/tasks?q=Guild+two');
+        const otherTask = await page.getByRole('link', { name: 'Guild two task' }).first().getAttribute('href');
+        check('Discord user gets 404 for a task of server 2', (await d.goto(BASE + otherTask)).status() === 404, otherTask);
 
         await d.goto(BASE + '/tasks?q=Shared+horn');
         await d.getByRole('link', { name: 'Shared horn task' }).first().click();
-        const hornTask = d.url();
         t = await d.locator('main').innerText();
-        check('Discord user sees a shared sound as shared, not deleted', t.includes('Shared sound, only an admin can use it. Ask an admin to move it to this server.')
-            && !t.includes('Deleted sound') && !(await d.content()).includes('shared-horn.ogg'), t.slice(0, 600));
+        check('Discord user sees a sound without server group in the task', (await d.content()).includes('shared-horn.ogg') && !t.includes('Deleted sound'), t.slice(0, 600));
         await d.click('main .btns button[value=save]');
-        t = await d.locator('main').innerText();
-        check('Discord user cannot save a task with a shared sound', t.includes('Not saved.') && t.includes('Step 1: Shared sound'), t.slice(0, 600));
+        check('Discord user saves a task with a sound without server group', (await d.locator('main').innerText()).includes('Saved.'));
+
         await page.goto(BASE + '/media?q=shared-horn');
-        const sheetID = await page.locator('main .list button[popovertarget^="sheet-move-"]').first().getAttribute('popovertarget');
+        const sheetID = await page.locator('main .list button[popovertarget^="sheet-edit-"]').first().getAttribute('popovertarget');
         await page.locator(`button[popovertarget="${sheetID}"]`).first().click();
         const sheet = page.locator('#' + sheetID);
-        await sheet.locator('select[name=guild]').selectOption('1');
-        const move = sheet.locator('button[type=submit]');
-        check('moving a used sound warns', (await move.getAttribute('data-confirm-desc')).includes('task Shared horn task (1)'));
-        await move.click();
-        await move.click();
-        await page.waitForURL(/done=moved/);
+        await sheet.locator('select[name=guild]').selectOption('2');
+        await sheet.locator('input[name=group_only]').check();
+        await sheet.locator('button[type=submit]').click();
+        await page.waitForURL(/done=saved/);
         t = await text(page);
-        check('Cloudron user moves a shared sound to server 1', t.includes('Moved.') && t.includes('shared-horn.ogg'), t.slice(0, 600));
-        await d.goto(hornTask);
+        check('Cloudron user groups a sound with server 2, only there', t.includes('shared-horn.ogg') && t.includes('only this server'), t.slice(0, 600));
+        await d.goto(BASE + '/media?server=2');
         t = await d.locator('main').innerText();
-        check('Discord user sees the moved sound in the task', (await d.content()).includes('shared-horn.ogg') && !t.includes('Shared sound'), t.slice(0, 600));
-        await d.click('main .btns button[value=save]');
-        check('Discord user saves the task after the move', (await d.locator('main').innerText()).includes('Saved.'));
+        check('Discord user filters media by server group', t.includes('shared-horn.ogg') && t.includes('guild-two.ogg') && !t.includes('guild-one.ogg'), t.slice(0, 600));
         await page.goto(BASE + '/admin/audit?category=media');
-        check('move in the audit log', (await text(page)).includes('media.move'));
+        check('server group in the audit log', (await text(page)).includes('not suggested to other servers'));
 
         await page.goto(BASE + '/admin/access?state=approved');
         await submit('333333333333333334', 'revoke');

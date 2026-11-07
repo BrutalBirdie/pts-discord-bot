@@ -40,7 +40,7 @@ type TrashItem struct {
 	Name      string
 	DeletedAt time.Time
 	DeletedBy string
-	GuildID   string // owning server, "" for shared
+	GuildID   string // server of a task, server group of a message or file
 	Task      *tasks.Task
 	Message   *messages.Message
 	Media     *Media
@@ -59,7 +59,7 @@ func (s *Store) Trash(ctx context.Context, kind string, id int64, by string) err
 	return err
 }
 
-// ListTrash returns every trashed item, the newest deletion first.
+// ListTrash returns the trashed tasks in scope and every trashed message and file, the newest deletion first.
 func (s *Store) ListTrash(ctx context.Context, sc Scope) ([]TrashItem, error) {
 	var out []TrashItem
 	rows, err := s.pool.Query(ctx, `SELECT `+taskCols+`, deleted_at, coalesce(deleted_by, '') FROM tasks WHERE deleted_at IS NOT NULL AND `+inScope("guild_id", "1"), sc.param())
@@ -78,7 +78,7 @@ func (s *Store) ListTrash(ctx context.Context, sc Scope) ([]TrashItem, error) {
 	}
 	out = append(out, list...)
 
-	rows, err = s.pool.Query(ctx, `SELECT `+messageCols+`, deleted_at, coalesce(deleted_by, '') FROM messages WHERE deleted_at IS NOT NULL AND `+inScope("guild_id", "1"), sc.param())
+	rows, err = s.pool.Query(ctx, `SELECT `+messageCols+`, deleted_at, coalesce(deleted_by, '') FROM messages WHERE deleted_at IS NOT NULL`)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (s *Store) ListTrash(ctx context.Context, sc Scope) ([]TrashItem, error) {
 	}
 	out = append(out, list...)
 
-	rows, err = s.pool.Query(ctx, `SELECT `+mediaCols+`, deleted_at, coalesce(deleted_by, '') FROM media WHERE deleted_at IS NOT NULL AND `+inScope("guild_id", "1"), sc.param())
+	rows, err = s.pool.Query(ctx, `SELECT `+mediaCols+`, deleted_at, coalesce(deleted_by, '') FROM media WHERE deleted_at IS NOT NULL`)
 	if err != nil {
 		return nil, err
 	}
@@ -121,14 +121,13 @@ func (s *Store) ListTrash(ctx context.Context, sc Scope) ([]TrashItem, error) {
 
 func (s *Store) CountTrash(ctx context.Context, sc Scope) (int, error) {
 	var n int
-	where := `deleted_at IS NOT NULL AND ` + inScope("guild_id", "1")
-	err := s.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM tasks WHERE `+where+`)
-  + (SELECT count(*) FROM messages WHERE `+where+`)
-  + (SELECT count(*) FROM media WHERE `+where+`)`, sc.param()).Scan(&n)
+	err := s.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM tasks WHERE deleted_at IS NOT NULL AND `+inScope("guild_id", "1")+`)
+  + (SELECT count(*) FROM messages WHERE deleted_at IS NOT NULL)
+  + (SELECT count(*) FROM media WHERE deleted_at IS NOT NULL)`, sc.param()).Scan(&n)
 	return n, err
 }
 
-// TrashedName returns the name and owning server of a trashed item.
+// TrashedName returns the name and server or server group of a trashed item.
 func (s *Store) TrashedName(ctx context.Context, kind string, id int64) (name, guildID string, err error) {
 	table, err := trashTable(kind)
 	if err != nil {

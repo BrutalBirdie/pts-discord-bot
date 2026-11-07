@@ -162,32 +162,13 @@ func TestDiscordUserIsLimitedToApprovedServers(t *testing.T) {
 			hidden = append(hidden, req{"POST", "/tasks/" + tid + "/" + action, post()})
 		}
 	}
-	for _, mid := range []string{id(f.msgB), id(f.msgS)} {
-		hidden = append(hidden, req{"GET", "/messages/" + mid, nil}, req{"POST", "/messages/" + mid, post("op", "save", "guild", f.a, "name", "x", "content", "x")})
-		for _, action := range []string{"send", "duplicate", "delete"} {
-			hidden = append(hidden, req{"POST", "/messages/" + mid + "/" + action, post("channel", "1")})
-		}
-	}
-	for _, mid := range []string{id(f.medB), id(f.medS)} {
-		hidden = append(hidden, req{"GET", "/media/" + mid + "/file", nil}, req{"POST", "/media/" + mid, post("name", "x.png")},
-			req{"POST", "/media/" + mid + "/play", post("channel", "1")}, req{"POST", "/media/" + mid + "/delete", post()})
-	}
 	hidden = append(hidden,
-		req{"GET", "/media/" + id(f.trashS) + "/file", nil},
-		req{"POST", "/trash/message/" + id(f.trashB) + "/restore", post()},
-		req{"POST", "/trash/media/" + id(f.trashS) + "/restore", post()},
 		req{"GET", "/servers/" + f.b, nil},
 		req{"POST", "/servers/" + f.b + "/stop", post()}, req{"POST", "/servers/" + f.b + "/leave", post()},
 		req{"POST", "/servers/" + f.b + "/join", post("channel", "1")}, req{"POST", "/servers/" + f.b + "/play", post("channel", "1", "media", id(f.medA))},
-		// creating or moving items to server B, or making them shared
 		req{"POST", "/tasks/new", post("op", "save", "guild", f.b, "name", "new task", "kind", "manual")},
 		req{"POST", "/tasks/new", post("op", "reload", "guild", f.b)},
 		req{"POST", "/tasks/" + id(f.taskA), post("op", "save", "guild", f.b, "name", "moved", "kind", "manual")},
-		req{"POST", "/messages/new", post("op", "save", "guild", f.b, "name", "new msg", "content", "x")},
-		req{"POST", "/messages/new", post("op", "save", "guild", "", "name", "new msg", "content", "x")},
-		req{"POST", "/messages/" + id(f.msgA), post("op", "save", "guild", f.b, "name", "moved", "content", "x")},
-		req{"POST", "/media/url", post("guild", f.b, "url", "https://example.com/x.ogg")},
-		req{"POST", "/media/url", post("guild", "", "url", "https://example.com/x.ogg")},
 	)
 	for _, c := range hidden {
 		if rec := f.do(f.discord, c.method, c.target, c.form); rec.Code != http.StatusNotFound {
@@ -195,6 +176,18 @@ func TestDiscordUserIsLimitedToApprovedServers(t *testing.T) {
 		}
 	}
 
+	// grouping items with a server the user does not manage
+	for _, c := range []req{
+		{"POST", "/messages/new", post("op", "save", "guild", f.b, "name", "new msg", "content", "x")},
+		{"POST", "/messages/" + id(f.msgA), post("op", "save", "guild", f.b, "name", "moved", "content", "x")},
+		{"POST", "/media/url", post("guild", f.b, "url", "https://example.com/x.ogg")},
+		{"POST", "/media/" + id(f.medS), post("name", "x.png", "guild", f.b)},
+		{"POST", "/media/group", post("guild", f.b, "id", id(f.medS))},
+	} {
+		if rec := f.do(f.discord, c.method, c.target, c.form); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Pick one of your servers.") {
+			t.Errorf("%s %s %v: %d, want 400", c.method, c.target, c.form, rec.Code)
+		}
+	}
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	mw.WriteField("csrf", "tok")
@@ -208,8 +201,8 @@ func TestDiscordUserIsLimitedToApprovedServers(t *testing.T) {
 	up.AddCookie(&http.Cookie{Name: sessionCookie, Value: f.discord})
 	rec := httptest.NewRecorder()
 	f.s.Handler().ServeHTTP(rec, up)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("upload to server B: %d", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("upload grouped with server B: %d", rec.Code)
 	}
 
 	for _, c := range []req{{"GET", "/admin", nil}, {"GET", "/admin/access", nil}, {"POST", "/trash/message/" + id(f.trashA) + "/purge", post()},
@@ -220,46 +213,54 @@ func TestDiscordUserIsLimitedToApprovedServers(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	inB := store.GuildScope(false, f.b)
-	if list, _ := f.st.ListTasks(ctx, inB); len(list) != 1 {
+	if list, _ := f.st.ListTasks(ctx, store.GuildScope(f.b)); len(list) != 1 {
 		t.Errorf("tasks in B: %d", len(list))
-	}
-	if list, _ := f.st.ListMessages(ctx, inB); len(list) != 1 {
-		t.Errorf("messages in B: %d", len(list))
-	}
-	if list, _ := f.st.ListMedia(ctx, inB, ""); len(list) != 1 {
-		t.Errorf("media in B: %d", len(list))
 	}
 	if task, _ := f.st.Task(ctx, f.taskA); task.GuildID != f.a {
 		t.Errorf("task moved to %s", task.GuildID)
 	}
+	if m, _ := f.st.Media(ctx, f.medS); m.GuildID != "" {
+		t.Errorf("file grouped with %s", m.GuildID)
+	}
 
 	q := "?q=" + f.tag
-	visible := map[string]string{"/tasks" + q: "task-inA", "/messages" + q: "msg-inA", "/media" + q: "media-inA", "/trash" + q: "trash-inA", "/": "", "/servers": "",
-		"/tasks/" + id(f.taskA): "task-inA", "/messages/" + id(f.msgA): "msg-inA", "/messages/new": "", "/tasks/new": "", "/sounds" + q: "", "/members?q=a": ""}
-	for target, want := range visible {
+	for target, want := range map[string][]string{
+		"/tasks" + q:                           {"task-inA"},
+		"/messages" + q:                        {"msg-inA", "msg-inB", "msg-shared"},
+		"/media" + q:                           {"media-inA", "media-inB", "media-shared"},
+		"/trash" + q:                           {"trash-inA", "trash-inB", "sound-shared"},
+		"/messages/" + id(f.msgB):              {"msg-inB"},
+		"/tasks/" + id(f.taskA):                {"task-inA"},
+		"/":                                    {""},
+		"/servers":                             {""},
+		"/messages/new":                        {""},
+		"/tasks/new":                           {""},
+		"/members?q=a":                         {""},
+		"/sounds?guild=" + f.b + "&q=" + f.tag: {"[]"},
+	} {
 		rec := f.do(f.discord, "GET", target, nil)
 		body := rec.Body.String()
-		if rec.Code != http.StatusOK || !strings.Contains(body, want) {
-			t.Errorf("GET %s: %d, missing %q", target, rec.Code, want)
-		}
-		for _, other := range []string{"inB-" + f.tag, "shared-" + f.tag} {
-			if strings.Contains(body, other) {
-				t.Errorf("GET %s shows %s", target, other)
+		for _, w := range want {
+			if rec.Code != http.StatusOK || !strings.Contains(body, w) {
+				t.Errorf("GET %s: %d, missing %q", target, rec.Code, w)
 			}
+		}
+		if strings.Contains(body, "task-inB-"+f.tag) {
+			t.Errorf("GET %s shows the task of B", target)
 		}
 		if strings.Contains(body, `href="/admin"`) {
 			t.Errorf("GET %s: admin link", target)
 		}
 	}
-	if rec := f.do(f.discord, "GET", "/media/"+id(f.medA)+"/file", nil); rec.Code != http.StatusOK {
-		t.Errorf("file of A: %d", rec.Code)
+	for _, mid := range []int64{f.medA, f.medB, f.medS} {
+		if rec := f.do(f.discord, "GET", "/media/"+id(mid)+"/file", nil); rec.Code != http.StatusOK {
+			t.Errorf("file %d: %d", mid, rec.Code)
+		}
 	}
-	if rec := f.do(f.discord, "GET", "/sounds?guild="+f.b+"&q="+f.tag, nil); strings.TrimSpace(rec.Body.String()) != "[]" {
-		t.Errorf("sounds of B: %s", rec.Body.String())
+	if rec := f.do(f.discord, "POST", "/trash/message/"+id(f.trashB)+"/restore", post()); rec.Code != http.StatusSeeOther {
+		t.Errorf("restore a message of B: %d", rec.Code)
 	}
 
-	// Cloudron users see everything as before
 	for target, want := range map[string]string{"/tasks?q=" + f.tag: "task-inB", "/messages?q=" + f.tag: "msg-shared", "/media?q=" + f.tag: "media-inB", "/messages/" + id(f.msgB): "msg-inB"} {
 		if rec := f.do(f.cloud, "GET", target, nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) {
 			t.Errorf("cloudron GET %s: %d, missing %q", target, rec.Code, want)

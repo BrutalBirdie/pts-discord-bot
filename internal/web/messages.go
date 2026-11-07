@@ -14,20 +14,28 @@ import (
 
 type messageRow struct {
 	Message  messages.Message
-	Guild    string // name of the owning server
+	Guild    string // name of the server group
 	UsedBy   []string
 	UsedElse int // tasks in servers the user does not see
 }
 
 type messagesData struct {
 	Rows   []messageRow
+	Groups []bot.Guild
+	Group  string // list filter: a server, store.NoGroup or "" for all
 	Paging paging
 }
 
 func (s *Server) messagesList(w http.ResponseWriter, r *http.Request) {
-	d := messagesData{Paging: newPaging(r)}
+	d := messagesData{Paging: newPaging(r), Group: r.URL.Query().Get("server")}
+	d.Paging.Keep("server", d.Group)
 	sc := sessionFrom(r).Scope()
-	list, err := s.store.FindMessages(r.Context(), sc, d.Paging.Query, d.Paging.Limit(), d.Paging.Offset())
+	var err error
+	if d.Groups, err = s.groupChoices(r.Context(), r, ""); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	list, err := s.store.FindMessages(r.Context(), store.MessageQuery{Group: d.Group, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -39,6 +47,9 @@ func (s *Server) messagesList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		d.Rows = append(d.Rows, messageRow{Message: m, Guild: s.ownerName(m.GuildID), UsedBy: used, UsedElse: others})
+	}
+	if d.Group != "" && d.Group != store.NoGroup && !slices.ContainsFunc(d.Groups, func(g bot.Guild) bool { return g.ID == d.Group }) {
+		d.Groups = append(d.Groups, bot.Guild{ID: d.Group, Name: s.bot.GuildName(d.Group)})
 	}
 	s.render(w, r, http.StatusOK, "messages", d)
 }
@@ -58,25 +69,23 @@ type messageEditor struct {
 	ByID       map[int64]store.Media
 	UsedBy     []string
 	UsedElse   int
-	Owners     []bot.Guild // servers the message can belong to
-	Shared     bool        // the message can be shared by all servers
+	Groups     []bot.Guild // servers the message can be grouped with
 	Channels   []guildChannels
 	Names      map[string]string // user id to name, for mentions in the preview
 	FileBytes  int64
 	Limits     map[string]int
 	Embeddable map[int64]bool
-	Move       bool        // Cloudron users can move the message to another server
-	Targets    []bot.Guild // servers to move to
-	MoveWarn   string
 }
 
 func (s *Server) messageEditor(r *http.Request, m messages.Message, isNew bool) (messageEditor, error) {
 	e := messageEditor{Message: m, New: isNew, ByID: map[int64]store.Media{}, Names: map[string]string{}, Embeddable: map[int64]bool{},
 		Limits: map[string]int{"content": messages.MaxContent, "embeds": messages.MaxEmbeds, "embedTotal": messages.MaxEmbedTotal, "files": messages.MaxFiles}}
 	sess := sessionFrom(r)
-	e.Owners, e.Shared = s.ownerChoices(r, m.GuildID), !sess.Discord()
 	var err error
-	if e.Media, err = s.store.ListMedia(r.Context(), sess.ItemScope(m.GuildID), ""); err != nil {
+	if e.Groups, err = s.groupChoices(r.Context(), r, m.GuildID); err != nil {
+		return e, err
+	}
+	if e.Media, err = s.messageMedia(r, m); err != nil {
 		return e, err
 	}
 	for _, md := range e.Media {
@@ -91,20 +100,9 @@ func (s *Server) messageEditor(r *http.Request, m messages.Message, isNew bool) 
 			return e, err
 		}
 	}
-	if e.Move = !isNew && !sess.Discord(); e.Move {
-		if e.Targets, err = s.moveTargets(r.Context()); err != nil {
-			return e, err
-		}
-		uses, err := s.store.MessageUses(r.Context(), m.ID)
-		if err != nil {
-			return e, err
-		}
-		e.MoveWarn = s.movingWarning(uses)
-	}
-	for _, g := range s.guilds(r) {
-		if m.GuildID != "" && g.ID != m.GuildID {
-			continue
-		}
+	gs := s.guilds(r)
+	slices.SortStableFunc(gs, func(a, b bot.Guild) int { return cmpBool(a.ID != m.GuildID, b.ID != m.GuildID) })
+	for _, g := range gs {
 		gc := guildChannels{Guild: g}
 		for _, c := range s.bot.Channels(g.ID) {
 			if !c.Voice && c.Usable {
@@ -119,6 +117,34 @@ func (s *Server) messageEditor(r *http.Request, m messages.Message, isNew bool) 
 		}
 	}
 	return e, nil
+}
+
+// messageMedia are the files the editor of m offers: those offered to its
+// server group, its own first, and those it attaches.
+func (s *Server) messageMedia(r *http.Request, m messages.Message) ([]store.Media, error) {
+	list, err := s.store.ListMedia(r.Context(), m.GuildID, "")
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for _, id := range attachedIDs(m) {
+		if !slices.ContainsFunc(list, func(md store.Media) bool { return md.ID == id }) {
+			ids = append(ids, id)
+		}
+	}
+	more, err := s.store.MediaByIDs(r.Context(), ids)
+	return append(list, more...), err
+}
+
+// cmpBool orders false before true.
+func cmpBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	}
+	return -1
 }
 
 func embeddable(name string) bool {
@@ -162,29 +188,12 @@ func (s *Server) newMessage(w http.ResponseWriter, r *http.Request) {
 	s.renderMessage(w, r, http.StatusOK, m, true, nil, false, "")
 }
 
-// ownerName is the name of the server owning a message or file, empty for shared ones.
+// ownerName is the name of the server group of a message or file, empty for none.
 func (s *Server) ownerName(guildID string) string {
 	if guildID == "" {
 		return ""
 	}
 	return s.bot.GuildName(guildID)
-}
-
-// ownerChoices are the servers a message or file may belong to, including
-// the current one and the approved ones while the bot is not connected.
-func (s *Server) ownerChoices(r *http.Request, current string) []bot.Guild {
-	sess := sessionFrom(r)
-	gs := s.guilds(r)
-	extra := slices.Clone(sess.Granted)
-	if current != "" && sess.CanGuild(current) {
-		extra = append(extra, current)
-	}
-	for _, id := range extra {
-		if !slices.ContainsFunc(gs, func(g bot.Guild) bool { return g.ID == id }) {
-			gs = append(gs, bot.Guild{ID: id, Name: s.bot.GuildName(id)})
-		}
-	}
-	return gs
 }
 
 // otherServers stands in for the names of users the viewer may not see.
@@ -195,17 +204,6 @@ func otherServers(n int) string {
 	return fmt.Sprintf("%d tasks in other servers", n)
 }
 
-// validOwner tells whether the user may give a message or file to guildID, "" being shared.
-func validOwner(sess *store.Session, guildID string) bool {
-	if guildID == "" {
-		return !sess.Discord()
-	}
-	if _, ok := bot.ParseID(guildID); !ok {
-		return false
-	}
-	return sess.CanGuild(guildID)
-}
-
 func (s *Server) loadMessage(w http.ResponseWriter, r *http.Request) (messages.Message, bool) {
 	id, ok := pathID(r)
 	if !ok {
@@ -213,9 +211,6 @@ func (s *Server) loadMessage(w http.ResponseWriter, r *http.Request) (messages.M
 		return messages.Message{}, false
 	}
 	m, err := s.store.Message(r.Context(), id)
-	if err == nil && !sessionFrom(r).Scope().Has(m.GuildID) {
-		err = store.ErrNotFound
-	}
 	if err != nil {
 		s.storeErr(w, r, err)
 		return m, false
@@ -232,6 +227,7 @@ func (s *Server) message(w http.ResponseWriter, r *http.Request) {
 func parseMessage(r *http.Request) messages.Message {
 	f := r.PostForm
 	m := messages.Message{Name: strings.TrimSpace(f.Get("name")), Content: strings.ReplaceAll(f.Get("content"), "\r\n", "\n"), Embeds: []messages.Embed{}, GuildID: f.Get("guild")}
+	m.GroupOnly = m.GuildID != "" && f.Get("group_only") == "on"
 	n, _ := strconv.Atoi(f.Get("embeds"))
 	for i := range min(max(n, 0), messages.MaxEmbeds+1) {
 		p := "e" + strconv.Itoa(i) + "."
@@ -298,15 +294,16 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r)
 	isNew := r.PathValue("id") == ""
 	m := parseMessage(r)
+	var old messages.Message
 	if !isNew {
-		old, ok := s.loadMessage(w, r)
-		if !ok {
+		var ok bool
+		if old, ok = s.loadMessage(w, r); !ok {
 			return
 		}
 		m.ID = old.ID
 	}
-	if !validOwner(sess, m.GuildID) {
-		s.notFound(w, r)
+	if !validGroup(sess, m.GuildID, old.GuildID) {
+		s.fail(w, r, http.StatusBadRequest, "Pick one of your servers.")
 		return
 	}
 	if op := r.PostForm.Get("op"); op != "save" {
@@ -315,14 +312,14 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	problems := m.Problems()
-	usable, err := s.store.ListMedia(ctx, sess.ItemScope(m.GuildID), "")
+	attached, err := s.store.MediaByIDs(ctx, attachedIDs(m))
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
 	for _, id := range attachedIDs(m) {
-		if !slices.ContainsFunc(usable, func(md store.Media) bool { return md.ID == id }) {
-			problems = append(problems, fmt.Sprintf("File %d was deleted from the media library or belongs to another server, remove it here.", id))
+		if !slices.ContainsFunc(attached, func(md store.Media) bool { return md.ID == id }) {
+			problems = append(problems, fmt.Sprintf("File %d was deleted from the media library, remove it here.", id))
 		}
 	}
 	if len(problems) > 0 {
@@ -355,7 +352,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	channelID := r.PostForm.Get("channel")
 	ch, guildID, ok := s.bot.Channel(channelID)
-	if !ok || ch.Voice || !sessionFrom(r).CanGuild(guildID) || m.GuildID != "" && m.GuildID != guildID {
+	if !ok || ch.Voice || !sessionFrom(r).CanGuild(guildID) {
 		s.renderMessage(w, r, http.StatusBadRequest, m, false, nil, false, "Pick a text channel.")
 		return
 	}

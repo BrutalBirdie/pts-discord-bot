@@ -5,6 +5,7 @@
   <div class="btns"><a class="ib primary with-label" href="/messages/new">{{icon "plus"}}<span class="lbl">New message</span></a></div>
 </div>
 {{template "search" (dict "P" $d.Paging "Label" "Search messages" "Placeholder" "Name or text")}}
+{{template "groupfilter" (dict "P" $d.Paging "Groups" $d.Groups "Group" $d.Group)}}
 <section class="card">
   <ul class="list">
     {{range $d.Rows}}{{$m := .Message}}
@@ -18,6 +19,7 @@
             {{with $m.Embeds}}<span class="chip">{{plural (len .) "embed" "embeds"}}</span>{{end}}
             {{with $m.Files}}<span class="chip">{{icon "paperclip"}}{{plural (len .) "file" "files"}}</span>{{end}}
             {{with .Guild}}<span class="chip">{{icon "server"}}{{.}}</span>{{end}}
+            {{if $m.GroupOnly}}<span class="chip" data-tip="Not suggested to other servers">{{icon "lock"}}only this server</span>{{end}}
             {{range .UsedBy}}<span class="chip accent">{{icon "calendar"}}{{.}}</span>{{end}}
             {{with .UsedElse}}<span class="chip">{{icon "calendar"}}{{plural . "task" "tasks"}} in other servers</span>{{end}}
           </span>

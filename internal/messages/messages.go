@@ -49,7 +49,8 @@ type Message struct {
 	Content   string
 	Embeds    []Embed
 	Files     []int64 // media ids sent as attachments
-	GuildID   string  // owning server, "" for shared
+	GuildID   string  // server group, "" for none
+	GroupOnly bool    // not suggested to other servers than GuildID
 	UpdatedBy string
 	UpdatedAt time.Time
 }

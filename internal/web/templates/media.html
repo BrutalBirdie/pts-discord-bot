@@ -7,7 +7,7 @@
 
 <form method="post" action="/media" enctype="multipart/form-data" class="drop" data-upload>
   <input type="hidden" name="csrf" value="{{$csrf}}">
-  {{template "ownerpick" (dict "Owners" $d.Owners "Shared" $d.Shared "Current" "")}}
+  {{template "grouppick" (dict "Groups" $d.Groups "Current" $d.DefaultGroup)}}
   {{icon "upload"}}
   <strong>Upload files</strong>
   <span class="small muted">Sounds in any format ffmpeg reads, images, videos and other files, up to {{$d.MaxUploadMB}} MB each. Discord accepts 20 MB per file in messages, more with server boosts.</span>
@@ -22,7 +22,7 @@
     <label class="field"><span>Link to the file</span><input type="url" name="url" placeholder="https://example.com/sound.ogg" required></label>
     <label class="field"><span>Name, optional</span><input type="text" name="name" placeholder="From the link"></label>
   </div>
-  {{template "ownerpick" (dict "Owners" $d.Owners "Shared" $d.Shared "Current" "")}}
+  {{template "grouppick" (dict "Groups" $d.Groups "Current" $d.DefaultGroup)}}
   <div class="btns"><button type="submit" class="ib with-label">{{icon "download"}}<span class="lbl">Add</span></button><span class="hint">Direct links to files only, not video pages like YouTube.</span></div>
 </form>
 
@@ -36,35 +36,36 @@
   <a href="{{$p.With "kind" "file"}}"{{if eq $d.Kind "file"}} aria-current="page"{{end}}>Files {{index $d.Counts "file"}}</a>
   {{range $d.Tags}}<a href="{{$p.With "tag" .}}"{{if eq . $d.Tag}} aria-current="page"{{end}}>{{icon "hash"}}{{.}}</a>{{end}}
 </div>
+{{template "groupfilter" (dict "P" $p "Groups" $d.Groups "Group" $d.Group)}}
 
 <section class="card">
-  {{if and $d.Move $d.Items}}
-  <form method="post" action="/media/move" id="move-bulk" class="btns bulk">
+  {{if $d.Items}}
+  <form method="post" action="/media/group" id="group-bulk" class="btns bulk">
     <input type="hidden" name="csrf" value="{{$csrf}}">
     <input type="hidden" name="next" value="{{$p.Self}}">
-    <select name="guild" aria-label="Server to move the selected files to">{{template "moveopts" (dict "Targets" $d.Targets "Current" "-")}}</select>
-    <button type="submit" class="ib with-label" data-confirm-desc="{{$d.BulkWarn}}">{{icon "server"}}<span class="lbl">Move selected to server</span></button>
+    <select name="guild" aria-label="Server group for the selected files"><option value="">No server</option>{{range $d.Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+    <label class="inline small"><input type="checkbox" name="group_only">not suggested to other servers</label>
+    <button type="submit" class="ib with-label">{{icon "server"}}<span class="lbl">Set server group of selected</span></button>
   </form>
   {{end}}
   <ul class="list">
     {{range $d.Items}}
     <li>
       <div class="person">
-        {{if $d.Move}}<input type="checkbox" class="pick" name="id" value="{{.ID}}" form="move-bulk" aria-label="Select {{.Name}}">{{end}}
+        <input type="checkbox" class="pick" name="id" value="{{.ID}}" form="group-bulk" aria-label="Select {{.Name}}">
         {{if eq .Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Name "Vol" ($d.Vol .ID))}}
         {{else}}<span class="thumb">{{if eq .Kind "image"}}<img src="/media/{{.ID}}/file" alt="" loading="lazy">{{else if eq .Kind "video"}}{{icon "film"}}{{else}}{{icon "file"}}{{end}}</span>{{end}}
         <div class="row-main">
           <span class="row-title mono">{{.Name}}{{if gt .SizeBytes 20971520}} <span class="chip warn">{{icon "triangle-alert"}}over 20 MB for Discord messages</span>{{end}}</span>
-          <span class="row-sub" data-preview-detail>{{if .DurationMS}}{{clock .DurationMS}} · {{end}}{{if .Width}}{{.Width}} × {{.Height}} · {{end}}{{bytes .SizeBytes}} · {{if or .UsedBy .UsedElse}}used by {{join .UsedBy ", "}}{{if and .UsedBy .UsedElse}}, {{end}}{{with .UsedElse}}{{plural . "task or message" "tasks or messages"}} in other servers{{end}}{{else}}not used{{end}}</span>
-          {{if or .Tags .GuildID}}<span class="meta">{{with $d.Owner .}}<span class="chip">{{icon "server"}}{{.}}</span>{{end}}{{range .Tags}}<a class="chip accent" href="{{$p.With "tag" .}}">{{.}}</a>{{end}}</span>{{end}}
+          <span class="row-sub" data-preview-detail>{{if .DurationMS}}{{clock .DurationMS}} · {{end}}{{if .Width}}{{.Width}} × {{.Height}} · {{end}}{{bytes .SizeBytes}} · {{if or .UsedBy .UsedElse}}used by {{join .UsedBy ", "}}{{if and .UsedBy .UsedElse}}, {{end}}{{with .UsedElse}}{{plural . "task" "tasks"}} in other servers{{end}}{{else}}not used{{end}}</span>
+          {{if or .Tags .GuildID}}<span class="meta">{{with $d.GroupName .}}<span class="chip">{{icon "server"}}{{.}}</span>{{end}}{{if .GroupOnly}}<span class="chip" data-tip="Not suggested to other servers">{{icon "lock"}}only this server</span>{{end}}{{range .Tags}}<a class="chip accent" href="{{$p.With "tag" .}}">{{.}}</a>{{end}}</span>{{end}}
         </div>
       </div>
       <div class="btns">
         {{if or (eq .Kind "sound") (eq .Kind "video")}}
         <button type="button" class="ib" popovertarget="sheet-play-{{.ID}}" aria-label="Play {{.Name}} in a voice channel" data-tip="Play in a voice channel">{{icon "volume-2"}}<span class="lbl">Play</span></button>
         {{end}}
-        <button type="button" class="ib" popovertarget="sheet-edit-{{.ID}}" aria-label="Rename or tag {{.Name}}" data-tip="Name and tags">{{icon "pencil"}}<span class="lbl">Edit</span></button>
-        {{if $d.Move}}<button type="button" class="ib" popovertarget="sheet-move-{{.ID}}" aria-label="Move {{.Name}} to a server" data-tip="Move to server">{{icon "server"}}<span class="lbl">Move</span></button>{{end}}
+        <button type="button" class="ib" popovertarget="sheet-edit-{{.ID}}" aria-label="Edit {{.Name}}" data-tip="Name, tags and server group">{{icon "pencil"}}<span class="lbl">Edit</span></button>
         <a class="ib" href="/media/{{.ID}}/file?download=1" aria-label="Download {{.Name}}" data-tip="Download">{{icon "download"}}<span class="lbl">Download</span></a>
         <form method="post" action="/media/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$csrf}}">
           <button type="submit" class="ib danger" aria-label="Delete {{.Name}}" data-tip="Delete"{{if or .UsedBy .UsedElse}} disabled{{end}} data-confirm-desc="{{if $.TrashDays}}Moves {{.Name}} to the Trash.{{else}}Removes {{.Name}} right away. This cannot be undone.{{end}}"{{if not $.TrashDays}} data-irreversible{{end}}>{{icon "trash-2"}}<span class="lbl">Delete</span></button></form>
@@ -86,26 +87,12 @@
       <input type="hidden" name="csrf" value="{{$csrf}}">
       <label class="field"><span>Name</span><input type="text" name="name" value="{{.Name}}" maxlength="200" required><span class="help">Also the file name in Discord messages.</span></label>
       <label class="field"><span>Tags</span><input type="text" name="tags" value="{{join .Tags ", "}}" list="media-tags" autocomplete="off"><span class="help">Separated by commas. A Play step or /play can pick a random sound with a tag.</span></label>
+      {{template "grouppick" (dict "Groups" ($d.GroupsWith .GuildID) "Current" .GuildID "Only" .GroupOnly)}}
       <div class="btns"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>
     </form>
   </div>
 </div>
 {{end}}
-{{if $d.Move}}{{range $d.Items}}
-<div popover id="sheet-move-{{.ID}}" class="sheet" aria-labelledby="sheet-move-{{.ID}}-title">
-  {{template "sheethead" (dict "ID" (print "sheet-move-" .ID) "Icon" "server" "Title" "Move to server" "Name" .Name)}}
-  <div class="sheet-body">
-    <form method="post" action="/media/{{.ID}}/move" class="form">
-      <input type="hidden" name="csrf" value="{{$csrf}}">
-      <input type="hidden" name="next" value="{{$p.Self}}">
-      <label class="field"><span>Server</span><select name="guild">{{template "moveopts" (dict "Targets" $d.Targets "Current" .GuildID)}}</select>
-        <span class="help">Discord users see only the files of the servers they manage. Shared files are for Cloudron users only.</span></label>
-      {{with index $d.Warn .ID}}<p class="hint over">{{.}}</p>{{end}}
-      <div class="btns"><button type="submit" class="ib primary with-label"{{with index $d.Warn .ID}} data-confirm-desc="{{.}}"{{end}}>{{icon "server"}}<span class="lbl">Move</span></button></div>
-    </form>
-  </div>
-</div>
-{{end}}{{end}}
 <datalist id="media-tags">{{range $d.Tags}}<option value="{{.}}">{{end}}</datalist>
 {{range $d.Items}}{{if or (eq .Kind "sound") (eq .Kind "video")}}
 <div popover id="sheet-play-{{.ID}}" class="sheet" aria-labelledby="sheet-play-{{.ID}}-title">

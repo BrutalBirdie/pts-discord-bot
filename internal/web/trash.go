@@ -88,19 +88,19 @@ func (s *Server) trash(w http.ResponseWriter, r *http.Request) {
 		row := trashRow{TrashItem: it, DaysLeft: daysLeft(it.DeletedAt, d.Days, now)}
 		if it.Kind == store.TrashMedia {
 			if taken == nil {
-				live, err := s.store.ListMedia(ctx, sc, "")
+				live, err := s.store.ListMedia(ctx, "", "")
 				if err != nil {
 					s.internalError(w, r, err)
 					return
 				}
 				taken = make(map[string]bool, len(live))
 				for _, m := range live {
-					taken[m.GuildID+"/"+m.Name] = true
+					taken[m.Name] = true
 				}
 			}
-			if owner := it.GuildID + "/"; taken[owner+it.Name] {
+			if taken[it.Name] {
 				for n := 1; ; n++ {
-					if name := store.RestoredName(it.Name, n); !taken[owner+name] {
+					if name := store.RestoredName(it.Name, n); !taken[name] {
 						row.RestoreAs = name
 						break
 					}
@@ -175,7 +175,7 @@ func (s *Server) trashedItem(w http.ResponseWriter, r *http.Request) (kind strin
 		return
 	}
 	name, guildID, err := s.store.TrashedName(r.Context(), kind, id)
-	if err == nil && !sessionFrom(r).Scope().Has(guildID) {
+	if err == nil && kind == store.TrashTask && !sessionFrom(r).Scope().Has(guildID) {
 		err = store.ErrNotFound
 	}
 	if err != nil {

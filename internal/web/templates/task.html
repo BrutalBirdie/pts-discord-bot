@@ -16,11 +16,6 @@
 {{with $t.PausedReason}}<div class="callout danger">{{icon "circle-x"}}<span>Paused after an error. {{.}} Saving the task resumes it.</span></div>{{end}}
 {{if $e.Problems}}<div class="callout danger">{{icon "triangle-alert"}}<div><strong>Not saved.</strong><ul class="problems">{{range $e.Problems}}<li>{{.}}</li>{{end}}</ul></div></div>
 {{else if $e.Unsaved}}<div class="callout info">{{icon "info"}}<span>Changes are not saved yet.</span></div>{{end}}
-{{with $e.Claim.Names}}<div class="callout info">{{icon "info"}}<div>
-  <span>This task uses shared items: {{join . ", "}}. Discord users of {{$e.Claim.Server}} cannot use them and cannot save the task.</span>
-  <form method="post" action="/tasks/{{$t.ID}}/claim" class="btns mt"><input type="hidden" name="csrf" value="{{$csrf}}">
-    <button type="submit" class="ib with-label" data-confirm-desc="Moves {{join . ", "}} to {{$e.Claim.Server}}. Other servers can no longer use them.{{$e.Claim.Warning}}">{{icon "server"}}<span class="lbl">Move shared items of this task to {{$e.Claim.Server}}</span></button></form>
-</div></div>{{end}}
 
 <div class="split">
 <form method="post" action="{{if $e.New}}/tasks/new{{else}}/tasks/{{$t.ID}}{{end}}" class="stack" id="task-form">
@@ -97,7 +92,7 @@
     <div class="sec-head"><h2 class="with-icon">{{icon "list"}}Steps</h2><span class="hint">One after the other. A failing step stops the run.</span></div>
     <ol class="steps" data-steps>
       {{range $i, $s := $t.Steps}}{{$p := print "s" $i "."}}
-      <li class="step{{if and (eq $s.Type "play") ($e.Play $i).Over}} bad{{else if and (eq $s.Type "profile") ($e.Avatar $i).Problem}} bad{{else if $e.StepIssues $i}} bad{{end}}">
+      <li class="step{{if and (eq $s.Type "play") ($e.Play $i).Over}} bad{{else if and (eq $s.Type "profile") ($e.Avatar $i).Problem}} bad{{end}}">
         <span class="handle"><span class="num">{{add $i 1}}</span></span>
         <div class="row-main">
           <input type="hidden" name="{{$p}}type" value="{{$s.Type}}">
@@ -168,7 +163,6 @@
           {{if or (eq $s.Type "message") (eq $s.Type "dm")}}
           <input type="text" name="{{$p}}text" value="{{$s.Text}}" maxlength="2000" placeholder="Text, used when no saved message is picked. {date} {time} {server} {channel} work." aria-label="Message text" class="mt">
           {{end}}
-          {{range $e.StepIssues $i}}<p class="hint mt over">{{.}}</p>{{end}}
           {{if eq $s.Type "profile"}}
           {{with ($e.Avatar $i).Problem}}<p class="hint mt over">{{.}}. Pick another image.</p>{{end}}
           <p class="hint mt">Only in this server. Discord limits how often a bot changes its profile: a change waits up to 30 s for the limit, a longer limit skips the run. PNG, JPEG, GIF or WebP up to 8 MB.</p>
@@ -243,7 +237,6 @@
 {{define "msgpick"}}
 <select name="{{.P}}message" aria-label="Saved message">
   <option value="0"{{if not .S.MessageID}} selected{{end}}>Text below</option>
-  {{with .E.OutsideMessage .S.MessageID}}<option value="{{$.S.MessageID}}" selected>{{.}}</option>{{end}}
   {{range .E.Messages}}<option value="{{.ID}}"{{if eq .ID $.S.MessageID}} selected{{end}}>Saved: {{.Name}}</option>{{end}}
 </select>
 {{end}}

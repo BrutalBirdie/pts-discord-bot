@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -23,36 +22,43 @@ type voiceGroup struct {
 }
 
 type mediaData struct {
-	Items       []store.Media
-	Kind        string
-	Tag         string
-	Tags        []string
-	Counts      map[string]int
-	TotalBytes  int64
-	Voice       []voiceGroup
-	MaxUploadMB int
-	Vols        map[int64]int // preview volumes of the listed sounds
-	Owners      []bot.Guild   // servers an upload can belong to
-	Shared      bool          // uploads can be shared by all servers
-	Names       map[string]string
-	Paging      paging
-
-	// moving files between servers, for Cloudron users
-	Move     bool
-	Targets  []bot.Guild
-	Warn     map[int64]string // confirmation text per file in use
-	BulkWarn string
+	Items        []store.Media
+	Kind         string
+	Tag          string
+	Tags         []string
+	Counts       map[string]int
+	TotalBytes   int64
+	Voice        []voiceGroup
+	MaxUploadMB  int
+	Vols         map[int64]int // preview volumes of the listed sounds
+	Groups       []bot.Guild   // servers a file can be grouped with
+	Group        string        // list filter: a server, store.NoGroup or "" for all
+	DefaultGroup string        // preselected for uploads: the server of a Discord user
+	Names        map[string]string
+	Paging       paging
 }
 
-// Owner is the name of the server owning a file, empty for shared files.
-func (d mediaData) Owner(m store.Media) string {
-	if m.GuildID == "" {
+// GroupsWith are the group choices plus guildID, a file's current group.
+func (d mediaData) GroupsWith(guildID string) []bot.Guild {
+	if guildID == "" || slices.ContainsFunc(d.Groups, func(g bot.Guild) bool { return g.ID == guildID }) {
+		return d.Groups
+	}
+	return append(slices.Clone(d.Groups), bot.Guild{ID: guildID, Name: groupLabel(d.Names, guildID)})
+}
+
+// GroupName is the name of the server group of a file, empty for none.
+func (d mediaData) GroupName(m store.Media) string {
+	return groupLabel(d.Names, m.GuildID)
+}
+
+func groupLabel(names map[string]string, guildID string) string {
+	if guildID == "" {
 		return ""
 	}
-	if n := d.Names[m.GuildID]; n != "" {
+	if n := names[guildID]; n != "" {
 		return n
 	}
-	return m.GuildID
+	return guildID
 }
 
 func (d mediaData) Vol(id int64) int { return previewVolume(d.Vols, id) }
@@ -76,7 +82,7 @@ func (s *Server) voiceGroups(r *http.Request) []voiceGroup {
 func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sess := sessionFrom(r)
-	sum, err := s.store.MediaSummary(ctx, sess.Scope())
+	sum, err := s.store.MediaSummary(ctx)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -87,19 +93,32 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	d := mediaData{Kind: q.Get("kind"), Tag: q.Get("tag"), Counts: sum.Counts, TotalBytes: sum.Bytes, Tags: sum.Tags, Voice: s.voiceGroups(r), MaxUploadMB: settings.MaxUploadMB, Paging: newPaging(r),
-		Owners: s.ownerChoices(r, ""), Shared: !sess.Discord(), Names: map[string]string{}}
-	for _, g := range d.Owners {
+	d := mediaData{Kind: q.Get("kind"), Tag: q.Get("tag"), Group: q.Get("server"), Counts: sum.Counts, TotalBytes: sum.Bytes, Tags: sum.Tags, Voice: s.voiceGroups(r), MaxUploadMB: settings.MaxUploadMB, Paging: newPaging(r),
+		Names: map[string]string{}}
+	if d.Groups, err = s.groupChoices(ctx, r, ""); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	for _, g := range d.Groups {
 		d.Names[g.ID] = g.Name
+	}
+	if sess.Discord() && len(d.Groups) > 0 {
+		d.DefaultGroup = d.Groups[0].ID
 	}
 	d.Paging.Keep("kind", d.Kind)
 	d.Paging.Keep("tag", d.Tag)
-	items, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: sess.Scope(), Kind: d.Kind, Tag: d.Tag, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
+	d.Paging.Keep("server", d.Group)
+	items, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: sess.Scope(), Group: d.Group, Kind: d.Kind, Tag: d.Tag, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
 	d.Items = cut(&d.Paging, items)
+	for _, m := range d.Items {
+		if _, ok := d.Names[m.GuildID]; m.GuildID != "" && !ok {
+			d.Names[m.GuildID] = s.bot.GuildName(m.GuildID)
+		}
+	}
 	var sounds []int64
 	for _, m := range d.Items {
 		if m.Kind == store.KindSound {
@@ -110,41 +129,7 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	if d.Move = !sess.Discord(); d.Move {
-		if err := s.moveData(ctx, &d); err != nil {
-			s.internalError(w, r, err)
-			return
-		}
-	}
 	s.render(w, r, http.StatusOK, "media", d)
-}
-
-func (s *Server) moveData(ctx context.Context, d *mediaData) error {
-	var err error
-	if d.Targets, err = s.moveTargets(ctx); err != nil {
-		return err
-	}
-	ids := make([]int64, len(d.Items))
-	for i, m := range d.Items {
-		ids[i] = m.ID
-	}
-	uses, err := s.store.MediaUses(ctx, ids)
-	if err != nil {
-		return err
-	}
-	d.Warn = map[int64]string{}
-	var used []string
-	for _, m := range d.Items {
-		if u := uses[m.ID]; len(u) > 0 {
-			d.Warn[m.ID] = s.movingWarning(u)
-			used = append(used, m.Name)
-		}
-	}
-	d.BulkWarn = "Moves the selected files."
-	if len(used) > 0 {
-		d.BulkWarn += " In use on this page: " + strings.Join(used, ", ") + ". Tasks and messages that cannot use the chosen server's files fail to run after the move, see Move on each file."
-	}
-	return nil
 }
 
 // upload streams the files of a multipart form into the media directory.
@@ -165,7 +150,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	csrfOK := false
-	owner := ""
+	group, only := "", false
 	var added, problems []string
 	for {
 		part, err := mr.NextPart()
@@ -188,7 +173,12 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		}
 		if part.FormName() == "guild" {
 			v, _ := io.ReadAll(io.LimitReader(part, 64))
-			owner = string(v)
+			group = string(v)
+			continue
+		}
+		if part.FormName() == "group_only" {
+			v, _ := io.ReadAll(io.LimitReader(part, 8))
+			only = string(v) == "on"
 			continue
 		}
 		if part.FormName() != "file" || part.FileName() == "" {
@@ -198,8 +188,8 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, http.StatusForbidden, "The request could not be verified. Reload the page and try again.")
 			return
 		}
-		if !validOwner(sess, owner) {
-			s.notFound(w, r)
+		if !validGroup(sess, group, "") {
+			s.fail(w, r, http.StatusBadRequest, "Pick one of your servers.")
 			return
 		}
 		name, err := media.CleanName(part.FileName())
@@ -207,7 +197,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 			problems = append(problems, part.FileName()+": "+err.Error()+".")
 			continue
 		}
-		if err := s.saveUpload(r, part, name, owner, limit); err != nil {
+		if err := s.saveUpload(r, part, store.Media{Name: name, GuildID: group, GroupOnly: only}, limit); err != nil {
 			problems = append(problems, name+": "+err.Error())
 			continue
 		}
@@ -227,10 +217,11 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, "/media", "uploaded")
 }
 
-// saveUpload adds a file owned by guildID, "" for shared. Names are unique per owner.
-func (s *Server) saveUpload(r *http.Request, src io.Reader, name, guildID string, limit int64) error {
+// saveUpload adds a file with the name and server group of want. Names are unique.
+func (s *Server) saveUpload(r *http.Request, src io.Reader, want store.Media, limit int64) error {
 	ctx := r.Context()
-	if _, err := s.store.MediaByName(ctx, ownerScope(guildID), name); err == nil {
+	name := want.Name
+	if _, err := s.store.MediaByName(ctx, name); err == nil {
 		return errors.New("a file with this name exists, delete it first or rename the upload")
 	}
 	tmp, err := s.cfg.MediaDir.Temp()
@@ -255,7 +246,7 @@ func (s *Server) saveUpload(r *http.Request, src io.Reader, name, guildID string
 	if err != nil {
 		return err
 	}
-	m.UploadedBy, m.GuildID = sessionFrom(r).Username, guildID
+	m.UploadedBy, m.GuildID, m.GroupOnly = sessionFrom(r).Username, want.GuildID, want.GroupOnly
 	id, err := s.store.AddMedia(ctx, m)
 	if errors.Is(err, store.ErrNameTaken) {
 		return errors.New("a file with this name exists, delete it first or rename the upload")
@@ -272,9 +263,9 @@ func (s *Server) saveUpload(r *http.Request, src io.Reader, name, guildID string
 
 // fetchMedia downloads a file from a link into the media library.
 func (s *Server) fetchMedia(w http.ResponseWriter, r *http.Request) {
-	owner := r.PostForm.Get("guild")
-	if !validOwner(sessionFrom(r), owner) {
-		s.notFound(w, r)
+	group := r.PostForm.Get("guild")
+	if !validGroup(sessionFrom(r), group, "") {
+		s.fail(w, r, http.StatusBadRequest, "Pick one of your servers.")
 		return
 	}
 	settings, err := s.store.Settings(r.Context())
@@ -295,7 +286,7 @@ func (s *Server) fetchMedia(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, http.StatusBadRequest, "Not added: "+err.Error()+".")
 		return
 	}
-	if err := s.saveUpload(r, body, name, owner, int64(settings.MaxUploadMB)<<20); err != nil {
+	if err := s.saveUpload(r, body, store.Media{Name: name, GuildID: group, GroupOnly: r.PostForm.Get("group_only") == "on"}, int64(settings.MaxUploadMB)<<20); err != nil {
 		s.fail(w, r, http.StatusBadRequest, name+" not added: "+err.Error())
 		return
 	}
@@ -331,7 +322,13 @@ func (s *Server) updateMedia(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, http.StatusBadRequest, "At most 20 tags.")
 		return
 	}
-	err = s.store.UpdateMedia(r.Context(), m.ID, name, tags)
+	group := r.PostForm.Get("guild")
+	if !validGroup(sessionFrom(r), group, m.GuildID) {
+		s.fail(w, r, http.StatusBadRequest, "Pick one of your servers.")
+		return
+	}
+	only := r.PostForm.Get("group_only") == "on" && group != ""
+	err = s.store.UpdateMedia(r.Context(), store.Media{ID: m.ID, Name: name, Tags: tags, GuildID: group, GroupOnly: only})
 	if errors.Is(err, store.ErrNameTaken) {
 		s.fail(w, r, http.StatusConflict, "A file named "+name+" exists already.")
 		return
@@ -340,7 +337,7 @@ func (s *Server) updateMedia(w http.ResponseWriter, r *http.Request) {
 		s.storeErr(w, r, err)
 		return
 	}
-	s.audit(r, "media.update", name, "tags="+strings.Join(tags, ","))
+	s.audit(r, "media.update", name, "tags="+strings.Join(tags, ",")+", server group "+groupDetail(s.groupName(group), only))
 	redirect(w, r, "/media", "saved")
 }
 
@@ -351,22 +348,11 @@ func (s *Server) loadMedia(w http.ResponseWriter, r *http.Request) (store.Media,
 		return store.Media{}, false
 	}
 	m, err := s.store.Media(r.Context(), id)
-	if err == nil && !sessionFrom(r).Scope().Has(m.GuildID) {
-		err = store.ErrNotFound
-	}
 	if err != nil {
 		s.storeErr(w, r, err)
 		return m, false
 	}
 	return m, true
-}
-
-// ownerScope matches exactly the files of one owner.
-func ownerScope(guildID string) store.Scope {
-	if guildID == "" {
-		return store.GuildScope(true)
-	}
-	return store.GuildScope(false, guildID)
 }
 
 func (s *Server) mediaFile(w http.ResponseWriter, r *http.Request) {
@@ -376,9 +362,6 @@ func (s *Server) mediaFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m, err := s.store.AnyMedia(r.Context(), id)
-	if err == nil && !sessionFrom(r).Scope().Has(m.GuildID) {
-		err = store.ErrNotFound
-	}
 	if err != nil {
 		s.storeErr(w, r, err)
 		return
@@ -419,7 +402,7 @@ func (s *Server) deleteMedia(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	list, err := s.store.ListMedia(r.Context(), sessionFrom(r).Scope(), m.Kind)
+	list, err := s.store.FindMedia(r.Context(), store.MediaQuery{Scope: sessionFrom(r).Scope(), Kind: m.Kind})
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -427,7 +410,7 @@ func (s *Server) deleteMedia(w http.ResponseWriter, r *http.Request) {
 	for _, x := range list {
 		used := x.UsedBy
 		if x.UsedElse > 0 {
-			used = append(used, fmt.Sprintf("%d tasks or messages in other servers", x.UsedElse))
+			used = append(used, otherServers(x.UsedElse))
 		}
 		if x.ID == m.ID && len(used) > 0 {
 			s.fail(w, r, http.StatusConflict, m.Name+" is used by "+strings.Join(used, ", ")+". Remove it there first.")

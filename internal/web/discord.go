@@ -285,7 +285,8 @@ var discordStart = map[string]bool{
 }
 
 // discordRoutes are the routes of approved Discord users, keyed by mux pattern.
-// Each handler limits what it shows and changes to the user's servers.
+// Each handler limits the tasks, runs and servers it shows and changes to the
+// user's servers. Media and messages are open to every user.
 var discordRoutes = map[string]bool{
 	"GET /servers":                    true,
 	"GET /servers/{id}":               true,
@@ -321,6 +322,7 @@ var discordRoutes = map[string]bool{
 	"POST /media/{id}":                true,
 	"POST /media/{id}/play":           true,
 	"POST /media/{id}/delete":         true,
+	"POST /media/group":               true,
 	"GET /trash":                      true,
 	"POST /trash/{kind}/{id}/restore": true,
 }

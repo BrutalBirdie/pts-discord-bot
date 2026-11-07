@@ -8,6 +8,7 @@ Cloudron app with a Discord bot and a web UI to control it. Sign in with your Cl
 * Slash commands: /play, /task, /stop, /leave
 * Saved messages with embeds, images and files, with a preview
 * Media library for sounds, images, videos and files, with tags and random sounds per tag
+* Optional server groups for messages and media: listed first in that server's tasks, or kept from the suggestions of other servers
 * Servers and channels the bot sees, with the bot's missing permissions
 * Member search when picking who gets a direct message, whose voice channel to join, or whom to mention
 * Run history, failure posts to a channel, audit log
@@ -26,7 +27,7 @@ Every Cloudron user with access to the app can use it. Only admins see the Admin
 
 ## Discord login
 
-Optional. Members of the servers the bot is in log in with Discord and ask for access to some of those servers. An admin approves, denies or blocks them under **Admin > Access**. An approved member manages the tasks, messages and media of the approved servers and plays sounds there. Messages and media without a server are shared and only Cloudron users see them. Admin pages and deleting from the Trash for good stay with Cloudron admins.
+Optional. Members of the servers the bot is in log in with Discord and ask for access to some of those servers. An admin approves, denies or blocks them under **Admin > Access**. An approved member manages the tasks of the approved servers and plays sounds there. Messages and media are open to every user. Admin pages and deleting from the Trash for good stay with Cloudron admins.
 
 1. In the [Discord Developer Portal](https://discord.com/developers/applications), open the bot's application, then **OAuth2**. Add the redirect `https://<app domain>/auth/discord/callback` and copy the **Client Secret**.
 2. Set `DISCORD_CLIENT_SECRET` in `/app/data/env.sh` and restart the app.

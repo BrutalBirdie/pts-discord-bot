@@ -78,7 +78,7 @@ func (s *Server) server(w http.ResponseWriter, r *http.Request) {
 	}
 	switch d.Tab {
 	case "tasks":
-		list, err := s.store.ListTasks(r.Context(), store.GuildScope(false, g.ID))
+		list, err := s.store.ListTasks(r.Context(), store.GuildScope(g.ID))
 		if err != nil {
 			s.internalError(w, r, err)
 			return
@@ -99,7 +99,7 @@ func (s *Server) server(w http.ResponseWriter, r *http.Request) {
 				d.Text = append(d.Text, c)
 			}
 		}
-		sounds, err := s.store.ListMedia(r.Context(), sess.ItemScope(g.ID), "")
+		sounds, err := s.store.ListMedia(r.Context(), g.ID, "")
 		if err != nil {
 			s.internalError(w, r, err)
 			return
@@ -217,9 +217,6 @@ func (s *Server) startPlay(w http.ResponseWriter, r *http.Request, guildID, chan
 	sess := sessionFrom(r)
 	mid, _ := strconv.ParseInt(mediaID, 10, 64)
 	m, err := s.store.Media(r.Context(), mid)
-	if err == nil && !sess.Scope().Has(m.GuildID) {
-		err = store.ErrNotFound
-	}
 	if errors.Is(err, store.ErrNotFound) {
 		s.fail(w, r, http.StatusBadRequest, "Pick a sound.")
 		return
@@ -231,10 +228,6 @@ func (s *Server) startPlay(w http.ResponseWriter, r *http.Request, guildID, chan
 	ch, chGuild, ok := s.bot.Channel(channelID)
 	if !ok || !ch.Voice || (guildID != "" && chGuild != guildID) || !sess.CanGuild(chGuild) {
 		s.fail(w, r, http.StatusBadRequest, "Pick a voice channel.")
-		return
-	}
-	if m.GuildID != "" && m.GuildID != chGuild {
-		s.fail(w, r, http.StatusBadRequest, "The file belongs to another server, pick a channel there.")
 		return
 	}
 	if !ch.Usable {

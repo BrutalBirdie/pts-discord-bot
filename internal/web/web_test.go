@@ -371,7 +371,7 @@ func TestProfileStepEditor(t *testing.T) {
 	images := []store.Media{{ID: 7, Name: "cat.png", Kind: store.KindImage, ContentType: "image/png", SizeBytes: 1000},
 		{ID: 8, Name: "huge.png", Kind: store.KindImage, ContentType: "image/png", SizeBytes: tasks.MaxAvatarBytes + 1}}
 	task.Steps[3] = tasks.Step{Type: tasks.Profile, AvatarMediaID: 8}
-	want := []string{"Step 3: the avatar image was deleted from the media library or belongs to another server, pick another.", "Step 4: huge.png has 8.0 MB, an avatar may have at most 8 MB."}
+	want := []string{"Step 3: the avatar image was deleted from the media library, pick another.", "Step 4: huge.png has 8.0 MB, an avatar may have at most 8 MB."}
 	if got := avatarProblems(task, images); !slices.Equal(got, want) {
 		t.Errorf("avatar problems %q", got)
 	}
@@ -417,7 +417,7 @@ func TestPlayProblems(t *testing.T) {
 		{play("", "", 1, 1, 3), ""},
 		{play("", "x", 1), "Step 2: sounds add up to 11:00, longest playback is 10 min."},
 		{play(tasks.OrderRandom, "x", 3), ""},
-		{play("", "", 9), "Step 2: a picked sound was deleted from the media library or belongs to another server, remove it."},
+		{play("", "", 9), "Step 2: a picked sound was deleted from the media library, remove it."},
 	} {
 		got := strings.Join(playProblems(c.task, sounds, 10), " ")
 		if got != c.want {

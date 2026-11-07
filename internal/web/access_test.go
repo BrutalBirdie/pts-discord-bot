@@ -437,7 +437,7 @@ func TestPagesForApprovedDiscordUser(t *testing.T) {
 	sess := &store.Session{Username: "discord:9", DisplayName: "Mira", Provider: store.ProviderDiscord, GuildIDs: []string{"1", "2"}, Granted: []string{"1"}, CSRFToken: "tok"}
 	cloudron := &store.Session{Username: "ann", DisplayName: "Ann", IsAdmin: true, CSRFToken: "tok"}
 	guilds := []bot.Guild{{ID: "1", Name: "PTS Gaming"}}
-	sound := store.Media{ID: 5, Name: "a.ogg", Kind: store.KindSound, GuildID: "1", UsedBy: []string{"task Intro"}, UsedElse: 2}
+	sound := store.Media{ID: 5, Name: "a.ogg", Kind: store.KindSound, GuildID: "1", GroupOnly: true, UsedBy: []string{"task Intro"}, UsedElse: 2}
 	msg := messages.Message{ID: 7, Name: "Hello", GuildID: "1", Embeds: []messages.Embed{}}
 	for _, c := range []struct {
 		sess    *store.Session
@@ -448,16 +448,14 @@ func TestPagesForApprovedDiscordUser(t *testing.T) {
 	}{
 		{sess, "dashboard", dashboardData{}, []string{`href="/tasks"`, `href="/messages"`, `href="/media"`, `href="/trash"`, `href="/servers"`, "Dashboard"}, []string{`href="/admin"`, "administrator"}},
 		{sess, "servers", serversData{Guilds: guilds}, []string{`href="/servers/1"`}, []string{"/servers/refresh", "Open in Discord"}},
-		{sess, "media", mediaData{Items: []store.Media{sound}, Counts: map[string]int{"": 1}, Owners: guilds, Names: map[string]string{"1": "PTS Gaming"}},
-			[]string{`<input type="hidden" name="guild" value="1">`, "used by task Intro, 2 tasks or messages in other servers", `aria-label="Delete a.ogg" data-tip="Delete" disabled`, "PTS Gaming"},
-			[]string{"Shared, for Cloudron users only"}},
-		{cloudron, "media", mediaData{Counts: map[string]int{}, Owners: guilds, Shared: true},
-			[]string{`<option value="">Shared, for Cloudron users only</option>`, `<option value="1">PTS Gaming</option>`}, nil},
-		{sess, "messages", messagesData{Rows: []messageRow{{Message: msg, Guild: "PTS Gaming", UsedElse: 1}}}, []string{"PTS Gaming", "1 task in other servers"}, nil},
-		{sess, "message", messageEditor{Message: msg, Owners: guilds, ByID: map[int64]store.Media{}, Limits: map[string]int{"content": 2000, "embeds": 10, "embedTotal": 6000}},
-			[]string{`<input type="hidden" name="guild" value="1">`}, []string{"Shared, for Cloudron users only"}},
-		{cloudron, "message", messageEditor{Message: msg, Owners: guilds, Shared: true, ByID: map[int64]store.Media{}, Limits: map[string]int{"content": 2000, "embeds": 10, "embedTotal": 6000}},
-			[]string{`<select name="guild" data-reload`, `<option value="1" selected>PTS Gaming</option>`, `<option value="">Shared, for Cloudron users only</option>`}, nil},
+		{sess, "media", mediaData{Items: []store.Media{sound}, Counts: map[string]int{"": 1}, Groups: guilds, DefaultGroup: "1", Names: map[string]string{"1": "PTS Gaming"}},
+			[]string{`<option value="1" selected>PTS Gaming</option>`, "used by task Intro, 2 tasks in other servers", `aria-label="Delete a.ogg" data-tip="Delete" disabled`, "PTS Gaming", "only this server", `action="/media/group"`},
+			[]string{"Shared, for Cloudron users only", "/move"}},
+		{cloudron, "media", mediaData{Counts: map[string]int{}, Groups: guilds},
+			[]string{`<option value="">No server</option>`, `<option value="1">PTS Gaming</option>`, `name="group_only"`}, nil},
+		{sess, "messages", messagesData{Rows: []messageRow{{Message: msg, Guild: "PTS Gaming", UsedElse: 1}}, Groups: guilds}, []string{"PTS Gaming", "1 task in other servers", `server=1"`}, nil},
+		{sess, "message", messageEditor{Message: msg, Groups: guilds, ByID: map[int64]store.Media{}, Limits: map[string]int{"content": 2000, "embeds": 10, "embedTotal": 6000}},
+			[]string{`<select name="guild" data-reload`, `<option value="1" selected>PTS Gaming</option>`, `<option value="">No server</option>`, `name="group_only"`}, []string{"Shared, for Cloudron users only", "/move"}},
 		{sess, "trash", trashData{Counts: map[string]int{}}, []string{"Only admins can delete items for good"}, []string{"/purge", "/trash/empty"}},
 	} {
 		body := renderAs(t, s, c.sess, c.page, c.data)

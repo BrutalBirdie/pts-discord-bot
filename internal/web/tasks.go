@@ -1,6 +1,8 @@
 package web
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -17,7 +19,7 @@ import (
 )
 
 func (s *Server) mediaNames(r *http.Request) (map[int64]string, error) {
-	list, err := s.store.ListMedia(r.Context(), sessionFrom(r).Scope(), "")
+	list, err := s.store.ListMedia(r.Context(), "", "")
 	if err != nil {
 		return nil, err
 	}
@@ -176,9 +178,6 @@ type taskEditor struct {
 	Kinds     []tasks.TriggerKind
 	Events    []string
 	Tags      []string
-	Outside   outside
-	Issues    [][]string // per step, what it references but may not use
-	Claim     claim      // shared items a Cloudron user can move to the task's server
 
 	// play steps: per account preview volume of the picked sounds, and the longest playback
 	PreviewVol     map[int64]int
@@ -192,7 +191,6 @@ const runsPerPage = 10
 
 func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, error) {
 	ctx := r.Context()
-	items := sessionFrom(r).ItemScope(t.GuildID)
 	e := taskEditor{Task: t, New: isNew, Guilds: s.guilds(r), StepTypes: tasks.StepTypes, Weekdays: tasks.WeekdayNames, Kinds: tasks.TriggerKinds,
 		TimesText: strings.Join(t.Trigger.Times, " "), CronText: strings.Join(t.Trigger.Cron, "\n"), Timezones: commonTimezones, Events: tasks.EventTypes}
 	for _, c := range s.bot.Channels(t.GuildID) {
@@ -220,10 +218,11 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 			}
 		}
 	}
-	all, err := s.store.ListMedia(ctx, items, "")
+	all, msgs, err := s.taskItems(ctx, t)
 	if err != nil {
 		return e, err
 	}
+	e.Messages = msgs
 	for _, m := range all {
 		if media.HasAudio(m) {
 			e.Sounds = append(e.Sounds, m)
@@ -244,22 +243,8 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 	if e.PreviewVol, err = s.store.PreviewVolumes(ctx, sessionFrom(r).Username, picked); err != nil {
 		return e, err
 	}
-	if e.Messages, err = s.store.ListMessages(ctx, items); err != nil {
+	if e.Tags, err = s.store.Tags(ctx, t.GuildID); err != nil {
 		return e, err
-	}
-	if e.Tags, err = s.store.Tags(ctx, items); err != nil {
-		return e, err
-	}
-	if e.Outside, err = s.findOutside(ctx, sessionFrom(r), t); err != nil {
-		return e, err
-	}
-	for _, st := range t.Steps {
-		e.Issues = append(e.Issues, e.Outside.issues(st))
-	}
-	if !isNew && !sessionFrom(r).Discord() {
-		if e.Claim, err = s.taskClaim(ctx, t); err != nil {
-			return e, err
-		}
 	}
 	e.Next = t.Trigger.Next(time.Now(), 5)
 	if !isNew {
@@ -590,7 +575,7 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 	}
 	t.ID, t.PausedReason = old.ID, old.PausedReason
 	bad = append(bad, s.resolveMembers(&t)...)
-	badSounds, err := s.resolveSounds(ctx, sess.ItemScope(t.GuildID), &t)
+	badSounds, err := s.resolveSounds(ctx, &t)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -605,13 +590,7 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.bot.Guild(t.GuildID); !ok && t.GuildID != old.GuildID {
 		bad = append(bad, "Pick a server the bot is in.")
 	}
-	items := sess.ItemScope(t.GuildID)
-	sounds, err := s.store.ListMedia(ctx, items, "")
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	msgs, err := s.store.ListMessages(ctx, items)
+	sounds, msgs, err := s.taskItems(ctx, t)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -621,23 +600,10 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	out, err := s.findOutside(ctx, sess, t)
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	// items outside get their own problem text below, not a "deleted" one
-	for _, m := range out.media {
-		sounds = append(sounds, m)
-	}
-	for _, m := range out.msgs {
-		msgs = append(msgs, m)
-	}
 	bad = append(bad, avatarProblems(t, sounds)...)
 	sounds = slices.DeleteFunc(sounds, func(m store.Media) bool { return !media.HasAudio(m) })
 	bad = append(bad, playProblems(t, sounds, settings.MaxPlayMinutes)...)
-	bad = append(bad, ownerProblems(t, sounds, msgs, out.tags)...)
-	bad = append(bad, out.problems(t)...)
+	bad = append(bad, messageProblems(t, sounds, msgs)...)
 	if problems := append(bad, t.Problems()...); len(problems) > 0 {
 		s.renderEditor(w, r, http.StatusUnprocessableEntity, t, isNew, problems, true)
 		return
@@ -662,16 +628,46 @@ func (s *Server) postTask(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, fmt.Sprintf("/tasks/%d", t.ID), "saved")
 }
 
-// ownerProblems checks that saved messages and tagged sounds of the steps are
-// in the task's scope: shared or of the task's server, for Discord users only the latter.
-func ownerProblems(t tasks.Task, sounds []store.Media, msgs []messages.Message, sharedTags []string) []string {
+// taskItems are the files and messages the editor of t offers: those offered
+// to its server, its own first, and those its steps picked.
+func (s *Server) taskItems(ctx context.Context, t tasks.Task) ([]store.Media, []messages.Message, error) {
+	list, err := s.store.ListMedia(ctx, t.GuildID, "")
+	if err != nil {
+		return nil, nil, err
+	}
+	msgs, err := s.store.ListMessages(ctx, t.GuildID)
+	if err != nil {
+		return nil, nil, err
+	}
+	var ids []int64
+	for _, st := range t.Steps {
+		for _, id := range append(slices.Clone(st.MediaIDs), st.AvatarMediaID) {
+			if id != 0 && !slices.ContainsFunc(list, func(m store.Media) bool { return m.ID == id }) {
+				ids = append(ids, id)
+			}
+		}
+		if st.MessageID != 0 && (st.Type == tasks.Message || st.Type == tasks.DM) && !slices.ContainsFunc(msgs, func(m messages.Message) bool { return m.ID == st.MessageID }) {
+			m, err := s.store.Message(ctx, st.MessageID)
+			if err == nil {
+				msgs = append(msgs, m)
+			} else if !errors.Is(err, store.ErrNotFound) {
+				return nil, nil, err
+			}
+		}
+	}
+	picked, err := s.store.MediaByIDs(ctx, ids)
+	return append(list, picked...), msgs, err
+}
+
+// messageProblems checks that the saved messages and tagged sounds of the steps exist.
+func messageProblems(t tasks.Task, sounds []store.Media, msgs []messages.Message) []string {
 	var out []string
 	for i, st := range t.Steps {
 		if (st.Type == tasks.Message || st.Type == tasks.DM) && st.MessageID != 0 &&
 			!slices.ContainsFunc(msgs, func(m messages.Message) bool { return m.ID == st.MessageID }) {
-			out = append(out, fmt.Sprintf("Step %d: the saved message is deleted or belongs to another server, pick another.", i+1))
+			out = append(out, fmt.Sprintf("Step %d: the saved message was deleted, pick another.", i+1))
 		}
-		if st.Type == tasks.Play && st.Tag != "" && !slices.Contains(sharedTags, st.Tag) && !slices.ContainsFunc(sounds, func(m store.Media) bool { return slices.Contains(m.Tags, st.Tag) }) {
+		if st.Type == tasks.Play && st.Tag != "" && !slices.ContainsFunc(sounds, func(m store.Media) bool { return slices.Contains(m.Tags, st.Tag) }) {
 			out = append(out, fmt.Sprintf("Step %d: no sound available to this server has the tag %s.", i+1, st.Tag))
 		}
 	}
@@ -773,7 +769,7 @@ func avatarProblems(t tasks.Task, all []store.Media) []string {
 		}
 		m, ok := byID[st.AvatarMediaID]
 		if !ok {
-			out = append(out, fmt.Sprintf("Step %d: the avatar image was deleted from the media library or belongs to another server, pick another.", i+1))
+			out = append(out, fmt.Sprintf("Step %d: the avatar image was deleted from the media library, pick another.", i+1))
 		} else if msg := media.AvatarProblem(m); msg != "" {
 			out = append(out, fmt.Sprintf("Step %d: %s.", i+1, msg))
 		}
@@ -788,21 +784,6 @@ type avatarView struct {
 	Problem string
 }
 
-func (e taskEditor) StepIssues(i int) []string {
-	if i < len(e.Issues) {
-		return e.Issues[i]
-	}
-	return nil
-}
-
-// OutsideMessage labels a saved message of a step the task may not use, "" for others.
-func (e taskEditor) OutsideMessage(id int64) string {
-	if m, ok := e.Outside.msgs[id]; ok {
-		return e.Outside.label("message", m.GuildID, m.Name)
-	}
-	return ""
-}
-
 func (e taskEditor) Avatar(i int) avatarView {
 	st := e.Task.Steps[i]
 	var v avatarView
@@ -814,11 +795,7 @@ func (e taskEditor) Avatar(i int) avatarView {
 		}
 	}
 	if st.AvatarMediaID != 0 && v.Picked == "" && !slices.ContainsFunc(v.Images, func(m store.Media) bool { return m.ID == st.AvatarMediaID }) {
-		if m, ok := e.Outside.media[st.AvatarMediaID]; ok {
-			v.Picked = e.Outside.label("image", m.GuildID, m.Name)
-		} else {
-			v.Picked, v.Problem = "Deleted image", "The image was deleted from the media library"
-		}
+		v.Picked, v.Problem = "Deleted image", "The image was deleted from the media library"
 	}
 	return v
 }

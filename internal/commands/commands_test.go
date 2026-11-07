@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/disgoorg/disgo/discord"
@@ -12,7 +13,7 @@ import (
 	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
 )
 
-// fakeStore applies scopes like the SQL queries do.
+// fakeStore offers media like the SQL queries do.
 type fakeStore struct {
 	media []store.Media
 	tasks []tasks.Task
@@ -27,29 +28,37 @@ func (f *fakeStore) Media(_ context.Context, id int64) (store.Media, error) {
 	return store.Media{}, store.ErrNotFound
 }
 
-func (f *fakeStore) MediaByName(_ context.Context, sc store.Scope, name string) (store.Media, error) {
+func (f *fakeStore) MediaByName(_ context.Context, name string) (store.Media, error) {
 	for _, m := range f.media {
-		if m.Name == name && sc.Has(m.GuildID) {
+		if m.Name == name {
 			return m, nil
 		}
 	}
 	return store.Media{}, store.ErrNotFound
 }
 
-func (f *fakeStore) ListMedia(_ context.Context, sc store.Scope, _ string) ([]store.Media, error) {
-	var out []store.Media
+func offered(m store.Media, guildID string) bool { return !m.GroupOnly || m.GuildID == guildID }
+
+func (f *fakeStore) SearchSounds(_ context.Context, guildID, q string, limit int) ([]store.Media, error) {
+	var own, rest []store.Media
 	for _, m := range f.media {
-		if sc.Has(m.GuildID) {
-			out = append(out, m)
+		if m.Kind != store.KindSound || !(offered(m, guildID) && strings.Contains(m.Name, q) || q != "" && m.Name == q) {
+			continue
+		}
+		if m.GuildID == guildID {
+			own = append(own, m)
+		} else {
+			rest = append(rest, m)
 		}
 	}
-	return out, nil
+	out := append(own, rest...)
+	return out[:min(len(out), limit)], nil
 }
 
-func (f *fakeStore) Tags(_ context.Context, sc store.Scope) ([]string, error) {
+func (f *fakeStore) Tags(_ context.Context, guildID string) ([]string, error) {
 	var out []string
 	for _, m := range f.media {
-		if sc.Has(m.GuildID) {
+		if offered(m, guildID) {
 			out = append(out, m.Tags...)
 		}
 	}
@@ -76,7 +85,8 @@ func testHandler() *Handler {
 		media: []store.Media{
 			{ID: 1, Name: "shared.ogg", Kind: store.KindSound, Tags: []string{"fun"}},
 			{ID: 2, Name: "a.ogg", Kind: store.KindSound, GuildID: guildA.String(), Tags: []string{"loud"}},
-			{ID: 3, Name: "b.ogg", Kind: store.KindSound, GuildID: guildB.String(), Tags: []string{"secret"}},
+			{ID: 3, Name: "b.ogg", Kind: store.KindSound, GuildID: guildB.String(), GroupOnly: true, Tags: []string{"secret"}},
+			{ID: 5, Name: "open-b.ogg", Kind: store.KindSound, GuildID: guildB.String()},
 			{ID: 4, Name: "a.png", Kind: store.KindImage, GuildID: guildA.String()},
 		},
 		tasks: []tasks.Task{
@@ -104,9 +114,10 @@ func TestAutocomplete(t *testing.T) {
 		typed         string
 		want          []string
 	}{
-		{"play in A", "play", &a, "", []string{"a.ogg", "shared.ogg", "Random: fun", "Random: loud"}},
-		{"play in B", "play", &b, "", []string{"b.ogg", "shared.ogg", "Random: fun", "Random: secret"}},
-		{"play in A, other server typed", "play", &a, "b.o", []string{}},
+		{"play in A", "play", &a, "", []string{"a.ogg", "shared.ogg", "open-b.ogg", "Random: fun", "Random: loud"}},
+		{"play in B", "play", &b, "", []string{"b.ogg", "open-b.ogg", "shared.ogg", "a.ogg", "Random: fun", "Random: loud", "Random: secret"}},
+		{"play in A, part of a name B keeps to itself", "play", &a, "b.o", []string{"open-b.ogg"}},
+		{"play in A, exact name B keeps to itself", "play", &a, "b.ogg", []string{"b.ogg", "open-b.ogg"}},
 		{"task in A", "task", &a, "", []string{"Task A"}},
 		{"task in B", "task", &b, "", []string{"Task B"}},
 		{"no server", "play", nil, "", []string{}},
@@ -121,23 +132,20 @@ func TestSoundValue(t *testing.T) {
 	h := testHandler()
 	for _, c := range []struct {
 		value string
-		gid   snowflake.ID
 		want  []int64
 	}{
-		{"id:1", guildA, []int64{1}},
-		{"id:2", guildA, []int64{2}},
-		{"id:3", guildA, nil},
-		{"id:3", guildB, []int64{3}},
-		{"b.ogg", guildA, nil},
-		{"a.ogg", guildA, []int64{2}},
-		{"id:4", guildA, nil},
+		{"id:1", []int64{1}},
+		{"id:3", []int64{3}},
+		{"b.ogg", []int64{3}},
+		{"nope.ogg", nil},
+		{"id:4", nil},
 	} {
-		step, _, ok := h.soundValue(context.Background(), c.gid, c.value)
+		step, _, ok := h.soundValue(context.Background(), c.value)
 		if ok != (c.want != nil) || !slices.Equal(step.MediaIDs, c.want) {
-			t.Errorf("%s in %s: %v %v", c.value, c.gid, ok, step.MediaIDs)
+			t.Errorf("%s: %v %v", c.value, ok, step.MediaIDs)
 		}
 	}
-	if step, _, ok := h.soundValue(context.Background(), guildA, "tag:secret"); !ok || step.Tag != "secret" {
+	if step, _, ok := h.soundValue(context.Background(), "tag:secret"); !ok || step.Tag != "secret" {
 		t.Errorf("tag value: %+v", step)
 	}
 }

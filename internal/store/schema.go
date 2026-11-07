@@ -147,5 +147,28 @@ CREATE TABLE IF NOT EXISTS discord_grants (
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS guild_id text;
 ALTER TABLE media ADD COLUMN IF NOT EXISTS guild_id text;
 DROP INDEX IF EXISTS media_name_live;
-CREATE UNIQUE INDEX IF NOT EXISTS media_owner_name_live ON media (coalesce(guild_id, ''), name) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS runs_guild ON runs (guild_id, id DESC);`
+CREATE INDEX IF NOT EXISTS runs_guild ON runs (guild_id, id DESC);
+ALTER TABLE media ADD COLUMN IF NOT EXISTS group_only boolean NOT NULL DEFAULT false;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS group_only boolean NOT NULL DEFAULT false;
+DO $$
+DECLARE
+    r record;
+    n integer;
+    try text;
+BEGIN
+    IF to_regclass('media_live_name') IS NOT NULL THEN
+        RETURN;
+    END IF;
+    FOR r IN SELECT id, name FROM (SELECT id, name, row_number() OVER (PARTITION BY name ORDER BY guild_id NULLS FIRST, id) AS k
+        FROM media WHERE deleted_at IS NULL) d WHERE k > 1 ORDER BY id LOOP
+        n := 2;
+        LOOP
+            try := regexp_replace(r.name, '^(.+?)(\.[^. ()]+)?$', '\1 (' || n || ')\2');
+            EXIT WHEN NOT EXISTS (SELECT FROM media WHERE name = try AND deleted_at IS NULL);
+            n := n + 1;
+        END LOOP;
+        UPDATE media SET name = try WHERE id = r.id;
+    END LOOP;
+    DROP INDEX IF EXISTS media_owner_name_live;
+    CREATE UNIQUE INDEX media_live_name ON media (name) WHERE deleted_at IS NULL;
+END $$;`

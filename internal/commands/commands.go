@@ -2,10 +2,8 @@
 package commands
 
 import (
-	"cmp"
 	"context"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,9 +22,9 @@ import (
 // commandStore is the part of the store the commands use.
 type commandStore interface {
 	Media(ctx context.Context, id int64) (store.Media, error)
-	MediaByName(ctx context.Context, sc store.Scope, name string) (store.Media, error)
-	ListMedia(ctx context.Context, sc store.Scope, kind string) ([]store.Media, error)
-	Tags(ctx context.Context, sc store.Scope) ([]string, error)
+	MediaByName(ctx context.Context, name string) (store.Media, error)
+	SearchSounds(ctx context.Context, guildID, q string, limit int) ([]store.Media, error)
+	Tags(ctx context.Context, guildID string) ([]string, error)
 	ListTasks(ctx context.Context, sc store.Scope) ([]tasks.Task, error)
 	Audit(ctx context.Context, e store.AuditEntry) error
 }
@@ -114,28 +112,24 @@ func (h *Handler) OnCommand(e *events.ApplicationCommandInteractionCreate) {
 	}
 }
 
-// playScope is what /play offers in a server: shared files and the server's own.
-func playScope(gid snowflake.ID) store.Scope { return store.GuildScope(true, gid.String()) }
-
 // soundValue resolves the sound option: "id:5", "tag:greeting" or a typed name.
-func (h *Handler) soundValue(ctx context.Context, gid snowflake.ID, value string) (tasks.Step, string, bool) {
-	sc := playScope(gid)
+func (h *Handler) soundValue(ctx context.Context, value string) (tasks.Step, string, bool) {
 	if tag, ok := strings.CutPrefix(value, "tag:"); ok {
 		return tasks.Step{Tag: tag}, "a random sound tagged " + tag, true
 	}
 	if id, err := strconv.ParseInt(strings.TrimPrefix(value, "id:"), 10, 64); err == nil {
-		if m, err := h.st.Media(ctx, id); err == nil && sc.Has(m.GuildID) && media.HasAudio(m) {
+		if m, err := h.st.Media(ctx, id); err == nil && media.HasAudio(m) {
 			return tasks.Step{MediaIDs: []int64{m.ID}}, m.Name, true
 		}
 	}
-	if m, err := h.st.MediaByName(ctx, sc, value); err == nil && media.HasAudio(m) {
+	if m, err := h.st.MediaByName(ctx, value); err == nil && media.HasAudio(m) {
 		return tasks.Step{MediaIDs: []int64{m.ID}}, m.Name, true
 	}
 	return tasks.Step{}, "", false
 }
 
 func (h *Handler) play(ctx context.Context, e *events.ApplicationCommandInteractionCreate, gid snowflake.ID, ev bot.Event, value string) {
-	step, what, ok := h.soundValue(ctx, gid, value)
+	step, what, ok := h.soundValue(ctx, value)
 	if !ok {
 		bot.Reply(e, "No sound with that name. Pick one from the suggestions.")
 		return
@@ -177,7 +171,7 @@ func (h *Handler) task(ctx context.Context, e *events.ApplicationCommandInteract
 }
 
 func (h *Handler) slashTasks(ctx context.Context, gid snowflake.ID) ([]tasks.Task, error) {
-	all, err := h.st.ListTasks(ctx, store.GuildScope(false, gid.String()))
+	all, err := h.st.ListTasks(ctx, store.GuildScope(gid.String()))
 	if err != nil {
 		return nil, err
 	}
@@ -219,18 +213,17 @@ func (h *Handler) choices(ctx context.Context, command string, gid *snowflake.ID
 	}
 	switch command {
 	case "play":
-		all, err := h.st.ListMedia(ctx, playScope(*gid), "")
+		found, err := h.st.SearchSounds(ctx, gid.String(), strings.TrimSpace(typed), maxChoices)
 		if err != nil {
 			h.log.Error("autocomplete sounds", "err", err)
 			break
 		}
-		slices.SortFunc(all, func(a, b store.Media) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
-		for _, m := range all {
+		for _, m := range found {
 			if media.HasAudio(m) {
 				add(m.Name, "id:"+strconv.FormatInt(m.ID, 10))
 			}
 		}
-		if tags, err := h.st.Tags(ctx, playScope(*gid)); err == nil {
+		if tags, err := h.st.Tags(ctx, gid.String()); err == nil {
 			for _, t := range tags {
 				add("Random: "+t, "tag:"+t)
 			}
