@@ -64,8 +64,11 @@ type roomData struct {
 	Own       []soundTile // sounds of this server's group
 	Rest      []soundTile
 	Paging    paging
-	Edit      *store.Media // the sound in the Edit sound sheet
-	Emojis    []bot.Emoji  // custom emojis of the server, for the emoji picker
+	Tag       string           // the soundboard shows only the sounds with this tag
+	SoundTags []store.SoundTag // the tags of the sounds offered to the server
+	TagEdit   *store.SoundTag  // the tag in the tag icon sheet
+	Edit      *store.Media     // the sound in the Edit sound sheet
+	Emojis    []bot.Emoji      // custom emojis of the server, for the emoji picker
 	Images    []store.Media
 
 	Messages []messages.Message
@@ -74,6 +77,15 @@ type roomData struct {
 	Tasks    []tasks.Task      // of the channel, or for the member
 	Except   []tasks.Task      // that leave the member out
 	Greets   []tasks.Task      // event tasks that start when the member joins voice
+}
+
+// TagURL is the soundboard of the channel with only the sounds of a tag, all of them for "".
+func (d roomData) TagURL(tag string) string {
+	v := url.Values{"c": {d.Channel.ID}}
+	if tag != "" {
+		v.Set("tag", tag)
+	}
+	return "/room/" + d.Guild.ID + "?" + v.Encode()
 }
 
 func (d roomData) URL(key, value string) string {
@@ -234,7 +246,14 @@ func (s *Server) roomSounds(r *http.Request, d *roomData) error {
 		return err
 	}
 	d.Paging.Keep("c", d.Channel.ID)
-	if d.Paging.Page == 1 && d.Paging.Query == "" {
+	if t := ParseTags(r.URL.Query().Get("tag")); len(t) == 1 {
+		d.Tag = t[0]
+		d.Paging.Keep("tag", d.Tag)
+	}
+	if d.SoundTags, err = s.store.SoundTags(ctx, d.Guild.ID); err != nil {
+		return err
+	}
+	if d.Paging.Page == 1 && d.Paging.Query == "" && d.Tag == "" {
 		list, err := s.store.FavoriteSounds(ctx, user)
 		if err != nil {
 			return err
@@ -245,7 +264,7 @@ func (s *Server) roomSounds(r *http.Request, d *roomData) error {
 			}
 		}
 	}
-	list, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: store.All, Offer: d.Guild.ID, Kind: store.KindSound, Search: d.Paging.Query,
+	list, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: store.All, Offer: d.Guild.ID, Kind: store.KindSound, Tag: d.Tag, Search: d.Paging.Query,
 		Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
 	if err != nil {
 		return err
@@ -256,6 +275,16 @@ func (s *Server) roomSounds(r *http.Request, d *roomData) error {
 			d.Own = append(d.Own, t)
 		} else {
 			d.Rest = append(d.Rest, t)
+		}
+	}
+	if t := ParseTags(r.URL.Query().Get("tagedit")); len(t) == 1 {
+		d.TagEdit = &store.SoundTag{Name: t[0]}
+		if i := slices.IndexFunc(d.SoundTags, func(x store.SoundTag) bool { return x.Name == t[0] }); i >= 0 {
+			d.TagEdit = &d.SoundTags[i]
+		}
+		d.Emojis = s.bot.Emojis(d.Guild.ID)
+		if d.Images, err = s.store.ListMedia(ctx, d.Guild.ID, store.KindImage); err != nil {
+			return err
 		}
 	}
 	if id, err := strconv.ParseInt(r.URL.Query().Get("edit"), 10, 64); err == nil {
@@ -384,6 +413,16 @@ func (s *Server) editSound(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e.Name = name
+	}
+	if f.Has("tag_find") {
+		e.Tags = ParseTags(strings.Join(append(f["tag"], f.Get("tag_find")), ","))
+		if e.Tags == nil {
+			e.Tags = []string{}
+		}
+		if len(e.Tags) > maxTags {
+			s.fail(w, r, http.StatusBadRequest, fmt.Sprintf("At most %d tags.", maxTags))
+			return
+		}
 	}
 	if utf8.RuneCountInString(e.DisplayName) > maxDisplayName {
 		s.fail(w, r, http.StatusBadRequest, fmt.Sprintf("The display name is longer than %d characters.", maxDisplayName))
@@ -530,4 +569,35 @@ func groupRank(m bot.Member) int {
 		return -1
 	}
 	return m.GroupPos
+}
+
+// setTagLook sets the emoji or image shown for a tag on the soundboard.
+func (s *Server) setTagLook(w http.ResponseWriter, r *http.Request) {
+	f := r.PostForm
+	tags := ParseTags(f.Get("tag"))
+	if len(tags) != 1 {
+		s.fail(w, r, http.StatusBadRequest, "Pick a tag.")
+		return
+	}
+	emoji := strings.TrimSpace(f.Get("emoji"))
+	if !validEmoji(emoji) {
+		s.fail(w, r, http.StatusBadRequest, "Use one emoji.")
+		return
+	}
+	var icon int64
+	if v := f.Get("icon"); v != "" && v != "0" {
+		icon, _ = strconv.ParseInt(v, 10, 64)
+		img, err := s.store.Media(r.Context(), icon)
+		if err != nil || img.Kind != store.KindImage {
+			s.fail(w, r, http.StatusBadRequest, "Pick an image from the media library.")
+			return
+		}
+		emoji = ""
+	}
+	if err := s.store.SetTagLook(r.Context(), tags[0], emoji, icon); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	s.audit(r, "tag.update", tags[0], "icon")
+	redirect(w, r, safeNext(f.Get("next"), "/media"), "saved")
 }

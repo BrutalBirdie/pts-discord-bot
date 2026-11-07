@@ -160,6 +160,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	csrfOK := false
 	group, only, next := "", false, ""
+	var tags []string
 	var added, problems []string
 	var saved []store.Media
 	for {
@@ -179,6 +180,11 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		if part.FormName() == "csrf" {
 			token, _ := io.ReadAll(io.LimitReader(part, 256))
 			csrfOK = s.validCSRF(r, sess, string(token))
+			continue
+		}
+		if part.FormName() == "tag" {
+			v, _ := io.ReadAll(io.LimitReader(part, 64))
+			tags = ParseTags(string(v))
 			continue
 		}
 		if part.FormName() == "next" {
@@ -216,6 +222,12 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			problems = append(problems, name+": "+err.Error())
 			continue
+		}
+		if len(tags) > 0 {
+			m.Tags = tags
+			if err := s.store.UpdateMedia(r.Context(), m); err != nil {
+				s.log.Error("tagging an upload", "err", err)
+			}
 		}
 		added = append(added, name)
 		saved = append(saved, m)

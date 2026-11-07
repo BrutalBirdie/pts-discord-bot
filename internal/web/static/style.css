@@ -721,3 +721,10 @@ output[hidden] { display: none; }
 .notice .undo + .dismiss { margin-left: 0; }
 html:not(.js) .notice .dismiss { display: none; }
 html.loading, html.loading * { cursor: progress; }
+
+/* soundboard tags */
+.tagbar a { gap: 6px; }
+.tagbar .badge { margin-left: 2px; }
+.tagbar .tag-back { font-weight: 700; }
+.tface { flex: none; font-size: 1.05rem; line-height: 1; }
+img.tface { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; }

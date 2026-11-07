@@ -101,6 +101,7 @@ type SoundEdit struct {
 	ID          int64
 	Name        string
 	DisplayName string
+	Tags        []string
 	Emoji       string
 	IconID      int64
 	Volume      int
@@ -113,8 +114,9 @@ func (s *Store) EditSound(ctx context.Context, e SoundEdit) error {
 	if e.IconID != 0 {
 		icon = &e.IconID
 	}
-	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, emoji = $3, icon_media_id = $4, volume = $5, trim_start_ms = $6, trim_end_ms = $7, display_name = $8
-WHERE id = $1 AND deleted_at IS NULL`, e.ID, e.Name, e.Emoji, icon, e.Volume, e.TrimStartMS, e.TrimEndMS, e.DisplayName)
+	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, emoji = $3, icon_media_id = $4, volume = $5, trim_start_ms = $6, trim_end_ms = $7, display_name = $8,
+  tags = coalesce($9, tags)
+WHERE id = $1 AND deleted_at IS NULL`, e.ID, e.Name, e.Emoji, icon, e.Volume, e.TrimStartMS, e.TrimEndMS, e.DisplayName, e.Tags)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return ErrNameTaken
@@ -171,6 +173,44 @@ func (s *Store) Tags(ctx context.Context, guildID string) ([]string, error) {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+// SoundTag is a tag of the sounds offered to a server, with how many sounds have it and its icon.
+type SoundTag struct {
+	Name   string
+	Count  int
+	Emoji  string
+	IconID int64
+}
+
+// SoundTags returns the tags of the sounds offered to a server by name.
+func (s *Store) SoundTags(ctx context.Context, guildID string) ([]SoundTag, error) {
+	rows, err := s.pool.Query(ctx, `SELECT t.tag, t.n, coalesce(l.emoji, ''), coalesce(l.icon_media_id, 0)
+FROM (SELECT unnest(tags) AS tag, count(*) AS n FROM media m WHERE kind = 'sound' AND deleted_at IS NULL AND `+offered("m", "1")+` GROUP BY 1) t
+LEFT JOIN tag_looks l ON l.tag = t.tag ORDER BY t.tag`, guildID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (SoundTag, error) {
+		var t SoundTag
+		err := r.Scan(&t.Name, &t.Count, &t.Emoji, &t.IconID)
+		return t, err
+	})
+}
+
+// SetTagLook sets the emoji or image shown for a tag, both empty remove it.
+func (s *Store) SetTagLook(ctx context.Context, tag, emoji string, iconID int64) error {
+	if emoji == "" && iconID == 0 {
+		_, err := s.pool.Exec(ctx, `DELETE FROM tag_looks WHERE tag = $1`, tag)
+		return err
+	}
+	var icon *int64
+	if iconID != 0 {
+		icon = &iconID
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO tag_looks (tag, emoji, icon_media_id) VALUES ($1, $2, $3)
+ON CONFLICT (tag) DO UPDATE SET emoji = EXCLUDED.emoji, icon_media_id = EXCLUDED.icon_media_id`, tag, emoji, icon)
+	return err
 }
 
 // RandomSound picks a sound or video with the tag offered to a server.

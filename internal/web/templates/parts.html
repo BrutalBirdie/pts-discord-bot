@@ -170,6 +170,7 @@
     <section>
       <label class="field"><span>Display name</span><input type="text" name="display_name" value="{{$m.DisplayName}}" maxlength="80" placeholder="{{$m.Name}}"><span class="help">Optional. Shown on the soundboard, in pickers and in /play instead of the file name.</span></label>
       <label class="field"><span>File name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="200" required></label>
+      {{template "tokens" (tagTokens $m)}}
       <div class="field"><span id="emoji-label">Emoji</span>
         <input type="text" name="emoji" value="{{$m.Emoji}}" maxlength="64" autocomplete="off" aria-labelledby="emoji-label" data-emoji-picker="{{json .Emojis}}">
       </div>
@@ -186,3 +187,5 @@
   </form>
 </div>
 {{end}}
+
+{{define "tagface"}}{{if .IconID}}<img class="tface" src="/media/{{.IconID}}/file" alt="" width="20" height="20" loading="lazy">{{else if emojiURL .Emoji}}<img class="tface" src="{{emojiURL .Emoji}}" alt="" width="20" height="20" loading="lazy" referrerpolicy="no-referrer">{{else if .Emoji}}<span class="tface" aria-hidden="true">{{.Emoji}}</span>{{else}}{{icon "hash"}}{{end}}{{end}}

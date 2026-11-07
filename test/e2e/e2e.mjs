@@ -422,6 +422,9 @@ const steps = {
         const tile = await page.request.post(BASE + '/media', { multipart: { csrf, next: '/servers?x=1', file: { name: 'tile.wav', mimeType: 'audio/wav', buffer: wav } } });
         check('an upload from the soundboard returns there with Edit sound', tile.ok() && /\/servers\?x=1&edit=\d+&done=uploaded/.test(tile.url()), tile.url());
         const evil = await page.request.post(BASE + '/media', { multipart: { csrf, next: '//evil.example/', file: { name: 'tile2.wav', mimeType: 'audio/wav', buffer: wav } } });
+        const tagged = await page.request.post(BASE + '/media', { multipart: { csrf, tag: 'Fresh', file: { name: 'tagged.wav', mimeType: 'audio/wav', buffer: wav } } });
+        check('an upload from a tag of the soundboard gets the tag', tagged.ok() && (await page.request.get(BASE + '/sounds?q=tagged')).ok()
+            && (await (await page.request.get(BASE + '/tags?q=fresh')).json()).some((h) => h.name === 'fresh' && !h.new));
         check('an upload ignores a foreign next', evil.ok() && evil.url().startsWith(BASE + '/media?edit='), evil.url());
 
         await page.goto(BASE + '/admin/audit');

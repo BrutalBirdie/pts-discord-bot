@@ -121,6 +121,20 @@
       <span id="vol-help" class="vh">Play volume is how loud the bot plays a sound in the channel, unless the sound has its own volume. Only you hear previews.</span>
       {{template "search" (dict "P" $d.Paging "Label" "Search sounds" "Placeholder" "Search sounds")}}
       <div class="contents" data-live="sounds" data-live-list>
+      {{with $d.SoundTags}}
+      <div class="pills tagbar" role="navigation" aria-label="Sounds by tag">
+        {{if $d.Tag}}<a href="{{$d.TagURL ""}}" class="tag-back">{{icon "arrow-left"}}All sounds</a>{{else}}<a href="{{$d.TagURL ""}}" aria-current="page">All sounds</a>{{end}}
+        {{range $i, $t := .}}<a href="{{$d.TagURL .Name}}"{{if eq .Name $d.Tag}} aria-current="page"{{end}} data-menu="menu-tag-{{$i}}">{{template "tagface" .}}<span>{{.Name}}</span><span class="badge">{{.Count}}</span></a>{{end}}
+      </div>
+      {{range $i, $t := .}}
+      <div popover id="menu-tag-{{$i}}" class="menu" role="menu" aria-label="Tag {{.Name}}">
+        <span class="menu-title">#{{.Name}} · {{plural .Count "sound" "sounds"}}</span>
+        <a role="menuitem" href="{{$d.TagURL .Name}}">{{icon "music"}}Show the sounds tagged {{.Name}}</a>
+        <a role="menuitem" href="{{$d.TagURL $d.Tag}}&amp;tagedit={{.Name}}#sheet-tag">{{icon "smile"}}Set icon</a>
+        <a role="menuitem" href="/media?tag={{.Name}}">{{icon "image"}}Show in Media</a>
+      </div>
+      {{end}}
+      {{end}}
 
       {{if $d.Favorites}}{{template "soundgroup" (dict "Title" "Favorites" "Icon" "star" "Sounds" $d.Favorites "D" $d "CSRF" $csrf)}}{{end}}
       {{if $d.Own}}{{template "soundgroup" (dict "Title" $g.Name "Icon" "server" "Sounds" $d.Own "D" $d "CSRF" $csrf "Upload" (not $d.Rest))}}{{end}}
@@ -132,6 +146,23 @@
       <p class="hint">A click plays the sound in {{$ch.Name}}, the bot joins first and stays. The speaker previews it for you only, the star keeps it under Favorites. Sounds that another server keeps to itself are not listed.</p>
     </section>
     {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks in " $ch.Name) "Tasks" $d.Tasks "Empty" "No task uses this channel yet.")}}
+    {{with $d.TagEdit}}
+    <div popover id="sheet-tag" class="sheet" aria-labelledby="sheet-tag-title">
+      {{template "sheethead" (dict "ID" "sheet-tag" "Icon" "hash" "Title" "Icon for the tag" "Name" .Name)}}
+      <form method="post" action="/tags/look" class="sheet-body form" data-fetch data-done="Saved the icon of {{.Name}}.">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="tag" value="{{.Name}}"><input type="hidden" name="next" value="{{$d.TagURL $d.Tag}}">
+        <div class="field"><span id="tag-emoji-label">Emoji</span>
+          <input type="text" name="emoji" value="{{.Emoji}}" maxlength="64" autocomplete="off" aria-labelledby="tag-emoji-label" data-emoji-picker="{{json $d.Emojis}}">
+        </div>
+        <label class="field"><span>Or an image from Media</span><select name="icon"><option value="0">No image</option>{{range $d.Images}}<option value="{{.ID}}"{{if eq .ID $d.TagEdit.IconID}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+        <p class="hint">The icon shows in the tag list of the soundboard, for every server.</p>
+        <div class="btns">
+          <button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button>
+          <button type="button" class="ib with-label" popovertarget="sheet-tag" popovertargetaction="hide"><span class="lbl">Never mind</span></button>
+        </div>
+      </form>
+    </div>
+    {{end}}
     {{with $d.Edit}}{{template "soundsheet" (dict "M" . "Next" ($d.URL "c" $d.Channel.ID) "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf)}}{{end}}
 
     {{else if eq $d.View "text"}}{{$ch := $d.Channel}}
@@ -323,6 +354,7 @@
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <input type="hidden" name="next" value="{{$d.URL "c" $d.Channel.ID}}">
     <input type="hidden" name="guild" value="{{$d.Guild.ID}}">
+    {{with $d.Tag}}<input type="hidden" name="tag" value="{{.}}">{{end}}
     <label class="snd-play">{{icon "plus"}}<span class="nm">Upload new</span><input type="file" name="file" accept="audio/*,video/*,.ogg,.opus,.mp3,.wav,.flac,.m4a,.webm" multiple class="vh"></label>
     <button type="submit" class="ib sm no-js">{{icon "upload"}}<span class="lbl">Upload</span></button>
   </form>

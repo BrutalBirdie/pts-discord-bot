@@ -325,6 +325,7 @@ var discordRoutes = map[string]bool{
 	"GET /media/{id}/file":            true,
 	"GET /sounds":                     true,
 	"GET /tags":                       true,
+	"POST /tags/look":                 true,
 	"POST /prefs/preview-volume":      true,
 	"POST /prefs/play-volume":         true,
 	"POST /media/{id}":                true,

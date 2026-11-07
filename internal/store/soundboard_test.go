@@ -31,6 +31,20 @@ func TestLookFavoritesAndPreviewVolume(t *testing.T) {
 	if hits, _ := s.FindMedia(ctx, MediaQuery{Scope: All, Search: "big"}); len(hits) != 1 {
 		t.Errorf("media search by display name: %v", hits)
 	}
+	horn2, err := s.AddMedia(ctx, Media{Name: "horn2.ogg", Kind: KindSound, SizeBytes: 1, UploadedBy: "t"})
+	must(err)
+	must(s.UpdateMedia(ctx, Media{ID: horn, Name: "horn.ogg", DisplayName: "Big Horn", Tags: []string{"fun", "loud"}}))
+	must(s.UpdateMedia(ctx, Media{ID: horn2, Name: "horn2.ogg", Tags: []string{"fun"}}))
+	must(s.SetTagLook(ctx, "fun", "🎉", 0))
+	tags, err := s.SoundTags(ctx, "")
+	must(err)
+	if len(tags) != 2 || tags[0] != (SoundTag{Name: "fun", Count: 2, Emoji: "🎉"}) || tags[1] != (SoundTag{Name: "loud", Count: 1}) {
+		t.Errorf("tags: %+v", tags)
+	}
+	must(s.SetTagLook(ctx, "fun", "", 0))
+	if tags, _ := s.SoundTags(ctx, ""); tags[0].Emoji != "" {
+		t.Errorf("tag look not removed: %+v", tags)
+	}
 	if (Media{Name: "x.ogg"}).Label() != "x.ogg" {
 		t.Error("label without a display name")
 	}

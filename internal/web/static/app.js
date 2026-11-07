@@ -599,7 +599,8 @@
     onPage(function () {
         // fetch drops the #fragment of a redirect, ?edit opens the Edit sound sheet as well
         const target = location.hash.startsWith('#sheet-') && document.getElementById(location.hash.slice(1))
-            || new URLSearchParams(location.search).has('edit') && document.getElementById('sheet-sound');
+            || new URLSearchParams(location.search).has('edit') && document.getElementById('sheet-sound')
+            || new URLSearchParams(location.search).has('tagedit') && document.getElementById('sheet-tag');
         if (target && target.showPopover && !target.matches(':popover-open')) target.showPopover();
     });
 

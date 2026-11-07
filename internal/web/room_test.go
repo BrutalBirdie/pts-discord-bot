@@ -53,6 +53,28 @@ func TestSoundLookAndFavorite(t *testing.T) {
 			t.Errorf("%v: %d", bad, code)
 		}
 	}
+	v := url.Values{"tag": {"Fun", "loud"}, "tag_find": {""}, "name": {"horn-" + f.tag + ".ogg"}}
+	if code := f.do(f.cloud, "POST", edit, v).Code; code != http.StatusSeeOther {
+		t.Errorf("edit tags: %d", code)
+	}
+	if m, _ := f.st.Media(ctx, horn); !slices.Equal(m.Tags, []string{"fun", "loud"}) {
+		t.Errorf("tags: %v", m.Tags)
+	}
+	if code := post(f.cloud, edit, "name", "horn-"+f.tag+".ogg"); code != http.StatusSeeOther {
+		t.Errorf("edit without the tag field: %d", code)
+	}
+	if m, _ := f.st.Media(ctx, horn); len(m.Tags) != 2 {
+		t.Errorf("tags dropped without the tag field: %v", m.Tags)
+	}
+	if code := post(f.discord, "/tags/look", "tag", "Fun", "emoji", "🎉"); code != http.StatusSeeOther {
+		t.Errorf("tag look: %d", code)
+	}
+	if tags, _ := f.st.SoundTags(ctx, ""); !slices.ContainsFunc(tags, func(x store.SoundTag) bool { return x.Name == "fun" && x.Emoji == "🎉" && x.Count >= 1 }) {
+		t.Errorf("tag look not saved: %+v", tags)
+	}
+	if code := post(f.cloud, "/tags/look", "tag", "fun", "emoji", "E"); code != http.StatusBadRequest {
+		t.Errorf("letter as tag icon: %d", code)
+	}
 	if code := post(f.cloud, "/prefs/play-volume", "volume", "150"); code != http.StatusNoContent {
 		t.Errorf("play volume: %d", code)
 	}
