@@ -1177,4 +1177,36 @@
         }, true);
         box.addEventListener('dragstart', (event) => event.preventDefault());
     });
+
+    // the member column shows only the members that fit, it never scrolls
+    const fitBox = document.querySelector('[data-fit-members]');
+    if (fitBox) {
+        const body = fitBox.closest('.side-body');
+        const more = body.querySelector('[data-more]');
+        const base = Number(more.dataset.more) || 0;
+        function fit() {
+            const rows = Array.from(fitBox.querySelectorAll('.person-row'));
+            rows.forEach((li) => { li.hidden = false; });
+            fitBox.querySelectorAll('.mgroup').forEach((g) => { g.hidden = false; });
+            more.hidden = base === 0;
+            let cut = 0;
+            // only on wide screens the column has a fixed height
+            if (getComputedStyle(body).overflowY !== 'hidden') return;
+            for (let i = rows.length - 1; i >= 0 && body.scrollHeight > body.clientHeight + 1; i--) {
+                rows[i].hidden = true;
+                cut++;
+                more.hidden = false;
+                const g = rows[i].closest('.mgroup');
+                if (!g.querySelector('.person-row:not([hidden])')) g.hidden = true;
+            }
+            fitBox.querySelectorAll('.mgroup').forEach(function (g) {
+                g.querySelector('[data-count]').textContent = g.querySelectorAll('.person-row:not([hidden])').length;
+            });
+            const n = base + cut;
+            more.textContent = n + (n === 1 ? ' more member' : ' more members') + ', search to find them.';
+        }
+        fit();
+        window.addEventListener('resize', fit);
+        document.fonts && document.fonts.ready.then(fit);
+    }
 })();

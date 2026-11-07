@@ -696,3 +696,9 @@ html:not(.js) .list > li.sort-row { grid-template-columns: minmax(0, 1fr) auto; 
   .room-main { overflow-y: auto; }
   .room .room-side[popover], .room .room-members[popover] { min-height: 0; }
 }
+@media (min-width: 1100px) {
+  .room .room-members .side-body { overflow-y: hidden; }
+}
+.mgroups, .mgroup { display: grid; gap: 4px; min-width: 0; }
+.mgroups { gap: 6px; }
+.mgroup[hidden], .person-row[hidden], [data-more][hidden] { display: none; }
