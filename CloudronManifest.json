@@ -1,6 +1,6 @@
 {
   "id": "io.github.brutalbirdie.ptsdiscordvoicebot",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "title": "PTS Discord Bot",
   "author": "BrutalBirdie",
   "tagline": "Discord bot with a web UI to schedule voice and message tasks",
@@ -12,7 +12,7 @@
   "minBoxVersion": "10.0.1",
   "checklist": {
     "set-discord-token": {
-      "message": "Set DISCORD_TOKEN in /app/data/env.sh and switch on the Server Members and Message Content intents of the bot in the Discord Developer Portal. Restart the app after editing env.sh."
+      "message": "Set DISCORD_TOKEN in /app/data/env.sh and switch on the Presence, Server Members and Message Content intents of the bot in the Discord Developer Portal. Restart the app after editing env.sh."
     },
     "set-admins": {
       "message": "Set admins: add Cloudron usernames to BOT_ADMINS or Cloudron groups to BOT_ADMIN_GROUP in /app/data/env.sh."

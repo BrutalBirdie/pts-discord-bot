@@ -1,3 +1,23 @@
+[0.5.0]
+* Control Room: the server like in Discord, with channels, who is in voice, members by role with status and activity, right-click menus, and task controls
+* Soundboard with favorites, emoji or image per sound, preview, per-user play volume and an Upload new tile; a new sound cuts short the one before
+* Edit sound: display name, own volume and the part to play, cut on a waveform
+* Media files can have a display name
+* Discord login for server members, access approved by an admin per server
+* Media and messages are open to every user, with optional server groups
+* Saved messages can have buttons that start a task or open a link
+* Message previews render Discord markdown with a formatting help, and show the bot's avatar
+* Event tasks can leave members out, and warn when several tasks start on the same event
+* Play steps can play several sounds in order or one at random, wait steps wait for voice conditions
+* A step that changes the bot's nickname and avatar in a server
+* Deleted tasks, messages and media go to a Trash first
+* Steps can be moved by drag and drop, lists have search and pages
+* Stop button for running runs, skipped playback shows in the run history
+* Servers in each user's own order, missing bot permissions are shown
+* Pages update live instead of reloading, notices can be dismissed
+* Playback stops in an empty channel, on a stall and at a run time limit
+* Needs the Presence intent for online status in the Control Room (optional)
+
 [0.4.1]
 * Update golang:1.27.3-trixie Docker digest to af1bfc2
 
