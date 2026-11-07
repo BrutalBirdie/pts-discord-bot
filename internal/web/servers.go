@@ -61,6 +61,7 @@ type serverData struct {
 	Sounds   []store.Media
 	Playing  []playingView
 	Paging   paging // of the tasks tab
+	Invite   string
 }
 
 func (s *Server) server(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +71,7 @@ func (s *Server) server(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	d := serverData{Guild: g, Tab: r.URL.Query().Get("tab"), Paging: newPaging(r)}
+	d := serverData{Guild: g, Tab: r.URL.Query().Get("tab"), Paging: newPaging(r), Invite: s.bot.InviteURL()}
 	for _, p := range s.playingViews(r) {
 		if p.P.GuildID == g.ID {
 			d.Playing = append(d.Playing, p)

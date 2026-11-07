@@ -19,6 +19,8 @@
   {{if $g.BotVoice}}<span class="chip accent">{{icon "volume-2"}}bot in {{$g.BotVoice}}</span>{{end}}
   <span class="chip">{{icon "users"}}{{$g.MemberCount}} members</span>
 </div>
+{{with $g.Missing}}<div class="callout warn">{{icon "triangle-alert"}}<div><span>The bot lacks these server permissions: {{join . ", "}}. Steps that need them fail.{{if $g.MissingNick}} Change Nickname is needed by Change profile steps that set a nickname.{{end}} Give the bot's role these permissions in the server settings, or add the bot again with the invite link, which asks for all of them.</span>
+  {{with $d.Invite}}<div class="mt">{{template "copybox" (dict "Text" . "Label" "Copy invite link")}}</div>{{end}}</div></div>{{end}}
 {{range $d.Playing}}{{template "playing" .}}{{end}}
 
 <nav class="tabs" aria-label="Server">

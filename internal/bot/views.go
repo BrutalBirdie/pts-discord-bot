@@ -22,8 +22,23 @@ type Guild struct {
 	Text        int
 	BotVoice    string // name of the voice channel the bot is in
 	Playing     *Playing
-	Problems    int // channels the bot cannot use
+	Problems    int      // channels the bot cannot use
+	Missing     []string // server permissions of the invite link the bot lacks
 }
+
+// invitePermissionNames name InvitePermissions as Discord's settings do.
+var invitePermissionNames = []struct {
+	p    discord.Permissions
+	name string
+}{
+	{discord.PermissionViewChannel, "View Channels"}, {discord.PermissionSendMessages, "Send Messages"},
+	{discord.PermissionEmbedLinks, "Embed Links"}, {discord.PermissionAttachFiles, "Attach Files"},
+	{discord.PermissionConnect, "Connect"}, {discord.PermissionSpeak, "Speak"},
+	{discord.PermissionChangeNickname, "Change Nickname"},
+}
+
+// MissingNick tells whether the bot cannot change its nickname in the server.
+func (g Guild) MissingNick() bool { return slices.Contains(g.Missing, "Change Nickname") }
 
 type Channel struct {
 	ID       string
@@ -117,6 +132,14 @@ func (b *Bot) guildView(c *disgobot.Client, g discord.CacheGuild) Guild {
 		}
 	}
 	v.Playing = b.playingIn(g.ID)
+	if self, ok := c.Caches.SelfMember(g.ID); ok {
+		perms := c.Caches.MemberPermissions(self)
+		for _, n := range invitePermissionNames {
+			if !perms.Has(n.p) {
+				v.Missing = append(v.Missing, n.name)
+			}
+		}
+	}
 	return v
 }
 

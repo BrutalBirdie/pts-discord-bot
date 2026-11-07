@@ -820,6 +820,16 @@ type avatarView struct {
 	Problem string
 }
 
+// MissingNick tells whether the bot cannot change its nickname in the task's server.
+func (e taskEditor) MissingNick() bool {
+	for _, g := range e.Guilds {
+		if g.ID == e.Task.GuildID {
+			return g.MissingNick()
+		}
+	}
+	return false
+}
+
 // NoJoinBefore tells whether no Join step comes before step i.
 func (e taskEditor) NoJoinBefore(i int) bool {
 	for _, st := range e.Task.Steps[:min(i, len(e.Task.Steps))] {

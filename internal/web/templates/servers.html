@@ -24,6 +24,7 @@
           <span class="row-title">{{.Name}}
             {{if .Playing}}<span class="chip accent">{{icon "music"}}playing in {{.Playing.Channel}}</span>{{else if .BotVoice}}<span class="chip accent">{{icon "volume-2"}}in {{.BotVoice}}</span>{{end}}
             {{if .Problems}}<span class="chip warn">{{icon "triangle-alert"}}{{plural .Problems "channel" "channels"}} without access</span>{{end}}
+            {{with .Missing}}<span class="chip warn">{{icon "triangle-alert"}}lacks {{join . ", "}}</span>{{end}}
           </span>
           <span class="meta">
             <span class="chip">{{icon "users"}}{{.MemberCount}} members</span>

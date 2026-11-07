@@ -171,6 +171,7 @@
           {{end}}
           {{if eq $s.Type "profile"}}
           {{with ($e.Avatar $i).Problem}}<p class="hint mt over">{{.}}. Pick another image.</p>{{end}}
+          {{if and (or $s.Nick $s.ResetNick) $e.MissingNick}}<p class="hint mt over">The bot lacks Change Nickname in this server, the nickname change fails. Give its role this permission, or add the bot again with the invite link on the <a href="/servers">Servers</a> page.</p>{{end}}
           <p class="hint mt">Only in this server. Discord limits how often a bot changes its profile: a change waits up to 30 s for the limit, a longer limit skips the run. PNG, JPEG, GIF or WebP up to 8 MB.</p>
           {{end}}
         </div>
