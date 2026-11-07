@@ -133,11 +133,12 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("GET /media/{id}/file", s.requireLogin(s.mediaFile))
 	mux.Handle("GET /sounds", s.requireLogin(s.searchSounds))
 	mux.Handle("POST /prefs/preview-volume", s.requireLogin(s.savePreviewVolume))
+	mux.Handle("POST /prefs/play-volume", s.requireLogin(s.savePlayVolume))
 	mux.Handle("POST /media/{id}", s.requireLogin(s.updateMedia))
 	mux.Handle("POST /media/{id}/play", s.requireLogin(s.playMedia))
 	mux.Handle("POST /media/{id}/delete", s.requireLogin(s.deleteMedia))
 	mux.Handle("POST /media/group", s.requireLogin(s.groupMedia))
-	mux.Handle("POST /media/{id}/look", s.requireLogin(s.setMediaLook))
+	mux.Handle("POST /media/{id}/sound", s.requireLogin(s.editSound))
 	mux.Handle("POST /media/{id}/favorite", s.requireLogin(s.setFavorite))
 
 	mux.Handle("GET /trash", s.requireLogin(s.trash))

@@ -13,6 +13,7 @@
   </nav>
 
   <aside class="room-side sheet" id="room-side" popover aria-labelledby="room-side-title">
+    <div class="room-resize js-only" data-resize="side" role="separator" aria-orientation="vertical" aria-label="Width of the channel list" tabindex="0"></div>
     <div class="side-head">
       <h2 id="room-side-title" title="{{$g.Name}}"><a href="/room/{{$g.ID}}">{{$g.Name}}</a></h2>
       <button type="button" class="ib quiet room-close" popovertarget="room-side" popovertargetaction="hide" aria-label="Close" data-tip="Close">{{icon "x"}}</button>
@@ -68,6 +69,13 @@
         </li>
         {{end}}
       </ul>{{end}}
+      {{with $d.Locked}}
+      <details class="locked">
+        <summary>{{icon "chevron-right"}}{{icon "lock"}}<span>No access · {{len .}}</span></summary>
+        <ul class="chs">{{range .}}<li class="chrow"><a href="{{$d.URL "c" .ID}}" title="{{.Problem}}">{{if .Voice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}<span class="nm">{{.Name}}</span></a></li>{{end}}</ul>
+        <p class="hint">The bot cannot see or use these channels. Give its role access in the channel settings.</p>
+      </details>
+      {{end}}
       <p class="hint hint-mouse">Right-click a channel, member or sound for more.</p>
       <p class="hint hint-touch">The … buttons open more for a channel, member or sound.</p>
     </div>
@@ -105,29 +113,13 @@
     <section class="card stack" aria-labelledby="sb-title">
       <div class="sec-head">
         <h2 id="sb-title">Soundboard</h2>
-        <label class="pvol js-only">{{icon "volume-2"}}<span>Your preview volume</span><input type="range" min="0" max="100" value="{{$.Prefs.PreviewVolume}}" data-preview-volume aria-describedby="pvol-help"><output>{{$.Prefs.PreviewVolume}}%</output></label>
+        <div class="vols">
+          <label class="pvol js-only">{{icon "radio"}}<span>Play volume</span><input type="range" min="1" max="200" value="{{$.Prefs.PlayVolume}}" data-play-volume aria-describedby="vol-help"><output>{{$.Prefs.PlayVolume}}%</output></label>
+          <label class="pvol js-only">{{icon "volume-2"}}<span>Your preview</span><input type="range" min="0" max="100" value="{{$.Prefs.PreviewVolume}}" data-preview-volume aria-describedby="vol-help"><output>{{$.Prefs.PreviewVolume}}%</output></label>
+        </div>
       </div>
-      <span id="pvol-help" class="vh">Only you hear previews. The volume applies to every sound.</span>
+      <span id="vol-help" class="vh">Play volume is how loud the bot plays a sound in the channel, unless the sound has its own volume. Only you hear previews.</span>
       {{template "search" (dict "P" $d.Paging "Label" "Search sounds" "Placeholder" "Search sounds")}}
-
-      {{with $d.Look}}
-      <form method="post" action="/media/{{.ID}}/look" class="look card" id="look">
-        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.URL "c" $ch.ID}}">
-        <h3>Emoji or image for {{.Name}}</h3>
-        <fieldset class="presets emojis"><legend class="vh">Emoji</legend>
-          {{range $d.Emojis}}<label><input type="radio" name="emoji" value="{{.}}"{{if eq . $d.Look.Emoji}} checked{{end}}><span>{{.}}</span></label>{{end}}
-        </fieldset>
-        <div class="grid2">
-          <label class="field"><span>Or type an emoji</span><input type="text" name="emoji_text" maxlength="40" autocomplete="off" value="{{if not (hasString $d.Emojis .Emoji)}}{{.Emoji}}{{end}}"></label>
-          <label class="field"><span>Or an image from Media</span><select name="icon"><option value="0">No image</option>{{range $d.Images}}<option value="{{.ID}}"{{if eq .ID $d.Look.IconID}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
-        </div>
-        <div class="btns">
-          <button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button>
-          <button type="submit" name="clear" value="1" class="ib with-label">{{icon "x"}}<span class="lbl">No emoji</span></button>
-          <a class="ib quiet with-label" href="{{$d.URL "c" $ch.ID}}"><span class="lbl">Cancel</span></a>
-        </div>
-      </form>
-      {{end}}
 
       {{if $d.Favorites}}{{template "soundgroup" (dict "Title" "Favorites" "Icon" "star" "Sounds" $d.Favorites "D" $d "CSRF" $csrf)}}{{end}}
       {{if $d.Own}}{{template "soundgroup" (dict "Title" $g.Name "Icon" "server" "Sounds" $d.Own "D" $d "CSRF" $csrf)}}{{end}}
@@ -137,6 +129,7 @@
       <p class="hint">A click plays the sound in {{$ch.Name}}, the bot joins first and stays. The speaker previews it for you only, the star keeps it under Favorites. Sounds that another server keeps to itself are not listed.</p>
     </section>
     {{template "roomtasks" (dict "ID" "tasks" "Title" (print "Tasks in " $ch.Name) "Tasks" $d.Tasks "Empty" "No task uses this channel yet.")}}
+    {{with $d.Edit}}{{template "soundsheet" (dict "M" . "Next" ($d.URL "c" $d.Channel.ID) "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf)}}{{end}}
 
     {{else if eq $d.View "text"}}{{$ch := $d.Channel}}
     <div class="page-head">
@@ -207,6 +200,7 @@
   </section>
 
   <aside class="room-members sheet" id="room-members" popover aria-labelledby="room-members-title">
+    <div class="room-resize js-only" data-resize="members" role="separator" aria-orientation="vertical" aria-label="Width of the member list" tabindex="0"></div>
     <div class="side-head">
       <h2 id="room-members-title">Members</h2>
       <button type="button" class="ib quiet room-close" popovertarget="room-members" popovertargetaction="hide" aria-label="Close" data-tip="Close">{{icon "x"}}</button>
@@ -220,11 +214,12 @@
       <ul class="chs">{{range .}}<li class="chrow person-row" data-menu="menu-m{{.ID}}">
         <a href="{{$d.URL "m" .ID}}"{{if eq .ID $d.Member.ID}} aria-current="page"{{end}}>{{template "roomava" .}}<span class="nm">{{.Name}}<small>{{.Voice}}</small></span></a>
         {{template "membermenu" (dict "ID" (print "menu-m" .ID) "M" . "D" $d)}}</li>{{end}}</ul>{{end}}
-      <span class="eyebrow">{{if $d.MQuery}}Matches{{else}}Members{{end}}</span>
+      <span class="eyebrow">{{if $d.MQuery}}Matches{{else if $d.Presence}}Online{{else}}Members{{end}}</span>
       <ul class="chs">{{range $d.Others}}<li class="chrow person-row" data-menu="menu-m{{.ID}}">
         <a href="{{$d.URL "m" .ID}}"{{if eq .ID $d.Member.ID}} aria-current="page"{{end}}>{{template "roomava" .}}<span class="nm">{{.Name}}</span></a>
         {{template "membermenu" (dict "ID" (print "menu-m" .ID) "M" . "D" $d)}}</li>
-      {{else}}<li class="hint">{{if $d.MQuery}}{{template "nomatch" $d.MQuery}}{{else}}No members known yet.{{end}}</li>{{end}}</ul>
+      {{else}}<li class="hint">{{if $d.MQuery}}{{template "nomatch" $d.MQuery}}{{else if $d.Presence}}Nobody else is online.{{else}}No members known yet.{{end}}</li>{{end}}</ul>
+      {{with $d.MHidden}}<p class="hint">{{plural . "more member" "more members"}}, search to find them.</p>{{end}}
       {{if or (gt $d.MPage 1) $d.MMore}}<nav class="pager" aria-label="Member pages">
         {{if gt $d.MPage 1}}<a class="ib sm" href="{{$d.MPrev}}" aria-label="Previous members" data-tip="Previous">{{icon "chevron-left"}}</a>{{else}}<span></span>{{end}}
         <span class="hint">Page {{$d.MPage}}</span>
@@ -259,9 +254,9 @@
     <li class="snd" data-menu="menu-s{{.ID}}">
       <form method="post" action="/servers/{{$g.ID}}/play" data-fetch data-done="Playing {{.Name}} in {{$ch.Name}}">
         <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="media" value="{{.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
-        <button type="submit" class="snd-play" aria-label="Play {{.Name}} in {{$ch.Name}}">{{if .IconID}}<img class="face" src="/media/{{.IconID}}/file" alt="" width="28" height="28" loading="lazy">{{else if .Emoji}}<span class="face" aria-hidden="true">{{.Emoji}}</span>{{end}}<span class="nm">{{.Name}}</span></button>
+        <button type="submit" class="snd-play" aria-label="Play {{.Name}} in {{$ch.Name}}">{{template "soundface" .Media}}<span class="nm">{{.Name}}</span></button>
       </form>
-      <button type="button" class="snd-pv js-only" data-preview-media="{{.ID}}" data-name="{{.Name}}" data-icon="volume-2" data-no-slider aria-label="Preview {{.Name}}" data-tip="Preview" aria-pressed="false">{{icon "volume-2"}}</button>
+      <button type="button" class="snd-pv js-only" data-preview-media="{{.ID}}" data-name="{{.Name}}" data-icon="volume-2" data-no-slider data-start="{{.TrimStartMS}}" data-end="{{.TrimEndMS}}" aria-label="Preview {{.Name}}" data-tip="Preview" aria-pressed="false">{{icon "volume-2"}}</button>
       <form method="post" action="/media/{{.ID}}/favorite" data-fetch data-toggle>
         <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="on" value="{{if .Fav}}0{{else}}1{{end}}"><input type="hidden" name="next" value="{{$d.Self}}">
         <button type="submit" class="snd-fav" aria-pressed="{{.Fav}}" aria-label="Favorite {{.Name}}" data-tip="Favorite">{{icon "star"}}</button>
@@ -272,8 +267,8 @@
         <form method="post" action="/servers/{{$g.ID}}/play" data-fetch data-done="Playing {{.Name}} in {{$ch.Name}}">
           <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="media" value="{{.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
           <button type="submit" role="menuitem">{{icon "play"}}Play in {{$ch.Name}}</button></form>
-        <a role="menuitem" href="{{$d.URL "c" $ch.ID}}&amp;look={{.ID}}#look">{{icon "smile"}}Set emoji or image</a>
-        <a role="menuitem" href="/media?q={{.Name}}">{{icon "pencil"}}Edit in Media</a>
+        <a role="menuitem" href="{{$d.URL "c" $ch.ID}}&amp;edit={{.ID}}#sheet-sound">{{icon "pencil"}}Edit sound</a>
+        <a role="menuitem" href="/media?q={{.Name}}">{{icon "image"}}Show in Media</a>
         <a role="menuitem" href="/tasks/new?guild={{$g.ID}}&amp;join={{$ch.ID}}&amp;play={{.ID}}">{{icon "plus"}}Create task with this sound</a>
       </div>
     </li>
@@ -294,3 +289,5 @@
   </ul>
 </section>
 {{end}}
+
+

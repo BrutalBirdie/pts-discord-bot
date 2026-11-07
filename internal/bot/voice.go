@@ -152,10 +152,15 @@ func stalled(frames int64, last, now time.Time) bool {
 	return frames > 0 && now.Sub(last) >= stallTimeout
 }
 
+// Clip is the part of a file to play, a zero End plays to the end.
+type Clip struct {
+	Start, End time.Duration
+}
+
 // Play streams a file into the voice channel the bot is in and returns when it
 // has finished. volume is in percent. It returns ErrChannelEmpty without
 // playing on when no member is in the channel.
-func (b *Bot) Play(ctx context.Context, guildID snowflake.ID, path string, info Playing, volume int) error {
+func (b *Bot) Play(ctx context.Context, guildID snowflake.ID, path string, clip Clip, info Playing, volume int) error {
 	c, err := b.get()
 	if err != nil {
 		return err
@@ -196,7 +201,14 @@ func (b *Bot) Play(ctx context.Context, guildID snowflake.ID, path string, info 
 		b.vmu.Unlock()
 	}()
 
-	args := []string{"-hide_banner", "-loglevel", "error", "-i", path, "-vn"}
+	args := []string{"-hide_banner", "-loglevel", "error"}
+	if clip.Start > 0 {
+		args = append(args, "-ss", seconds(clip.Start))
+	}
+	if clip.End > clip.Start {
+		args = append(args, "-to", seconds(clip.End))
+	}
+	args = append(args, "-i", path, "-vn")
 	if volume > 0 && volume != 100 {
 		args = append(args, "-af", "volume="+strconv.FormatFloat(float64(volume)/100, 'f', 2, 64))
 	}
@@ -313,3 +325,5 @@ func (f *frameProvider) lastFrame() time.Time { return time.Unix(0, f.last.Load(
 func (f *frameProvider) Close() {
 	f.once.Do(func() { close(f.done) })
 }
+
+func seconds(d time.Duration) string { return strconv.FormatFloat(d.Seconds(), 'f', 3, 64) }

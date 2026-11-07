@@ -147,3 +147,41 @@
   </div>
 </div>
 {{end}}
+
+{{define "soundface"}}{{if .IconID}}<img class="face" src="/media/{{.IconID}}/file" alt="" width="28" height="28" loading="lazy">{{else if emojiURL .Emoji}}<img class="face" src="{{emojiURL .Emoji}}" alt="" width="28" height="28" loading="lazy" referrerpolicy="no-referrer">{{else if .Emoji}}<span class="face" aria-hidden="true">{{.Emoji}}</span>{{end}}{{end}}
+
+{{define "soundsheet"}}{{$m := .M}}
+<div popover id="sheet-sound" class="sheet" aria-labelledby="sheet-sound-title">
+  {{template "sheethead" (dict "ID" "sheet-sound" "Icon" "pencil" "Title" "Edit sound" "Name" $m.Name)}}
+  <form method="post" action="/media/{{$m.ID}}/sound" class="sheet-body form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="next" value="{{.Next}}">
+    <section>
+      <span class="eyebrow">Preview and length</span>
+      <div class="wave js-only" data-wave="/media/{{$m.ID}}/file" data-duration="{{$m.DurationMS}}">
+        <button type="button" class="ib wave-play" aria-label="Play the selected part" data-tip="Play">{{icon "play"}}</button>
+        <div class="wave-box"><canvas aria-hidden="true"></canvas><span class="wave-sel"></span><span class="wave-pos"></span></div>
+      </div>
+      <div class="grid2">
+        <label class="field"><span>Start in seconds</span><input type="number" name="trim_start" min="0" step="0.01" value="{{seconds $m.TrimStartMS}}" data-trim="start"></label>
+        <label class="field"><span>End in seconds</span><input type="number" name="trim_end" min="0" step="0.01" value="{{if $m.TrimEndMS}}{{seconds $m.TrimEndMS}}{{else}}{{seconds $m.DurationMS}}{{end}}" data-trim="end"></label>
+      </div>
+      <p class="hint">Drag the edges in the preview to cut the sound. The file stays as it is, only the selected part plays.</p>
+    </section>
+    <section>
+      <label class="field"><span>Name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="200" required></label>
+      <div class="field"><span id="emoji-label">Emoji</span>
+        <input type="text" name="emoji" value="{{$m.Emoji}}" maxlength="64" autocomplete="off" aria-labelledby="emoji-label" data-emoji-picker="{{json .Emojis}}">
+      </div>
+      <label class="field"><span>Or an image from Media</span><select name="icon"><option value="0">No image</option>{{range .Images}}<option value="{{.ID}}"{{if eq .ID $m.IconID}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+    </section>
+    <section class="reveal">
+      <label class="switch-row"><span>Own volume<small>Plays this sound at this volume everywhere, also in tasks, instead of the soundboard or step volume.</small></span><input type="checkbox" class="switch" name="own_volume"{{if $m.Volume}} checked{{end}}></label>
+      <label class="field when-checked"><span>Volume</span><span class="inline"><input type="range" name="volume" min="1" max="200" value="{{if $m.Volume}}{{$m.Volume}}{{else}}100{{end}}" class="grow" data-out><output>{{if $m.Volume}}{{$m.Volume}}{{else}}100{{end}}%</output></span></label>
+    </section>
+    <div class="btns">
+      <button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button>
+      <button type="button" class="ib with-label" popovertarget="sheet-sound" popovertargetaction="hide"><span class="lbl">Never mind</span></button>
+    </div>
+  </form>
+</div>
+{{end}}

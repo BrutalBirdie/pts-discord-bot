@@ -97,9 +97,13 @@ func TestPagesRender(t *testing.T) {
 			horn.Emoji = "🎺"
 			d.Favorites = []soundTile{{Media: horn, Fav: true}}
 			d.Rest = []soundTile{{Media: img}}
-			d.Look, d.Emojis = &horn, soundEmojis
+			horn.TrimStartMS, horn.Volume = 1500, 80
+			d.Edit, d.Emojis = &horn, []bot.Emoji{{ID: "123456789012345678", Name: "salt", URL: "https://cdn.discordapp.com/emojis/123456789012345678.png"}}
+			d.Own = []soundTile{{Media: store.Media{ID: 8, Name: "custom.ogg", Kind: store.KindSound, Emoji: "<:salt:123456789012345678>"}}}
 		}), []string{`popovertarget="menu-c2"`, `data-menu="menu-v9"`, "Leave Lounge", `action="/media/5/favorite"`, `aria-pressed="true"`, `<span class="face" aria-hidden="true">🎺</span>`,
-			`name="emoji_text"`, `<input type="radio" name="emoji" value="🎺" checked>`, `href="/tasks/new?guild=1&amp;join=2&amp;play=5"`, "Tasks in Lounge", `data-preview-volume`, `href="/room/1?c=2&amp;look=5#look"`}},
+			`id="sheet-sound"`, `action="/media/5/sound"`, `name="trim_start" min="0" step="0.01" value="1.50"`, `name="trim_end" min="0" step="0.01" value="225.00"`, `name="own_volume" checked`,
+			`src="https://cdn.discordapp.com/emojis/123456789012345678.png?size=48"`, `data-emoji-picker="[{&#34;ID&#34;:&#34;123456789012345678&#34;`, `data-start="0" data-end="0"`,
+			`href="/tasks/new?guild=1&amp;join=2&amp;play=5"`, "Tasks in Lounge", `data-preview-volume`, `data-play-volume`, `href="/room/1?c=2&amp;edit=5#sheet-sound"`}},
 		{"room", room("text", bot.Channel{ID: "4", Name: "general", Usable: true}, func(d *roomData) {
 			d.Messages = []messages.Message{msg}
 		}), []string{`action="/room/1/send"`, `name="channel" value="4"`, `<option value="7">Friday</option>`, "Tasks that use #general", `href="/tasks/new?guild=1&amp;post=4"`}},

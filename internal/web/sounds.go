@@ -37,6 +37,21 @@ func (s *Server) searchSounds(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(hits)
 }
 
+// savePlayVolume stores the volume of sounds played from the soundboard.
+func (s *Server) savePlayVolume(w http.ResponseWriter, r *http.Request) {
+	vol, err := strconv.Atoi(r.PostForm.Get("volume"))
+	if err != nil || vol < 1 || vol > tasks.MaxVolume {
+		http.Error(w, "a volume from 1 to 200 is needed", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.SetPlayVolume(r.Context(), sessionFrom(r).Username, vol); err != nil {
+		s.log.Error("saving play volume", "err", err)
+		http.Error(w, "not saved", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // savePreviewVolume stores the volume of every sound preview of the user.
 func (s *Server) savePreviewVolume(w http.ResponseWriter, r *http.Request) {
 	vol, err := strconv.Atoi(r.PostForm.Get("volume"))

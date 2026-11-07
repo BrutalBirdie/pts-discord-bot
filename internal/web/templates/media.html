@@ -49,11 +49,12 @@
   </form>
   {{end}}
   <ul class="list">
-    {{range $d.Items}}
+    {{with $d.Edit}}{{template "soundsheet" (dict "M" . "Next" $d.Self "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf)}}{{end}}
+{{range $d.Items}}
     <li>
       <div class="person">
         <input type="checkbox" class="pick" name="id" value="{{.ID}}" form="group-bulk" aria-label="Select {{.Name}}">
-        {{if eq .Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Name)}}
+        {{if eq .Kind "sound"}}{{template "previewtile" (dict "ID" .ID "Name" .Name)}}{{template "soundface" .}}
         {{else}}<span class="thumb">{{if eq .Kind "image"}}<img src="/media/{{.ID}}/file" alt="" loading="lazy">{{else if eq .Kind "video"}}{{icon "film"}}{{else}}{{icon "file"}}{{end}}</span>{{end}}
         <div class="row-main">
           <span class="row-title mono">{{.Name}}{{if gt .SizeBytes 20971520}} <span class="chip warn">{{icon "triangle-alert"}}over 20 MB for Discord messages</span>{{end}}</span>
@@ -66,6 +67,7 @@
         <button type="button" class="ib" popovertarget="sheet-play-{{.ID}}" aria-label="Play {{.Name}} in a voice channel" data-tip="Play in a voice channel">{{icon "volume-2"}}<span class="lbl">Play</span></button>
         {{end}}
         <button type="button" class="ib" popovertarget="sheet-edit-{{.ID}}" aria-label="Edit {{.Name}}" data-tip="Name, tags and server group">{{icon "pencil"}}<span class="lbl">Edit</span></button>
+        {{if eq .Kind "sound"}}<a class="ib" href="{{$p.With "edit" (print .ID)}}#sheet-sound" aria-label="Edit sound {{.Name}}: length, volume, emoji" data-tip="Length, volume, emoji">{{icon "smile"}}<span class="lbl">Sound</span></a>{{end}}
         <a class="ib" href="/media/{{.ID}}/file?download=1" aria-label="Download {{.Name}}" data-tip="Download">{{icon "download"}}<span class="lbl">Download</span></a>
         <form method="post" action="/media/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$csrf}}">
           <button type="submit" class="ib danger" aria-label="Delete {{.Name}}" data-tip="Delete"{{if or .UsedBy .UsedElse}} disabled{{end}} data-confirm-desc="{{if $.TrashDays}}Moves {{.Name}} to the Trash.{{else}}Removes {{.Name}} right away. This cannot be undone.{{end}}"{{if not $.TrashDays}} data-irreversible{{end}}>{{icon "trash-2"}}<span class="lbl">Delete</span></button></form>

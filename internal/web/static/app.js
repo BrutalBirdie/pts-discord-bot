@@ -185,6 +185,9 @@
         const row = btn.closest('[data-preview-row], .tok, li');
         const detail = row && row.querySelector('[data-preview-detail]');
         const audio = new Audio('/media/' + id + '/file');
+        const startMS = Number(btn.dataset.start || 0), endMS = Number(btn.dataset.end || 0);
+        if (startMS) audio.currentTime = startMS / 1000;
+        if (endMS) audio.addEventListener('timeupdate', function () { if (audio.currentTime * 1000 >= endMS && preview && preview.audio === audio) stopPreview(); });
         const vol = document.createElement('span');
         vol.className = 'pv-vol';
         const label = document.createElement('label');
@@ -770,5 +773,317 @@
         else i = event.key === 'Home' ? 0 : items.length - 1;
         event.preventDefault();
         items[i].focus();
+    });
+
+    // the channel and member lists of the Control Room can be made wider or narrower
+    const room = document.querySelector('.room');
+    if (room) {
+        const limits = { side: [180, 480], members: [180, 420] };
+        const setWidth = function (which, px) {
+            const [lo, hi] = limits[which];
+            const w = Math.round(Math.min(hi, Math.max(lo, px)));
+            room.style.setProperty('--' + which + '-w', w + 'px');
+            try { localStorage.setItem('room-' + which, String(w)); } catch (e) { /* private mode */ }
+            return w;
+        };
+        ['side', 'members'].forEach(function (which) {
+            let saved = null;
+            try { saved = localStorage.getItem('room-' + which); } catch (e) { /* private mode */ }
+            if (saved) setWidth(which, Number(saved));
+        });
+        room.querySelectorAll('[data-resize]').forEach(function (handle) {
+            const which = handle.dataset.resize;
+            const panel = handle.parentElement;
+            handle.setAttribute('aria-valuemin', limits[which][0]);
+            handle.setAttribute('aria-valuemax', limits[which][1]);
+            handle.addEventListener('pointerdown', function (event) {
+                event.preventDefault();
+                handle.setPointerCapture(event.pointerId);
+                handle.classList.add('active');
+                const startX = event.clientX, startW = panel.getBoundingClientRect().width;
+                const move = function (e) {
+                    const dx = e.clientX - startX;
+                    handle.setAttribute('aria-valuenow', setWidth(which, which === 'side' ? startW + dx : startW - dx));
+                };
+                const up = function () {
+                    handle.classList.remove('active');
+                    handle.removeEventListener('pointermove', move);
+                    handle.removeEventListener('pointerup', up);
+                    handle.removeEventListener('pointercancel', up);
+                };
+                handle.addEventListener('pointermove', move);
+                handle.addEventListener('pointerup', up);
+                handle.addEventListener('pointercancel', up);
+            });
+            handle.addEventListener('keydown', function (event) {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                event.preventDefault();
+                const grow = (event.key === 'ArrowRight') === (which === 'side');
+                const w = panel.getBoundingClientRect().width + (grow ? 16 : -16);
+                handle.setAttribute('aria-valuenow', setWidth(which, w));
+            });
+        });
+    }
+
+    // the soundboard's play volume, saved for the user
+    let playTimer;
+    document.querySelectorAll('input[data-play-volume]').forEach(function (slider) {
+        const out = slider.parentElement.querySelector('output');
+        slider.addEventListener('input', function () {
+            if (out) out.textContent = slider.value + '%';
+            const csrf = document.querySelector('input[name=csrf]');
+            if (!csrf) return;
+            clearTimeout(playTimer);
+            playTimer = setTimeout(function () {
+                fetch('/prefs/play-volume', { method: 'POST', body: new URLSearchParams({ csrf: csrf.value, volume: slider.value }) })
+                    .then((r) => { if (!r.ok) toast('Volume not saved, reload the page and try again'); }, () => toast('Volume not saved, check your connection'));
+            }, 400);
+        });
+    });
+    document.querySelectorAll('input[type=range][data-out]').forEach(function (slider) {
+        const out = slider.parentElement.querySelector('output');
+        slider.addEventListener('input', function () { out.textContent = slider.value + '%'; });
+    });
+
+    // Edit sound: waveform with draggable start and end, the number fields stay the source of truth
+    document.querySelectorAll('[data-wave]').forEach(function (wave) {
+        const form = wave.closest('form');
+        const startIn = form.querySelector('input[data-trim=start]'), endIn = form.querySelector('input[data-trim=end]');
+        const box = wave.querySelector('.wave-box'), canvas = box.querySelector('canvas');
+        const sel = box.querySelector('.wave-sel'), pos = box.querySelector('.wave-pos');
+        const playBtn = wave.querySelector('.wave-play');
+        let total = Number(wave.dataset.duration) / 1000 || 0;
+        let peaks = null, audio = null;
+        const get = () => {
+            const s = Math.max(0, Number(startIn.value) || 0);
+            const e = Number(endIn.value) || total;
+            return [s, Math.max(s, Math.min(e, total || e))];
+        };
+        function draw() {
+            const w = box.clientWidth, h = box.clientHeight, dpr = window.devicePixelRatio || 1;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            const g = canvas.getContext('2d');
+            g.scale(dpr, dpr);
+            g.fillStyle = getComputedStyle(box).color;
+            const bars = Math.floor(w / 3);
+            for (let i = 0; i < bars; i++) {
+                const p = peaks ? peaks[Math.floor(i / bars * peaks.length)] : 0.15;
+                const bh = Math.max(2, p * (h - 8));
+                g.fillRect(i * 3, (h - bh) / 2, 2, bh);
+            }
+            const [s, e] = get();
+            if (total) {
+                sel.style.left = (s / total * 100) + '%';
+                sel.style.width = ((e - s) / total * 100) + '%';
+            }
+        }
+        fetch(wave.dataset.wave).then((r) => r.arrayBuffer()).then(function (buf) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            const ctx = new Ctx();
+            return ctx.decodeAudioData(buf).then(function (data) {
+                ctx.close();
+                total = total || data.duration;
+                const ch = data.getChannelData(0), n = 400, step = Math.floor(ch.length / n) || 1;
+                peaks = [];
+                let maxPeak = 0;
+                for (let i = 0; i < n; i++) {
+                    let m = 0;
+                    for (let j = i * step; j < Math.min(ch.length, (i + 1) * step); j += 16) m = Math.max(m, Math.abs(ch[j]));
+                    peaks.push(m);
+                    maxPeak = Math.max(maxPeak, m);
+                }
+                if (maxPeak > 0) peaks = peaks.map((p) => p / maxPeak);
+                draw();
+            });
+        }).catch(function () { draw(); });
+        const sheet = wave.closest('[popover]');
+        if (sheet) sheet.addEventListener('toggle', () => requestAnimationFrame(draw));
+        window.addEventListener('resize', draw);
+        [startIn, endIn].forEach((el) => el.addEventListener('input', draw));
+        let drag = null;
+        box.addEventListener('pointerdown', function (event) {
+            if (!total) return;
+            const r = box.getBoundingClientRect();
+            const t = (event.clientX - r.left) / r.width * total;
+            const [s, e] = get();
+            drag = Math.abs(t - s) <= Math.abs(t - e) ? startIn : endIn;
+            box.setPointerCapture(event.pointerId);
+            move(event);
+        });
+        function move(event) {
+            if (!drag) return;
+            const r = box.getBoundingClientRect();
+            let t = Math.max(0, Math.min(total, (event.clientX - r.left) / r.width * total));
+            const [s, e] = get();
+            if (drag === startIn) t = Math.min(t, e - 0.05); else t = Math.max(t, s + 0.05);
+            drag.value = t.toFixed(2);
+            draw();
+        }
+        box.addEventListener('pointermove', move);
+        box.addEventListener('pointerup', () => { drag = null; });
+        box.addEventListener('pointercancel', () => { drag = null; });
+        function stop() {
+            if (!audio) return;
+            audio.pause();
+            audio = null;
+            pos.hidden = true;
+            playBtn.querySelector('use').setAttribute('href', '#i-play');
+        }
+        playBtn.addEventListener('click', function () {
+            if (audio) { stop(); return; }
+            const [s, e] = get();
+            audio = new Audio(wave.dataset.wave);
+            audio.volume = Number(document.body.dataset.previewVol || 100) / 100;
+            audio.currentTime = s;
+            playBtn.querySelector('use').setAttribute('href', '#i-square');
+            pos.hidden = false;
+            audio.addEventListener('timeupdate', function () {
+                if (!audio) return;
+                if (total) pos.style.left = (audio.currentTime / total * 100) + '%';
+                if (audio.currentTime >= e) stop();
+            });
+            audio.addEventListener('ended', stop);
+            audio.play().catch(function () { stop(); toast('The preview could not be played'); });
+        });
+        draw();
+    });
+
+    // emoji picker: the server's own emojis and the standard ones, searchable by name
+    let emojiData = null;
+    const loadEmojis = () => emojiData || (emojiData = fetch('/static/emoji.json').then((r) => r.json()).catch(() => []));
+    const customRe = /^<(a?):([A-Za-z0-9_~]+):(\d+)>$/;
+    const customURL = (m) => 'https://cdn.discordapp.com/emojis/' + m[3] + '.' + (m[1] ? 'gif' : 'png') + '?size=48';
+    document.querySelectorAll('input[data-emoji-picker]').forEach(function (input, n) {
+        let custom = [];
+        try { custom = JSON.parse(input.dataset.emojiPicker || '[]') || []; } catch (e) { custom = []; }
+        input.type = 'hidden';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'emoji-btn';
+        btn.setAttribute('aria-haspopup', 'dialog');
+        const label = input.getAttribute('aria-labelledby');
+        if (label) btn.setAttribute('aria-labelledby', label + ' emoji-now-' + n);
+        const panel = document.createElement('div');
+        panel.className = 'emoji-panel';
+        panel.hidden = true;
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-label', 'Pick an emoji');
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.placeholder = 'Search emojis, like fire or salt';
+        search.setAttribute('aria-label', 'Search emojis');
+        search.autocomplete = 'off';
+        const list = document.createElement('div');
+        list.className = 'emoji-list';
+        const none = document.createElement('button');
+        none.type = 'button';
+        none.className = 'ib sm quiet with-label';
+        none.innerHTML = '<span class="lbl">No emoji</span>';
+        panel.append(search, list, none);
+        input.after(btn, panel);
+        function show() {
+            btn.textContent = '';
+            const v = input.value, m = v.match(customRe);
+            const now = document.createElement('span');
+            now.id = 'emoji-now-' + n;
+            if (m) {
+                const img = document.createElement('img');
+                img.src = customURL(m);
+                img.alt = '';
+                img.referrerPolicy = 'no-referrer';
+                btn.append(img);
+                now.textContent = ':' + m[2] + ':';
+            } else if (v) {
+                const e = document.createElement('span');
+                e.className = 'emoji-char';
+                e.textContent = v;
+                btn.append(e);
+                now.textContent = v;
+            } else {
+                btn.append(svgIcon('smile'));
+                now.textContent = 'Click to select';
+            }
+            btn.append(now);
+        }
+        function pick(value) {
+            input.value = value;
+            show();
+            close();
+            btn.focus();
+        }
+        function cell(text, title, value, img) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.title = title;
+            b.setAttribute('aria-label', title);
+            if (img) {
+                const i = document.createElement('img');
+                i.src = img;
+                i.alt = '';
+                i.loading = 'lazy';
+                i.referrerPolicy = 'no-referrer';
+                b.append(i);
+            } else {
+                b.textContent = text;
+            }
+            b.addEventListener('click', () => pick(value));
+            return b;
+        }
+        function render(groups) {
+            const q = search.value.trim().toLowerCase().replace(/^:|:$/g, '');
+            list.textContent = '';
+            let shown = 0;
+            const section = function (name, cells) {
+                if (!cells.length) return;
+                const h = document.createElement('span');
+                h.className = 'eyebrow';
+                h.textContent = name;
+                const grid = document.createElement('div');
+                grid.className = 'emoji-grid';
+                grid.append(...cells);
+                list.append(h, grid);
+                shown += cells.length;
+            };
+            section('This server', custom.filter((c) => !q || c.Name.toLowerCase().includes(q))
+                .map((c) => cell('', ':' + c.Name + ':', '<:' + c.Name + ':' + c.ID + '>', c.URL)));
+            (groups || []).forEach(function (g) {
+                if (shown > 400) return;
+                section(g.g, g.e.filter((e) => !q || e[1].includes(q)).slice(0, q ? 200 : 1000).map((e) => cell(e[0], e[1], e[0])));
+            });
+            if (!shown) {
+                const p = document.createElement('p');
+                p.className = 'hint';
+                p.textContent = 'No emoji matches "' + search.value + '".';
+                list.append(p);
+            }
+        }
+        function open() {
+            panel.hidden = false;
+            btn.setAttribute('aria-expanded', 'true');
+            search.value = '';
+            render(null);
+            loadEmojis().then(render);
+            search.focus();
+        }
+        function close() {
+            panel.hidden = true;
+            btn.setAttribute('aria-expanded', 'false');
+        }
+        btn.addEventListener('click', () => (panel.hidden ? open() : close()));
+        none.addEventListener('click', () => pick(''));
+        search.addEventListener('input', () => loadEmojis().then(render));
+        search.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); btn.focus(); }
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const first = list.querySelector('.emoji-grid button');
+                if (first) first.click();
+            }
+        });
+        document.addEventListener('click', function (event) {
+            if (!panel.hidden && !panel.contains(event.target) && event.target !== btn && !btn.contains(event.target)) close();
+        });
+        show();
     });
 })();

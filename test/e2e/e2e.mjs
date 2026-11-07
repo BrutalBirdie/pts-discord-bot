@@ -339,6 +339,14 @@ const steps = {
         };
         const chimes = () => page.locator('main .list > li', { hasText: 'chime' });
         check('sound uploaded', await upload());
+        check('a new sound opens Edit sound', /edit=\d+/.test(page.url()) && await page.locator('#sheet-sound').isVisible()
+            && await page.locator('#sheet-sound input[name=trim_end]').inputValue() === '0.50', page.url());
+        await page.locator('#sheet-sound .emoji-btn').click();
+        await page.fill('#sheet-sound .emoji-panel input[type=search]', 'fire');
+        await page.locator('#sheet-sound .emoji-grid button[title="fire"]').click();
+        await page.fill('#sheet-sound input[name=trim_start]', '0.1');
+        await page.click('#sheet-sound button[type=submit]');
+        check('Edit sound saves emoji and start', (await text(page)).includes('Saved.') && await chimes().locator('.face', { hasText: '🔥' }).count() === 1);
         const action = await chimes().locator('form[action$="/delete"]').getAttribute('action');
         const mediaID = action.split('/')[2];
         await post(`form[action="${action}"]`);

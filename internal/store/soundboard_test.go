@@ -19,12 +19,18 @@ func TestLookFavoritesAndPreviewVolume(t *testing.T) {
 	pic, err := s.AddMedia(ctx, Media{Name: "face.png", Kind: KindImage, SizeBytes: 1, UploadedBy: "t"})
 	must(err)
 
-	must(s.SetMediaLook(ctx, horn, "🎺", pic))
-	if m, _ := s.Media(ctx, horn); m.Emoji != "🎺" || m.IconID != pic {
-		t.Errorf("look: %+v", m)
+	must(s.EditSound(ctx, SoundEdit{ID: horn, Name: "horn.ogg", Emoji: "🎺", IconID: pic, Volume: 80, TrimStartMS: 500, TrimEndMS: 1500}))
+	if m, _ := s.Media(ctx, horn); m.Emoji != "🎺" || m.IconID != pic || m.Volume != 80 || m.PlayMS() != 1000 {
+		t.Errorf("edit: %+v", m)
 	}
-	if err := s.SetMediaLook(ctx, 999, "x", 0); err != ErrNotFound {
-		t.Errorf("look of a missing file: %v", err)
+	if err := s.EditSound(ctx, SoundEdit{ID: horn, Name: "face.png"}); err != ErrNameTaken {
+		t.Errorf("taken name: %v", err)
+	}
+	if err := s.EditSound(ctx, SoundEdit{ID: 999, Name: "x"}); err != ErrNotFound {
+		t.Errorf("edit of a missing file: %v", err)
+	}
+	if (Media{DurationMS: 3000, TrimStartMS: 1000}).PlayMS() != 2000 || (Media{DurationMS: 3000, TrimEndMS: 5000}).PlayMS() != 3000 {
+		t.Error("PlayMS")
 	}
 
 	must(s.SetFavorite(ctx, "ann", horn, true))
@@ -48,11 +54,12 @@ func TestLookFavoritesAndPreviewVolume(t *testing.T) {
 
 	must(s.SetPrefs(ctx, "ann", Prefs{ShowLabels: true}))
 	must(s.SetPreviewVolume(ctx, "ann", 35))
+	must(s.SetPlayVolume(ctx, "ann", 150))
 	must(s.SetPrefs(ctx, "ann", Prefs{ShowLabels: true}))
-	if p, _ := s.Prefs(ctx, "ann"); p.PreviewVolume != 35 || !p.ShowLabels {
+	if p, _ := s.Prefs(ctx, "ann"); p.PreviewVolume != 35 || p.PlayVolume != 150 || !p.ShowLabels {
 		t.Errorf("prefs: %+v", p)
 	}
-	if p, _ := s.Prefs(ctx, "bob"); p.PreviewVolume != 100 {
+	if p, _ := s.Prefs(ctx, "bob"); p.PreviewVolume != 100 || p.PlayVolume != 100 {
 		t.Errorf("default preview volume: %+v", p)
 	}
 }

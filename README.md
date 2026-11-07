@@ -19,7 +19,7 @@ Cloudron app with a Discord bot and a web UI to control it. Sign in with your Cl
 
 In Cloudron, open 'Add custom app' and enter `https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/CloudronVersions.json`.
 
-1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications). Under **Bot**, copy the token and switch on **Server Members Intent** and **Message Content Intent**.
+1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications). Under **Bot**, copy the token and switch on **Presence Intent**, **Server Members Intent** and **Message Content Intent**.
 2. Open `/app/data/env.sh` in the File Manager of the app. Set `DISCORD_TOKEN`, and `BOT_ADMINS` or `BOT_ADMIN_GROUP`. Restart the app.
 3. Sign in, open **Servers** and add the bot to your server with the invite link.
 

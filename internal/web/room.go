@@ -1,8 +1,10 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,14 +18,11 @@ import (
 
 const (
 	soundsPerPage  = 48
-	membersPerPage = 50
+	membersPerPage = 20
 	maxEmojiRunes  = 10
 	// mentions of other members show their ID in the preview
 	maxPreviewNames = 2000
 )
-
-// soundEmojis are offered in the emoji picker of a sound, any other emoji can be typed.
-var soundEmojis = []string{"📯", "👏", "🥁", "👋", "☀️", "🎺", "🔔", "🐟", "🧨", "😠", "🤔", "🎉", "💀", "👑", "🔥", "😂", "🍻", "🚀", "💥", "🎵", "😱", "🙏", "👀", "💤"}
 
 type roomChannel struct {
 	bot.Channel
@@ -41,7 +40,8 @@ type roomData struct {
 	Guild   bot.Guild
 	Text    []roomChannel
 	Voice   []roomChannel
-	View    string // voice, text, member or "" for the overview
+	Locked  []roomChannel // channels the bot cannot use
+	View    string        // voice, text, member or "" for the overview
 	Channel bot.Channel
 	Member  bot.Member
 	Self    string // this page, for the next field of forms
@@ -52,6 +52,8 @@ type roomData struct {
 	MQuery   string
 	MPage    int
 	MMore    bool
+	MHidden  int  // members left out of the list without a search
+	Presence bool // online status is known
 	Playing  []playingView
 	Settings store.Settings
 
@@ -59,8 +61,8 @@ type roomData struct {
 	Own       []soundTile // sounds of this server's group
 	Rest      []soundTile
 	Paging    paging
-	Look      *store.Media // the sound whose emoji is being picked
-	Emojis    []string
+	Edit      *store.Media // the sound in the Edit sound sheet
+	Emojis    []bot.Emoji  // custom emojis of the server, for the emoji picker
 	Images    []store.Media
 
 	Messages []messages.Message
@@ -114,7 +116,7 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	q.Del("done")
-	d := roomData{Guilds: s.guilds(r), Guild: g, Self: r.URL.Path, query: q, Paging: newPaging(r), Emojis: soundEmojis}
+	d := roomData{Guilds: s.guilds(r), Guild: g, Self: r.URL.Path, query: q, Paging: newPaging(r)}
 	if len(q) > 0 {
 		d.Self += "?" + q.Encode()
 	}
@@ -154,9 +156,12 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 				rc.Tasks++
 			}
 		}
-		if c.Voice {
+		switch {
+		case !c.Usable && !rc.Current:
+			d.Locked = append(d.Locked, rc)
+		case c.Voice:
 			d.Voice = append(d.Voice, rc)
-		} else {
+		default:
 			d.Text = append(d.Text, rc)
 		}
 	}
@@ -164,19 +169,8 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 	d.MQuery = strings.TrimSpace(q.Get("mq"))
 	d.MPage, _ = strconv.Atoi(q.Get("mp"))
 	d.MPage = max(d.MPage, 1)
-	var others []bot.Member
-	for _, m := range members {
-		switch {
-		case m.Bot:
-		case m.VoiceID != "":
-			d.InVoice = append(d.InVoice, m)
-		case d.MQuery == "" || len(bot.SearchMembers([]bot.Member{m}, d.MQuery, 1)) == 1:
-			others = append(others, m)
-		}
-	}
-	from := min((d.MPage-1)*membersPerPage, len(others))
-	to := min(from+membersPerPage, len(others))
-	d.Others, d.MMore = others[from:to], to < len(others)
+	d.Presence = s.bot.Status().PresenceIntent
+	d.InVoice, d.Others, d.MHidden, d.MMore = memberList(members, d.MQuery, d.MPage, d.Presence)
 
 	switch d.View {
 	case "voice":
@@ -250,9 +244,9 @@ func (s *Server) roomSounds(r *http.Request, d *roomData) error {
 			d.Rest = append(d.Rest, t)
 		}
 	}
-	if id, err := strconv.ParseInt(r.URL.Query().Get("look"), 10, 64); err == nil {
-		if m, err := s.store.Media(ctx, id); err == nil {
-			d.Look = &m
+	if id, err := strconv.ParseInt(r.URL.Query().Get("edit"), 10, 64); err == nil {
+		if m, err := s.store.Media(ctx, id); err == nil && m.Kind == store.KindSound {
+			d.Edit, d.Emojis = &m, s.bot.Emojis(d.Guild.ID)
 			if d.Images, err = s.store.ListMedia(ctx, d.Guild.ID, store.KindImage); err != nil {
 				return err
 			}
@@ -333,38 +327,68 @@ func (s *Server) roomSend(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, safeNext(r.PostForm.Get("next"), "/room/"+id), "sent")
 }
 
-// setMediaLook sets the emoji or image of a sound.
-func (s *Server) setMediaLook(w http.ResponseWriter, r *http.Request) {
+var customEmojiRe = regexp.MustCompile(`^<a?:[A-Za-z0-9_~]{2,32}:[0-9]{15,21}>$`)
+
+// validEmoji accepts one emoji or a custom emoji of a server like <:name:id>.
+func validEmoji(s string) bool {
+	return s == "" || customEmojiRe.MatchString(s) || utf8.RuneCountInString(s) <= maxEmojiRunes && !strings.ContainsAny(s, " \t\r\n<>:")
+}
+
+// editSound saves the Edit sound sheet: name, emoji or image, own volume and the part to play.
+func (s *Server) editSound(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
 		s.notFound(w, r)
 		return
 	}
-	emoji := strings.TrimSpace(r.PostForm.Get("emoji"))
-	if typed := strings.TrimSpace(r.PostForm.Get("emoji_text")); typed != "" {
-		emoji = typed
-	}
-	if utf8.RuneCountInString(emoji) > maxEmojiRunes || strings.ContainsAny(emoji, " \t\r\n<>") {
-		s.fail(w, r, http.StatusBadRequest, "Use one emoji.")
-		return
-	}
-	var icon int64
-	if r.PostForm.Get("clear") == "1" {
-		emoji = ""
-	} else if v := r.PostForm.Get("icon"); v != "" && v != "0" {
-		icon, _ = strconv.ParseInt(v, 10, 64)
-		m, err := s.store.Media(r.Context(), icon)
-		if err != nil || m.Kind != store.KindImage {
-			s.fail(w, r, http.StatusBadRequest, "Pick an image from the media library.")
-			return
-		}
-		emoji = ""
-	}
-	if err := s.store.SetMediaLook(r.Context(), id, emoji, icon); err != nil {
+	ctx := r.Context()
+	m, err := s.store.Media(ctx, id)
+	if err != nil {
 		s.storeErr(w, r, err)
 		return
 	}
-	redirect(w, r, safeNext(r.PostForm.Get("next"), "/media"), "saved")
+	f := r.PostForm
+	e := store.SoundEdit{ID: id, Name: strings.TrimSpace(f.Get("name")), Emoji: strings.TrimSpace(f.Get("emoji"))}
+	if e.Name == "" {
+		e.Name = m.Name
+	}
+	if !validEmoji(e.Emoji) {
+		s.fail(w, r, http.StatusBadRequest, "Use one emoji.")
+		return
+	}
+	if v := f.Get("icon"); v != "" && v != "0" {
+		e.IconID, _ = strconv.ParseInt(v, 10, 64)
+		img, err := s.store.Media(ctx, e.IconID)
+		if err != nil || img.Kind != store.KindImage {
+			s.fail(w, r, http.StatusBadRequest, "Pick an image from the media library.")
+			return
+		}
+		e.Emoji = ""
+	}
+	if f.Get("own_volume") == "on" {
+		e.Volume, err = strconv.Atoi(f.Get("volume"))
+		if err != nil || e.Volume < 1 || e.Volume > tasks.MaxVolume {
+			s.fail(w, r, http.StatusBadRequest, "The volume must be between 1 and 200 %.")
+			return
+		}
+	}
+	e.TrimStartMS, e.TrimEndMS = millis(f.Get("trim_start")), millis(f.Get("trim_end"))
+	if m.DurationMS > 0 && e.TrimEndMS >= m.DurationMS {
+		e.TrimEndMS = 0
+	}
+	if e.TrimStartMS < 0 || e.TrimEndMS < 0 || e.TrimEndMS > 0 && e.TrimEndMS <= e.TrimStartMS || m.DurationMS > 0 && e.TrimStartMS >= m.DurationMS {
+		s.fail(w, r, http.StatusBadRequest, "The start of the sound must be before its end.")
+		return
+	}
+	if err := s.store.EditSound(ctx, e); errors.Is(err, store.ErrNameTaken) {
+		s.fail(w, r, http.StatusConflict, "Another file is called "+e.Name+".")
+		return
+	} else if err != nil {
+		s.storeErr(w, r, err)
+		return
+	}
+	s.audit(r, "media.update", e.Name, "sound settings")
+	redirect(w, r, safeNext(f.Get("next"), "/media"), "saved")
 }
 
 func (s *Server) setFavorite(w http.ResponseWriter, r *http.Request) {
@@ -378,4 +402,37 @@ func (s *Server) setFavorite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirect(w, r, safeNext(r.PostForm.Get("next"), "/media"), "")
+}
+
+// memberList is the member column: with a search a page of the matches,
+// else the members in voice and then those online, membersPerPage at most.
+// Without the presence intent the online status is unknown, everyone fills up.
+func memberList(members []bot.Member, query string, page int, presence bool) (inVoice, others []bot.Member, hidden int, more bool) {
+	humans := slices.DeleteFunc(slices.Clone(members), func(m bot.Member) bool { return m.Bot })
+	if query != "" {
+		hits := bot.SearchMembers(humans, query, len(humans))
+		from := min((page-1)*membersPerPage, len(hits))
+		to := min(from+membersPerPage, len(hits))
+		return nil, hits[from:to], 0, to < len(hits)
+	}
+	for _, m := range humans {
+		if m.VoiceID != "" && len(inVoice) < membersPerPage {
+			inVoice = append(inVoice, m)
+		}
+	}
+	for _, m := range humans {
+		if m.VoiceID == "" && (m.Online || !presence) && len(inVoice)+len(others) < membersPerPage {
+			others = append(others, m)
+		}
+	}
+	return inVoice, others, len(humans) - len(inVoice) - len(others), false
+}
+
+// millis reads seconds like 1.25 as milliseconds, 0 for anything else.
+func millis(v string) int {
+	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil || f < 0 || f > 24*3600 {
+		return 0
+	}
+	return int(f*1000 + 0.5)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -79,6 +80,8 @@ var viewFuncs = template.FuncMap{
 	"untilLabel": tasks.UntilLabel,
 	"untils":     func() []string { return tasks.Untils },
 	"hasID":      func(list []int64, id int64) bool { return slices.Contains(list, id) },
+	"emojiURL":   emojiURL,
+	"seconds":    func(ms int) string { return strconv.FormatFloat(float64(ms)/1000, 'f', 2, 64) },
 	"hasTask": func(list []taskChoice, id int64) bool {
 		return slices.ContainsFunc(list, func(t taskChoice) bool { return t.ID == id })
 	},
@@ -213,4 +216,19 @@ func mentions(text string, names map[string]string) template.HTML {
 	}
 	b.WriteString(template.HTMLEscapeString(text[last:]))
 	return template.HTML(b.String())
+}
+
+var customEmojiTag = regexp.MustCompile(`^<(a?):[A-Za-z0-9_~]{2,32}:([0-9]{15,21})>$`)
+
+// emojiURL is the image of a custom emoji like <:name:id>, empty for other text.
+func emojiURL(s string) string {
+	m := customEmojiTag.FindStringSubmatch(s)
+	if m == nil {
+		return ""
+	}
+	ext := "png"
+	if m[1] == "a" {
+		ext = "gif"
+	}
+	return discordCDN + "/emojis/" + m[2] + "." + ext + "?size=48"
 }

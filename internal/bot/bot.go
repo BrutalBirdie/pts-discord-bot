@@ -31,11 +31,12 @@ const InvitePermissions = discord.PermissionViewChannel | discord.PermissionSend
 	discord.PermissionAttachFiles | discord.PermissionConnect | discord.PermissionSpeak | discord.PermissionChangeNickname
 
 type Config struct {
-	Token         string
-	MembersIntent bool // GUILD_MEMBERS, privileged
-	MessageIntent bool // MESSAGE_CONTENT, privileged, for keyword triggers
-	Voice         []voice.ManagerConfigOpt
-	Logger        *slog.Logger
+	Token          string
+	MembersIntent  bool // GUILD_MEMBERS, privileged
+	MessageIntent  bool // MESSAGE_CONTENT, privileged, for keyword triggers
+	PresenceIntent bool // GUILD_PRESENCES, privileged, for who is online
+	Voice          []voice.ManagerConfigOpt
+	Logger         *slog.Logger
 }
 
 type Bot struct {
@@ -46,6 +47,7 @@ type Bot struct {
 	client      *disgobot.Client
 	members     bool
 	messages    bool
+	presences   bool
 	handler     atomic.Pointer[Handler]
 	onLeave     atomic.Pointer[func(string)]
 	lastErr     string
@@ -59,7 +61,7 @@ type Bot struct {
 }
 
 func New(cfg Config) *Bot {
-	return &Bot{cfg: cfg, log: cfg.Logger, members: cfg.MembersIntent, messages: cfg.MessageIntent, playing: map[snowflake.ID]*Playing{}}
+	return &Bot{cfg: cfg, log: cfg.Logger, members: cfg.MembersIntent, messages: cfg.MessageIntent, presences: cfg.PresenceIntent, playing: map[snowflake.ID]*Playing{}}
 }
 
 // Run keeps the gateway connected until ctx ends. When Discord refuses the
@@ -75,11 +77,11 @@ func (b *Bot) Run(ctx context.Context) {
 	}
 	for ctx.Err() == nil {
 		b.mu.RLock()
-		members, messages := b.members, b.messages
+		members, messages, presences := b.members, b.messages, b.presences
 		b.mu.RUnlock()
 
 		fatal := make(chan error, 1)
-		client, err := b.newClient(members, messages, func(_ gateway.Gateway, err error, _ bool) {
+		client, err := b.newClient(members, messages, presences, func(_ gateway.Gateway, err error, _ bool) {
 			select {
 			case fatal <- err:
 			default:
@@ -103,7 +105,7 @@ func (b *Bot) Run(ctx context.Context) {
 		b.mu.Lock()
 		b.client, b.lastErr, b.connectedAt = client, "", time.Now()
 		b.mu.Unlock()
-		b.log.Info("connected to discord", "members_intent", members, "message_content_intent", messages)
+		b.log.Info("connected to discord", "members_intent", members, "message_content_intent", messages, "presence_intent", presences)
 
 		select {
 		case <-ctx.Done():
@@ -129,9 +131,12 @@ func (b *Bot) Run(ctx context.Context) {
 		}
 		switch code {
 		case gateway.CloseEventCodeDisallowedIntent.Code:
-			// drop the privileged intents one at a time, message content first
+			// drop the privileged intents one at a time, presences first
 			b.mu.Lock()
-			if b.messages {
+			if b.presences {
+				b.log.Error("discord refused the presence intent, connecting without it")
+				b.presences = false
+			} else if b.messages {
 				b.log.Error("discord refused the message content intent, connecting without it")
 				b.messages = false
 			} else {
@@ -163,9 +168,13 @@ func (b *Bot) setErr(msg string) {
 	b.mu.Unlock()
 }
 
-func (b *Bot) newClient(members, messages bool, onClose gateway.CloseHandlerFunc) (*disgobot.Client, error) {
-	intents := []gateway.Intents{gateway.IntentGuilds, gateway.IntentGuildVoiceStates}
-	flags := []cache.Flags{cache.FlagGuilds, cache.FlagChannels, cache.FlagRoles, cache.FlagVoiceStates, cache.FlagMembers}
+func (b *Bot) newClient(members, messages, presences bool, onClose gateway.CloseHandlerFunc) (*disgobot.Client, error) {
+	intents := []gateway.Intents{gateway.IntentGuilds, gateway.IntentGuildVoiceStates, gateway.IntentGuildExpressions}
+	flags := []cache.Flags{cache.FlagGuilds, cache.FlagChannels, cache.FlagRoles, cache.FlagVoiceStates, cache.FlagMembers, cache.FlagEmojis}
+	if presences {
+		intents = append(intents, gateway.IntentGuildPresences)
+		flags = append(flags, cache.FlagPresences)
+	}
 	opts := []disgobot.ConfigOpt{
 		disgobot.WithLogger(b.log),
 		disgobot.WithCacheConfigOpts(cache.WithCaches(flags...)),
@@ -194,21 +203,22 @@ func (b *Bot) get() (*disgobot.Client, error) {
 }
 
 type Status struct {
-	Connected     bool
-	Ready         bool
-	Latency       time.Duration
-	Since         time.Time
-	User          string
-	Avatar        string // URL on Discord's CDN
-	ApplicationID string
-	MembersIntent bool
-	MessageIntent bool
-	Error         string
+	Connected      bool
+	Ready          bool
+	Latency        time.Duration
+	Since          time.Time
+	User           string
+	Avatar         string // URL on Discord's CDN
+	ApplicationID  string
+	MembersIntent  bool
+	MessageIntent  bool
+	PresenceIntent bool
+	Error          string
 }
 
 func (b *Bot) Status() Status {
 	b.mu.RLock()
-	c, st := b.client, Status{MembersIntent: b.members, MessageIntent: b.messages, Error: b.lastErr, Since: b.connectedAt}
+	c, st := b.client, Status{MembersIntent: b.members, MessageIntent: b.messages, PresenceIntent: b.presences, Error: b.lastErr, Since: b.connectedAt}
 	b.mu.RUnlock()
 	if c == nil {
 		return st

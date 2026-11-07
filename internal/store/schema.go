@@ -149,6 +149,10 @@ DROP TABLE IF EXISTS preview_volume;
 ALTER TABLE media ADD COLUMN IF NOT EXISTS emoji text NOT NULL DEFAULT '';
 ALTER TABLE media ADD COLUMN IF NOT EXISTS icon_media_id bigint REFERENCES media (id) ON DELETE SET NULL;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS buttons jsonb NOT NULL DEFAULT '[]';
+ALTER TABLE media ADD COLUMN IF NOT EXISTS volume integer NOT NULL DEFAULT 0 CHECK (volume BETWEEN 0 AND 200);
+ALTER TABLE media ADD COLUMN IF NOT EXISTS trim_start_ms integer NOT NULL DEFAULT 0 CHECK (trim_start_ms >= 0);
+ALTER TABLE media ADD COLUMN IF NOT EXISTS trim_end_ms integer NOT NULL DEFAULT 0 CHECK (trim_end_ms >= 0);
+ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS play_volume integer NOT NULL DEFAULT 100 CHECK (play_volume BETWEEN 1 AND 200);
 CREATE TABLE IF NOT EXISTS favorite_media (
     username text NOT NULL,
     media_id bigint NOT NULL REFERENCES media (id) ON DELETE CASCADE,

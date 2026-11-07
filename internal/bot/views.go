@@ -64,6 +64,31 @@ type Member struct {
 	Voice    string // voice channel name
 	VoiceID  string
 	Avatar   string // URL on Discord's CDN
+	Online   bool   // not offline, known with the presence intent only
+}
+
+// Emoji is a custom emoji of a server.
+type Emoji struct {
+	ID   string
+	Name string
+	URL  string
+}
+
+// Emojis returns the custom emojis of a server by name.
+func (b *Bot) Emojis(guildID string) []Emoji {
+	c, err := b.get()
+	gid, ok := ParseID(guildID)
+	if err != nil || !ok {
+		return nil
+	}
+	var out []Emoji
+	for e := range c.Caches.Emojis(gid) {
+		if e.Name != "" && e.Available {
+			out = append(out, Emoji{ID: e.ID.String(), Name: e.Name, URL: e.URL(discord.WithSize(48))})
+		}
+	}
+	slices.SortFunc(out, func(a, b Emoji) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	return out
 }
 
 func initials(s string) string {
@@ -276,6 +301,9 @@ func (b *Bot) Members(guildID string) []Member {
 			if n, ok := roles[r]; ok {
 				v.Roles = append(v.Roles, n)
 			}
+		}
+		if p, ok := c.Caches.Presence(gid, m.User.ID); ok && p.Status != discord.OnlineStatusOffline && p.Status != "" {
+			v.Online = true
 		}
 		if vs, ok := c.Caches.VoiceState(gid, m.User.ID); ok && vs.ChannelID != nil {
 			if ch, ok := c.Caches.Channel(*vs.ChannelID); ok {

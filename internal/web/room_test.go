@@ -28,30 +28,30 @@ func TestSoundLookAndFavorite(t *testing.T) {
 		}
 		return f.do(cookie, "POST", path, v).Code
 	}
-	look := fmt.Sprintf("/media/%d/look", horn)
-	if code := post(f.discord, look, "emoji", "🎺", "next", "/room/1"); code != http.StatusSeeOther {
-		t.Errorf("look by a Discord user: %d", code)
+	edit := fmt.Sprintf("/media/%d/sound", horn)
+	if code := post(f.discord, edit, "name", "horn-"+f.tag+".ogg", "emoji", "🎺", "trim_start", "0.5", "trim_end", "1.25", "own_volume", "on", "volume", "150", "next", "/room/1"); code != http.StatusSeeOther {
+		t.Errorf("edit by a Discord user: %d", code)
 	}
-	if m, _ := f.st.Media(ctx, horn); m.Emoji != "🎺" {
-		t.Errorf("emoji: %+v", m)
+	if m, _ := f.st.Media(ctx, horn); m.Emoji != "🎺" || m.TrimStartMS != 500 || m.TrimEndMS != 1250 || m.Volume != 150 {
+		t.Errorf("edited: %+v", m)
 	}
-	if code := post(f.cloud, look, "emoji", "🎺", "emoji_text", "🔥", "icon", fmt.Sprint(f.medS)); code != http.StatusSeeOther {
-		t.Errorf("look with an image: %d", code)
+	if code := post(f.cloud, edit, "emoji", "<:salt:123456789012345678>", "icon", fmt.Sprint(f.medS)); code != http.StatusSeeOther {
+		t.Errorf("edit with an image: %d", code)
 	}
-	if m, _ := f.st.Media(ctx, horn); m.Emoji != "" || m.IconID != f.medS {
-		t.Errorf("image: %+v", m)
+	if m, _ := f.st.Media(ctx, horn); m.Emoji != "" || m.IconID != f.medS || m.Volume != 0 || m.TrimStartMS != 0 || m.Name != "horn-"+f.tag+".ogg" {
+		t.Errorf("image, own volume off, name kept: %+v", m)
 	}
-	if code := post(f.cloud, look, "icon", fmt.Sprint(f.trashS)); code != http.StatusBadRequest {
-		t.Errorf("a sound as image: %d", code)
+	if code := post(f.cloud, edit, "emoji", "<:salt:123456789012345678>"); code != http.StatusSeeOther {
+		t.Errorf("custom emoji: %d", code)
 	}
-	if code := post(f.cloud, look, "emoji_text", "not an emoji at all"); code != http.StatusBadRequest {
-		t.Errorf("long text as emoji: %d", code)
+	for _, bad := range [][]string{{"icon", fmt.Sprint(f.trashS)}, {"emoji", "not an emoji at all"}, {"emoji", "<img src=x>"}, {"trim_start", "2", "trim_end", "1"},
+		{"own_volume", "on", "volume", "300"}, {"name", "media-shared-" + f.tag + ".png"}} {
+		if code := post(f.cloud, edit, bad...); code != http.StatusBadRequest && code != http.StatusConflict {
+			t.Errorf("%v: %d", bad, code)
+		}
 	}
-	if code := post(f.cloud, look, "clear", "1", "icon", fmt.Sprint(f.medS)); code != http.StatusSeeOther {
-		t.Errorf("clear: %d", code)
-	}
-	if m, _ := f.st.Media(ctx, horn); m.Emoji != "" || m.IconID != 0 {
-		t.Errorf("cleared: %+v", m)
+	if code := post(f.cloud, "/prefs/play-volume", "volume", "150"); code != http.StatusNoContent {
+		t.Errorf("play volume: %d", code)
 	}
 
 	fav := fmt.Sprintf("/media/%d/favorite", horn)
@@ -146,5 +146,31 @@ func TestMessageButtons(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("editor misses %q", want)
 		}
+	}
+}
+
+func TestMemberList(t *testing.T) {
+	var all []bot.Member
+	for i := range 30 {
+		m := bot.Member{ID: fmt.Sprint(i), Name: fmt.Sprintf("m%02d", i), Username: fmt.Sprintf("u%02d", i), Online: i%2 == 0}
+		if i >= 25 {
+			m.VoiceID = "2"
+		}
+		all = append(all, m)
+	}
+	all = append(all, bot.Member{ID: "99", Name: "Bot", Bot: true, Online: true})
+	inVoice, others, hidden, _ := memberList(all, "", 1, true)
+	if len(inVoice) != 5 || len(others) != 13 || hidden != 12 || others[0].Name != "m00" || others[1].Name != "m02" {
+		t.Errorf("online: %d in voice, %d others, %d hidden", len(inVoice), len(others), hidden)
+	}
+	if _, others, _, _ := memberList(all, "", 1, false); others[1].Name != "m01" {
+		t.Errorf("without presences everyone fills up: %v", others[1].Name)
+	}
+	_, hits, _, more := memberList(all, "m1", 1, true)
+	if len(hits) != 10 || more {
+		t.Errorf("search: %d %v", len(hits), more)
+	}
+	if _, hits, _, more := memberList(all, "u", 2, true); len(hits) != 10 || more {
+		t.Errorf("second page: %d %v", len(hits), more)
 	}
 }

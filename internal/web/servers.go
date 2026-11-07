@@ -235,7 +235,12 @@ func (s *Server) startPlay(w http.ResponseWriter, r *http.Request, guildID, chan
 		s.fail(w, r, http.StatusBadRequest, ch.Problem)
 		return
 	}
-	s.run.PlayNow(chGuild, channelID, m, r.PostForm.Get("leave") == "on", sessionFrom(r).Username)
+	prefs, err := s.store.Prefs(r.Context(), sess.Username)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	s.run.PlayNow(chGuild, channelID, m, prefs.PlayVolume, r.PostForm.Get("leave") == "on", sess.Username)
 	s.audit(r, "voice.play", m.Name, s.bot.GuildName(chGuild)+" · "+ch.Name)
 	redirect(w, r, safeNext(r.PostForm.Get("next"), "/"), "playing")
 }

@@ -82,11 +82,12 @@ func run(log *slog.Logger) error {
 	web.SetDisplayTimezone(settings.Timezone)
 
 	b := bot.New(bot.Config{
-		Token:         os.Getenv("DISCORD_TOKEN"),
-		MembersIntent: os.Getenv("BOT_MEMBERS_INTENT") != "false",
-		MessageIntent: os.Getenv("BOT_MESSAGE_CONTENT_INTENT") != "false",
-		Voice:         []voice.ManagerConfigOpt{voice.WithDaveSessionCreateFunc(golibdave.NewSession)},
-		Logger:        log,
+		Token:          os.Getenv("DISCORD_TOKEN"),
+		MembersIntent:  os.Getenv("BOT_MEMBERS_INTENT") != "false",
+		MessageIntent:  os.Getenv("BOT_MESSAGE_CONTENT_INTENT") != "false",
+		PresenceIntent: os.Getenv("BOT_PRESENCE_INTENT") != "false",
+		Voice:          []voice.ManagerConfigOpt{voice.WithDaveSessionCreateFunc(golibdave.NewSession)},
+		Logger:         log,
 	})
 	rn := runner.New(st, b, dir, log)
 	if err := rn.Start(ctx); err != nil {

@@ -35,6 +35,10 @@ type mediaData struct {
 	DefaultGroup string      // preselected for uploads: the server of a Discord user
 	Names        map[string]string
 	Paging       paging
+	Edit         *store.Media // the sound in the Edit sound sheet
+	Emojis       []bot.Emoji
+	Images       []store.Media
+	Self         string
 }
 
 // GroupsWith are the group choices plus guildID, a file's current group.
@@ -111,6 +115,21 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Items = cut(&d.Paging, items)
+	d.Self = d.Paging.Self()
+	if id, err := strconv.ParseInt(q.Get("edit"), 10, 64); err == nil {
+		if m, err := s.store.Media(ctx, id); err == nil && m.Kind == store.KindSound {
+			d.Edit = &m
+			guild := m.GuildID
+			if guild == "" && len(d.Groups) > 0 {
+				guild = d.Groups[0].ID
+			}
+			d.Emojis = s.bot.Emojis(guild)
+			if d.Images, err = s.store.ListMedia(ctx, guild, store.KindImage); err != nil {
+				s.internalError(w, r, err)
+				return
+			}
+		}
+	}
 	for _, m := range d.Items {
 		if _, ok := d.Names[m.GuildID]; m.GuildID != "" && !ok {
 			d.Names[m.GuildID] = s.bot.GuildName(m.GuildID)
@@ -139,6 +158,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	csrfOK := false
 	group, only := "", false
 	var added, problems []string
+	var saved []store.Media
 	for {
 		part, err := mr.NextPart()
 		if errors.Is(err, io.EOF) {
@@ -184,11 +204,13 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 			problems = append(problems, part.FileName()+": "+err.Error()+".")
 			continue
 		}
-		if err := s.saveUpload(r, part, store.Media{Name: name, GuildID: group, GroupOnly: only}, limit); err != nil {
+		m, err := s.saveUpload(r, part, store.Media{Name: name, GuildID: group, GroupOnly: only}, limit)
+		if err != nil {
 			problems = append(problems, name+": "+err.Error())
 			continue
 		}
 		added = append(added, name)
+		saved = append(saved, m)
 	}
 	if len(added) > 0 {
 		s.audit(r, "media.upload", strings.Join(added, ", "), "")
@@ -201,19 +223,24 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, http.StatusBadRequest, msg)
 		return
 	}
+	// a single new sound opens Edit sound, to cut it right away
+	if len(saved) == 1 && saved[0].Kind == store.KindSound {
+		http.Redirect(w, r, fmt.Sprintf("/media?edit=%d&done=uploaded#sheet-sound", saved[0].ID), http.StatusSeeOther)
+		return
+	}
 	redirect(w, r, "/media", "uploaded")
 }
 
 // saveUpload adds a file with the name and server group of want. Names are unique.
-func (s *Server) saveUpload(r *http.Request, src io.Reader, want store.Media, limit int64) error {
+func (s *Server) saveUpload(r *http.Request, src io.Reader, want store.Media, limit int64) (store.Media, error) {
 	ctx := r.Context()
 	name := want.Name
 	if _, err := s.store.MediaByName(ctx, name); err == nil {
-		return errors.New("a file with this name exists, delete it first or rename the upload")
+		return store.Media{}, errors.New("a file with this name exists, delete it first or rename the upload")
 	}
 	tmp, err := s.cfg.MediaDir.Temp()
 	if err != nil {
-		return err
+		return store.Media{}, err
 	}
 	defer os.Remove(tmp.Name())
 	n, err := io.Copy(tmp, io.LimitReader(src, limit+1))
@@ -223,29 +250,30 @@ func (s *Server) saveUpload(r *http.Request, src io.Reader, want store.Media, li
 	var tooLarge *http.MaxBytesError
 	switch {
 	case errors.As(err, &tooLarge) || n > limit:
-		return fmt.Errorf("larger than %d MB", limit>>20)
+		return store.Media{}, fmt.Errorf("larger than %d MB", limit>>20)
 	case err != nil:
-		return err
+		return store.Media{}, err
 	case n == 0:
-		return errors.New("the file is empty")
+		return store.Media{}, errors.New("the file is empty")
 	}
 	m, err := media.Probe(ctx, tmp.Name(), name)
 	if err != nil {
-		return err
+		return store.Media{}, err
 	}
 	m.UploadedBy, m.GuildID, m.GroupOnly = sessionFrom(r).Username, want.GuildID, want.GroupOnly
 	id, err := s.store.AddMedia(ctx, m)
 	if errors.Is(err, store.ErrNameTaken) {
-		return errors.New("a file with this name exists, delete it first or rename the upload")
+		return store.Media{}, errors.New("a file with this name exists, delete it first or rename the upload")
 	}
 	if err != nil {
-		return err
+		return store.Media{}, err
 	}
 	if err := os.Rename(tmp.Name(), s.cfg.MediaDir.Path(id)); err != nil {
 		_ = s.store.DeleteMedia(ctx, id)
-		return err
+		return store.Media{}, err
 	}
-	return nil
+	m.ID = id
+	return m, nil
 }
 
 // fetchMedia downloads a file from a link into the media library.
@@ -273,7 +301,7 @@ func (s *Server) fetchMedia(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, http.StatusBadRequest, "Not added: "+err.Error()+".")
 		return
 	}
-	if err := s.saveUpload(r, body, store.Media{Name: name, GuildID: group, GroupOnly: r.PostForm.Get("group_only") == "on"}, int64(settings.MaxUploadMB)<<20); err != nil {
+	if _, err := s.saveUpload(r, body, store.Media{Name: name, GuildID: group, GroupOnly: r.PostForm.Get("group_only") == "on"}, int64(settings.MaxUploadMB)<<20); err != nil {
 		s.fail(w, r, http.StatusBadRequest, name+" not added: "+err.Error())
 		return
 	}

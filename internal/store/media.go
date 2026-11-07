@@ -34,14 +34,17 @@ type Media struct {
 	GroupOnly   bool     // not suggested to other servers than GuildID
 	Emoji       string   // shown on the soundboard
 	IconID      int64    // an image shown on the soundboard instead of Emoji
+	Volume      int      // percent for every playback, 0 for the volume of the step or soundboard
+	TrimStartMS int      // playback starts here
+	TrimEndMS   int      // and ends here, 0 for the end of the file
 	UsedBy      []string // names of tasks and messages in scope that reference it, filled by FindMedia
 	UsedElse    int      // tasks and messages out of scope that reference it
 }
 
-const mediaCols = `id, name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, created_at, tags, coalesce(guild_id, ''), group_only, emoji, coalesce(icon_media_id, 0)`
+const mediaCols = `id, name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, created_at, tags, coalesce(guild_id, ''), group_only, emoji, coalesce(icon_media_id, 0), volume, trim_start_ms, trim_end_ms`
 
 func (m *Media) fields() []any {
-	return []any{&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &m.GuildID, &m.GroupOnly, &m.Emoji, &m.IconID}
+	return []any{&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &m.GuildID, &m.GroupOnly, &m.Emoji, &m.IconID, &m.Volume, &m.TrimStartMS, &m.TrimEndMS}
 }
 
 func scanMedia(r pgx.Row) (Media, error) {
@@ -75,13 +78,37 @@ func (s *Store) UpdateMedia(ctx context.Context, m Media) error {
 	return err
 }
 
-// SetMediaLook sets the emoji or image a sound shows on the soundboard.
-func (s *Store) SetMediaLook(ctx context.Context, id int64, emoji string, iconID int64) error {
-	var icon *int64
-	if iconID != 0 {
-		icon = &iconID
+// PlayMS is how long a playback of the file lasts, 0 when unknown.
+func (m Media) PlayMS() int {
+	end := m.DurationMS
+	if m.TrimEndMS > 0 && (end == 0 || m.TrimEndMS < end) {
+		end = m.TrimEndMS
 	}
-	tag, err := s.pool.Exec(ctx, `UPDATE media SET emoji = $2, icon_media_id = $3 WHERE id = $1 AND deleted_at IS NULL`, id, emoji, icon)
+	return max(end-m.TrimStartMS, 0)
+}
+
+// SoundEdit is what the Edit sound dialog changes.
+type SoundEdit struct {
+	ID          int64
+	Name        string
+	Emoji       string
+	IconID      int64
+	Volume      int
+	TrimStartMS int
+	TrimEndMS   int
+}
+
+func (s *Store) EditSound(ctx context.Context, e SoundEdit) error {
+	var icon *int64
+	if e.IconID != 0 {
+		icon = &e.IconID
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, emoji = $3, icon_media_id = $4, volume = $5, trim_start_ms = $6, trim_end_ms = $7
+WHERE id = $1 AND deleted_at IS NULL`, e.ID, e.Name, e.Emoji, icon, e.Volume, e.TrimStartMS, e.TrimEndMS)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return ErrNameTaken
+	}
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}

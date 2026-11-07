@@ -80,7 +80,7 @@ func (r *Runner) soundTime(ctx context.Context) func(tasks.SoundRef) time.Durati
 		if err != nil {
 			return 0
 		}
-		return time.Duration(m.DurationMS) * time.Millisecond
+		return time.Duration(m.PlayMS()) * time.Millisecond
 	}
 }
 
@@ -307,8 +307,20 @@ func PlayTask(guildID, channelID, title string, play tasks.Step, leave bool) tas
 	return tasks.Task{Name: title, GuildID: guildID, Busy: tasks.BusySkip, Steps: steps}
 }
 
-func (r *Runner) PlayNow(guildID, channelID string, m store.Media, leave bool, actor string) {
-	r.RunNow(PlayTask(guildID, channelID, "Play "+m.Name, tasks.Step{MediaIDs: []int64{m.ID}}, leave), actor)
+func (r *Runner) PlayNow(guildID, channelID string, m store.Media, volume int, leave bool, actor string) {
+	r.RunNow(PlayTask(guildID, channelID, "Play "+m.Name, tasks.Step{MediaIDs: []int64{m.ID}, Volume: volume}, leave), actor)
+}
+
+// soundVolume is the volume of a sound when it has its own, else the volume of the step.
+func soundVolume(m store.Media, step int) int {
+	if m.Volume > 0 {
+		return m.Volume
+	}
+	return step
+}
+
+func clipOf(m store.Media) bot.Clip {
+	return bot.Clip{Start: time.Duration(m.TrimStartMS) * time.Millisecond, End: time.Duration(m.TrimEndMS) * time.Millisecond}
 }
 
 // JoinNow connects the bot to a voice channel in the background.
@@ -571,8 +583,8 @@ func (r *Runner) step(ctx context.Context, t tasks.Task, s tasks.Step, settings 
 		pctx, cancel := context.WithTimeout(ctx, time.Duration(settings.MaxPlayMinutes)*time.Minute)
 		defer cancel()
 		for _, m := range list {
-			info := bot.Playing{Name: m.Name, By: t.Name, Duration: time.Duration(m.DurationMS) * time.Millisecond}
-			err := r.bot.Play(pctx, guildID, r.media.Path(m.ID), info, s.Volume)
+			info := bot.Playing{Name: m.Name, By: t.Name, Duration: time.Duration(m.PlayMS()) * time.Millisecond}
+			err := r.bot.Play(pctx, guildID, r.media.Path(m.ID), clipOf(m), info, soundVolume(m, s.Volume))
 			if errors.Is(err, bot.ErrChannelEmpty) {
 				return &stepNote{"nothing played, nobody else was in the voice channel."}
 			}
