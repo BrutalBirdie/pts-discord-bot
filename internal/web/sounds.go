@@ -101,7 +101,7 @@ type tokenField struct {
 }
 
 func (e taskEditor) MemberTokens() tokenField {
-	f := tokenField{Field: "ev_member", Find: "ev_member", Label: "Only these members", LabelID: "ev-members", Placeholder: "Search members",
+	f := tokenField{Field: "ev_member", Find: "ev_member", Label: "Members", LabelID: "ev-members", Placeholder: "Search members",
 		Empty: "Any member", Help: "Empty: any member starts the task.", Guild: e.Task.GuildID, Max: tasks.MaxEventMembers}
 	for _, m := range e.EvMembers {
 		k := token{Value: m.ID, Name: m.Name, Title: m.Name, Avatar: initial(m.Name)}

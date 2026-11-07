@@ -369,6 +369,7 @@ func parseTask(r *http.Request) (tasks.Task, []string) {
 		if ev.Event == tasks.MemberJoin {
 			ev.ChannelID = ""
 		}
+		ev.Except = f.Get("ev_except") == "on"
 		// the member picker texts, resolved to IDs in resolveMembers
 		for _, v := range f["ev_member"] {
 			if v = strings.TrimSpace(v); v != "" && !slices.Contains(ev.UserIDs, v) {

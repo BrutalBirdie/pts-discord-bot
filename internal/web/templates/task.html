@@ -72,6 +72,10 @@
       <label class="field ev-keyword"><span>Keyword</span><input type="text" name="keyword" value="{{$t.Trigger.Keyword}}" maxlength="100"><span class="help">Upper and lower case do not matter, the message only has to contain the keyword.</span></label>
       {{if not .Bot.MessageIntent}}<div class="callout warn ev-keyword">{{icon "triangle-alert"}}<span>The bot cannot read messages: Discord refused the Message Content intent, or it is off in <span class="mono">/app/data/env.sh</span>. Switch on <strong>Message Content Intent</strong> under Bot in the Discord Developer Portal and restart the app.</span></div>{{end}}
       {{if not .Bot.MembersIntent}}<div class="callout warn ev-members">{{icon "triangle-alert"}}<span>New members are only reported with the Server Members intent. Switch it on in the Discord Developer Portal and restart the app.</span></div>{{end}}
+      <div class="presets" role="radiogroup" aria-label="Which members start the task">
+        <label><input type="radio" name="ev_except" value=""{{if not $t.Trigger.Except}} checked{{end}}>Only these members</label>
+        <label><input type="radio" name="ev_except" value="on"{{if $t.Trigger.Except}} checked{{end}}>All members except these</label>
+      </div>
       {{template "tokens" $e.MemberTokens}}
       <label class="field"><span>Cooldown</span><input type="text" name="cooldown" value="{{$e.CooldownText}}" placeholder="30s" autocomplete="off" spellcheck="false"><span class="help">The same member starts the task at most once in this time, like 30 (seconds), 2m or 1h. Each task counts on its own. Bots never start tasks.</span></label>
       <p class="hint">Steps can use the member who started the run: Join voice channel and Direct message have an option for it, and <span class="mono">{member}</span> mentions them in texts.</p>

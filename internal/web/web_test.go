@@ -195,7 +195,7 @@ func TestWhen(t *testing.T) {
 func TestParseEventTask(t *testing.T) {
 	form := url.Values{
 		"name": {"Greeting"}, "guild": {"1"}, "slash": {"on"}, "kind": {"event"}, "event": {"message"}, "event_channel": {"5"}, "keyword": {" adhan "},
-		"cooldown": {"1m"}, "times": {"05:00"}, "steps": {"3"}, "ev_member": {" Amira (@amira) ", "", "Amira (@amira)", "Bilal"},
+		"cooldown": {"1m"}, "ev_except": {"on"}, "times": {"05:00"}, "steps": {"3"}, "ev_member": {" Amira (@amira) ", "", "Amira (@amira)", "Bilal"},
 		"s0.type": {"join"}, "s0.target": {"trigger"},
 		"s1.type": {"play"}, "s1.media": {"tag:greeting"}, "s1.volume": {"100"},
 		"s2.type": {"dm"}, "s2.to": {"trigger"}, "s2.user": {"Amira"}, "s2.message": {"0"}, "s2.text": {"Hi {member}"},
@@ -208,7 +208,7 @@ func TestParseEventTask(t *testing.T) {
 		t.Fatalf("problems: %v", bad)
 	}
 	tr := task.Trigger
-	if !task.Slash || tr.Kind != tasks.Event || tr.Event != tasks.MessageIn || tr.ChannelID != "5" || tr.Keyword != "adhan" || tr.Cooldown != 60 || len(tr.Times) != 0 || strings.Join(tr.UserIDs, "|") != "Amira (@amira)|Bilal" {
+	if !task.Slash || tr.Kind != tasks.Event || tr.Event != tasks.MessageIn || tr.ChannelID != "5" || tr.Keyword != "adhan" || tr.Cooldown != 60 || !tr.Except || len(tr.Times) != 0 || strings.Join(tr.UserIDs, "|") != "Amira (@amira)|Bilal" {
 		t.Errorf("trigger: %+v slash=%v", tr, task.Slash)
 	}
 	if !task.Steps[0].ToTrigger || task.Steps[1].Tag != "greeting" || len(task.Steps[1].MediaIDs) != 0 || !task.Steps[2].ToTrigger || task.Steps[2].UserID != "" {

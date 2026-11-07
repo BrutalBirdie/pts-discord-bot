@@ -115,6 +115,13 @@ func TestEventTrigger(t *testing.T) {
 	if got := only.Summary(); got != "When a member joins a voice channel, only 2 members" {
 		t.Errorf("summary %q", got)
 	}
+	except := Trigger{Kind: Event, Event: VoiceJoin, UserIDs: []string{"7"}, Except: true}
+	if except.Matches(VoiceJoin, "9", "7", "") || !except.Matches(VoiceJoin, "9", "6", "") {
+		t.Error("except filter")
+	}
+	if got := except.Summary(); got != "When a member joins a voice channel, all members except 1" {
+		t.Errorf("summary %q", got)
+	}
 	if (Trigger{Kind: Event, Event: VoiceJoin, UserIDs: make([]string, MaxEventMembers+1)}).Validate() == nil {
 		t.Error("too many members accepted")
 	}

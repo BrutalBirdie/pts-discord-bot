@@ -61,6 +61,7 @@ type Trigger struct {
 	ChannelID string   `json:"channel_id,omitempty"` // event only in this channel, empty for all
 	Keyword   string   `json:"keyword,omitempty"`    // message events
 	UserIDs   []string `json:"user_ids,omitempty"`   // only these members start the task, empty for all
+	Except    bool     `json:"except,omitempty"`     // UserIDs are the members who do not start the task
 	Cooldown  int      `json:"cooldown,omitempty"`   // seconds before the same member starts the task again
 }
 
@@ -205,7 +206,7 @@ func (t Trigger) Matches(event, channelID, userID, content string) bool {
 	if t.Kind != Event || t.Event != event || t.ChannelID != "" && t.ChannelID != channelID {
 		return false
 	}
-	if len(t.UserIDs) > 0 && !slices.Contains(t.UserIDs, userID) {
+	if len(t.UserIDs) > 0 && slices.Contains(t.UserIDs, userID) == t.Except {
 		return false
 	}
 	return event != MessageIn || strings.Contains(strings.ToLower(content), strings.ToLower(strings.TrimSpace(t.Keyword)))
@@ -260,12 +261,16 @@ func (t Trigger) Summary() string {
 		} else {
 			out = "When " + strings.ToLower(EventLabel(t.Event)[:1]) + EventLabel(t.Event)[1:]
 		}
-		switch len(t.UserIDs) {
-		case 0:
-		case 1:
+		switch n := len(t.UserIDs); {
+		case n == 0:
+		case t.Except && n == 1:
+			out += ", all members except 1"
+		case t.Except:
+			out += fmt.Sprintf(", all members except %d", n)
+		case n == 1:
 			out += ", only 1 member"
 		default:
-			out += fmt.Sprintf(", only %d members", len(t.UserIDs))
+			out += fmt.Sprintf(", only %d members", n)
 		}
 		return out
 	}
