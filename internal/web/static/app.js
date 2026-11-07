@@ -1108,4 +1108,73 @@
     document.querySelectorAll('[data-color]').forEach(function (el) {
         if (/^#[0-9a-f]{6}$/i.test(el.dataset.color)) el.style.color = el.dataset.color;
     });
+
+    // servers in the user's order: drag in the server list or the Control Room rail
+    document.querySelectorAll('[data-sortable]').forEach(function (box) {
+        const items = () => Array.from(box.querySelectorAll(':scope > [data-sort-id]'));
+        const handles = box.querySelector('.sort-handle') !== null;
+        let drag = null, justDragged = false;
+        function save() {
+            const csrf = document.querySelector('input[name=csrf]');
+            if (!csrf) return;
+            const body = new URLSearchParams({ csrf: csrf.value });
+            items().forEach((el) => body.append('id', el.dataset.sortId));
+            fetch(box.dataset.sortable, { method: 'POST', body, headers: { Accept: 'application/json' } })
+                .then((r) => toast(r.ok ? 'Order saved' : 'Order not saved, reload the page and try again'), () => toast('Order not saved, check your connection'));
+        }
+        box.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0) return;
+            const el = event.target.closest('[data-sort-id]');
+            if (!el || el.parentElement !== box || (handles && !event.target.closest('.sort-handle'))) return;
+            const all = items();
+            const horizontal = all.length > 1 && Math.abs(all[1].offsetTop - all[0].offsetTop) < 4;
+            drag = { el, x: event.clientX, y: event.clientY, horizontal, moving: false, start: all.indexOf(el), id: event.pointerId };
+            if (handles) event.preventDefault();
+        });
+        document.addEventListener('pointermove', function (event) {
+            if (!drag || event.pointerId !== drag.id) return;
+            const d = drag.horizontal ? event.clientX - drag.x : event.clientY - drag.y;
+            if (!drag.moving) {
+                if (Math.abs(d) < 6) return;
+                drag.moving = true;
+                drag.el.classList.add('sorting');
+                box.classList.add('sort-active');
+            }
+            drag.el.style.translate = drag.horizontal ? d + 'px 0' : '0 ' + d + 'px';
+            const r = drag.el.getBoundingClientRect();
+            const mid = drag.horizontal ? r.left + r.width / 2 : r.top + r.height / 2;
+            const prev = drag.el.previousElementSibling, next = drag.el.nextElementSibling;
+            const center = (el) => { const b = el.getBoundingClientRect(); return drag.horizontal ? b.left + b.width / 2 : b.top + b.height / 2; };
+            if (prev && prev.dataset.sortId && mid < center(prev)) {
+                const before = drag.el.getBoundingClientRect();
+                prev.before(drag.el);
+                const after = drag.el.getBoundingClientRect();
+                if (drag.horizontal) drag.x += after.left - before.left; else drag.y += after.top - before.top;
+            } else if (next && next.dataset.sortId && mid > center(next)) {
+                const before = drag.el.getBoundingClientRect();
+                next.after(drag.el);
+                const after = drag.el.getBoundingClientRect();
+                if (drag.horizontal) drag.x += after.left - before.left; else drag.y += after.top - before.top;
+            }
+            const now = drag.horizontal ? event.clientX - drag.x : event.clientY - drag.y;
+            drag.el.style.translate = drag.horizontal ? now + 'px 0' : '0 ' + now + 'px';
+        });
+        function drop() {
+            if (!drag) return;
+            const moved = drag.moving && items().indexOf(drag.el) !== drag.start;
+            justDragged = drag.moving;
+            drag.el.style.translate = '';
+            drag.el.classList.remove('sorting');
+            box.classList.remove('sort-active');
+            drag = null;
+            if (moved) save();
+            setTimeout(() => { justDragged = false; }, 0);
+        }
+        document.addEventListener('pointerup', drop);
+        document.addEventListener('pointercancel', drop);
+        box.addEventListener('click', function (event) {
+            if (justDragged) { event.preventDefault(); event.stopPropagation(); }
+        }, true);
+        box.addEventListener('dragstart', (event) => event.preventDefault());
+    });
 })();

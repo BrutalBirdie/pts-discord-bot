@@ -71,7 +71,7 @@ func TestPagesRender(t *testing.T) {
 			Playing: []playingView{{P: bot.Playing{GuildID: "1", Name: "muezzin.ogg", Channel: "prayer", Started: now, Duration: time.Minute}, CSRF: "tok", Next: "/"}}},
 			[]string{"Adhan", "Missing Access", `action="/servers/1/stop"`, "muezzin.ogg", "of 2 runs"}},
 		{"servers", serversData{Guilds: []bot.Guild{{ID: "1", Name: "PTS Server", MemberCount: 12, Voice: 2, Text: 3, Problems: 1, Missing: []string{"Change Nickname"}}}, InviteURL: "https://discord.com/oauth2/authorize?client_id=1"},
-			[]string{`href="/servers/1"`, ">PS<", "1 channel without access", "client_id=1", "lacks Change Nickname"}},
+			[]string{`href="/servers/1"`, ">PS<", `data-sortable="/servers/order"`, `data-sort-id="1"`, `name="move" value="1"`, "1 channel without access", "client_id=1", "lacks Change Nickname"}},
 		{"server", serverData{Guild: bot.Guild{ID: "1", Name: "PTS", Missing: []string{"Speak", "Change Nickname"}}, Invite: "https://discord.com/oauth2/authorize?client_id=1", Tab: "channels", Voice: []bot.Channel{{ID: "2", Name: "prayer", Voice: true, Usable: true, HasBot: true, InVoice: []string{"Amira"}}},
 			Text: []bot.Channel{{ID: "4", Name: "rules", Problem: "The bot needs View Channel and Send Messages here."}}, Sounds: []store.Media{sound}},
 			[]string{`id="sheet-play-2"`, "Bot and Amira connected", "read only", `value="5"`, "The bot lacks these server permissions: Speak, Change Nickname.", "client_id=1"}},

@@ -324,7 +324,29 @@ func (s *Server) defaultGuild(r *http.Request, want string) string {
 // guilds are the servers of the bot the user may manage.
 func (s *Server) guilds(r *http.Request) []bot.Guild {
 	sess := sessionFrom(r)
-	return slices.DeleteFunc(s.bot.Guilds(), func(g bot.Guild) bool { return !sess.CanGuild(g.ID) })
+	gs := slices.DeleteFunc(s.bot.Guilds(), func(g bot.Guild) bool { return !sess.CanGuild(g.ID) })
+	if s.store == nil {
+		return gs
+	}
+	prefs, err := s.store.Prefs(r.Context(), sess.Username)
+	if err != nil {
+		s.log.Error("reading the server order", "err", err)
+		return gs
+	}
+	return orderGuilds(gs, prefs.GuildOrder)
+}
+
+// orderGuilds sorts servers in the user's order, servers they did not
+// place yet keep their name order after them.
+func orderGuilds(gs []bot.Guild, order []string) []bot.Guild {
+	rank := func(id string) int {
+		if i := slices.Index(order, id); i >= 0 {
+			return i
+		}
+		return len(order)
+	}
+	slices.SortStableFunc(gs, func(a, b bot.Guild) int { return rank(a.ID) - rank(b.ID) })
+	return gs
 }
 
 func (s *Server) task(w http.ResponseWriter, r *http.Request) {

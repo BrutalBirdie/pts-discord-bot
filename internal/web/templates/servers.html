@@ -15,9 +15,11 @@
 
 {{template "search" (dict "P" $d.Paging "Label" "Search servers" "Placeholder" "Server name or ID")}}
 <section class="card">
-  <ul class="list">
-    {{range $d.Guilds}}
-    <li class="link-row">
+  {{if and (gt (len $d.Guilds) 1) (not $d.Paging.Query)}}<p class="hint">Drag the servers{{if gt (len $d.Guilds) 1}} or use the arrows{{end}} to put them in your order. The first one is your default, for new tasks and the Control Room.</p>{{end}}
+  <ul class="list"{{if not $d.Paging.Query}} data-sortable="/servers/order"{{end}}>
+    {{range $i, $g := $d.Guilds}}
+    <li class="link-row sort-row" data-sort-id="{{.ID}}">
+      {{if not $d.Paging.Query}}<span class="sort-handle js-only" aria-hidden="true">{{icon "grip-vertical"}}</span>{{end}}
       <a class="rowlink with-lead" href="/servers/{{.ID}}">
         <span class="guild">{{.Initials}}</span>
         <span class="row-main">
@@ -34,6 +36,10 @@
         </span>
         <span class="go" aria-hidden="true">{{icon "chevron-right"}}</span>
       </a>
+      {{if not $d.Paging.Query}}<form method="post" action="/servers/order" class="sort-btns">{{template "csrf" $}}<input type="hidden" name="move" value="{{.ID}}"><input type="hidden" name="next" value="{{$d.Paging.Self}}">
+        <button type="submit" name="dir" value="up" class="ib sm quiet" aria-label="Move {{.Name}} up" data-tip="Move up"{{if and (not $i) (eq $d.Paging.Page 1)}} disabled{{end}}>{{icon "arrow-up"}}</button>
+        <button type="submit" name="dir" value="down" class="ib sm quiet" aria-label="Move {{.Name}} down" data-tip="Move down">{{icon "arrow-down"}}</button>
+      </form>{{end}}
     </li>
     {{else}}
     <li>{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}<span class="muted">{{if .Bot.Ready}}The bot is in no server yet. Add it with the invite link below.{{else}}The server list appears when the bot is connected.{{end}}</span>{{end}}</li>

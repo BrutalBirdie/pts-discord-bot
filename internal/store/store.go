@@ -188,17 +188,18 @@ func (s *Store) ListAudit(ctx context.Context, q AuditQuery) ([]AuditEntry, erro
 }
 
 type Prefs struct {
-	ShowLabels     bool // text next to every icon button
-	ConfirmActions bool // ask once before moving to the Trash or restoring
-	PreviewVolume  int  // percent, for every sound preview in the browser
-	PlayVolume     int  // percent, for sounds played from the soundboard
+	ShowLabels     bool     // text next to every icon button
+	ConfirmActions bool     // ask once before moving to the Trash or restoring
+	PreviewVolume  int      // percent, for every sound preview in the browser
+	PlayVolume     int      // percent, for sounds played from the soundboard
+	GuildOrder     []string // server IDs in the order the user put them, the first is the default
 }
 
 var DefaultPrefs = Prefs{ConfirmActions: true, PreviewVolume: 100, PlayVolume: 100}
 
 func (s *Store) Prefs(ctx context.Context, username string) (Prefs, error) {
 	var p Prefs
-	err := s.pool.QueryRow(ctx, `SELECT show_labels, confirm_actions, preview_volume, play_volume FROM user_prefs WHERE username = $1`, username).Scan(&p.ShowLabels, &p.ConfirmActions, &p.PreviewVolume, &p.PlayVolume)
+	err := s.pool.QueryRow(ctx, `SELECT show_labels, confirm_actions, preview_volume, play_volume, guild_order FROM user_prefs WHERE username = $1`, username).Scan(&p.ShowLabels, &p.ConfirmActions, &p.PreviewVolume, &p.PlayVolume, &p.GuildOrder)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DefaultPrefs, nil
 	}
@@ -208,6 +209,15 @@ func (s *Store) Prefs(ctx context.Context, username string) (Prefs, error) {
 func (s *Store) SetPrefs(ctx context.Context, username string, p Prefs) error {
 	_, err := s.pool.Exec(ctx, `INSERT INTO user_prefs (username, show_labels, confirm_actions) VALUES ($1, $2, $3)
 ON CONFLICT (username) DO UPDATE SET show_labels = EXCLUDED.show_labels, confirm_actions = EXCLUDED.confirm_actions`, username, p.ShowLabels, p.ConfirmActions)
+	return err
+}
+
+func (s *Store) SetGuildOrder(ctx context.Context, username string, ids []string) error {
+	if ids == nil {
+		ids = []string{}
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO user_prefs (username, guild_order) VALUES ($1, $2)
+ON CONFLICT (username) DO UPDATE SET guild_order = EXCLUDED.guild_order`, username, ids)
 	return err
 }
 

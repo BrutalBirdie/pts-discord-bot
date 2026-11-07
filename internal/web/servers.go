@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -244,4 +245,53 @@ func (s *Server) startPlay(w http.ResponseWriter, r *http.Request, guildID, chan
 	s.run.PlayNow(chGuild, channelID, m, prefs.PlayVolume, r.PostForm.Get("leave") == "on", sess.Username)
 	s.audit(r, "voice.play", m.Name, s.bot.GuildName(chGuild)+" · "+ch.Name)
 	redirect(w, r, safeNext(r.PostForm.Get("next"), "/"), "playing")
+}
+
+// saveGuildOrder stores the order of the servers: ?id in the new order for
+// the servers listed on a page, or move with dir up or down for one server.
+func (s *Server) saveGuildOrder(w http.ResponseWriter, r *http.Request) {
+	ids := make([]string, 0)
+	for _, g := range s.guilds(r) {
+		ids = append(ids, g.ID)
+	}
+	f := r.PostForm
+	if move := f.Get("move"); move != "" {
+		i := slices.Index(ids, move)
+		j := i - 1
+		if f.Get("dir") == "down" {
+			j = i + 1
+		}
+		if i >= 0 && j >= 0 && j < len(ids) {
+			ids[i], ids[j] = ids[j], ids[i]
+		}
+	} else {
+		ids = placeAt(ids, f["id"])
+	}
+	if err := s.store.SetGuildOrder(r.Context(), sessionFrom(r).Username, ids); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	if r.Header.Get("Accept") == "application/json" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	redirect(w, r, safeNext(f.Get("next"), "/servers"), "saved")
+}
+
+// placeAt puts the moved servers, as a page lists them, into the slots
+// they take in the whole order. Unknown and repeated IDs are ignored.
+func placeAt(all, moved []string) []string {
+	var slots []int
+	var keep []string
+	for _, id := range moved {
+		if i := slices.Index(all, id); i >= 0 && !slices.Contains(keep, id) {
+			slots, keep = append(slots, i), append(keep, id)
+		}
+	}
+	slices.Sort(slots)
+	out := slices.Clone(all)
+	for k, i := range slots {
+		out[i] = keep[k]
+	}
+	return out
 }

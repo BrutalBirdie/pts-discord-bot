@@ -290,6 +290,7 @@ var discordStart = map[string]bool{
 var discordRoutes = map[string]bool{
 	"GET /servers":                    true,
 	"GET /servers/{id}":               true,
+	"POST /servers/order":             true,
 	"GET /members":                    true,
 	"POST /servers/{id}/stop":         true,
 	"POST /servers/{id}/leave":        true,

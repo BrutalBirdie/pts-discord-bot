@@ -8,8 +8,8 @@
 {{else}}
 {{$g := $d.Guild}}
 <div class="room">
-  <nav class="room-rail" aria-label="Servers">
-    {{range $d.Guilds}}<a href="/room/{{.ID}}" class="rail-g"{{if eq .ID $g.ID}} aria-current="page"{{end}} aria-label="{{.Name}}" data-tip="{{.Name}}">{{if .Icon}}<img src="{{.Icon}}" alt="" width="48" height="48" referrerpolicy="no-referrer">{{else}}{{.Initials}}{{end}}</a>{{end}}
+  <nav class="room-rail" aria-label="Servers" data-sortable="/servers/order">
+    {{range $d.Guilds}}<a href="/room/{{.ID}}" data-sort-id="{{.ID}}" class="rail-g"{{if eq .ID $g.ID}} aria-current="page"{{end}} aria-label="{{.Name}}" data-tip="{{.Name}}">{{if .Icon}}<img src="{{.Icon}}" alt="" width="48" height="48" referrerpolicy="no-referrer">{{else}}{{.Initials}}{{end}}</a>{{end}}
   </nav>
 
   <aside class="room-side sheet" id="room-side" popover aria-labelledby="room-side-title">

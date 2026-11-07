@@ -95,6 +95,7 @@ func (s *Server) routes() *http.ServeMux {
 
 	mux.Handle("GET /servers", s.requireLogin(s.servers))
 	mux.Handle("POST /servers/refresh", s.requireLogin(s.refreshServers))
+	mux.Handle("POST /servers/order", s.requireLogin(s.saveGuildOrder))
 	mux.Handle("GET /servers/{id}", s.requireLogin(s.server))
 	mux.Handle("GET /members", s.requireLogin(s.searchMembers))
 	mux.Handle("POST /servers/{id}/stop", s.requireLogin(s.stopVoice))

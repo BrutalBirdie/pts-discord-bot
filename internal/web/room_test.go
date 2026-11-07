@@ -203,3 +203,25 @@ func TestValidEmoji(t *testing.T) {
 		}
 	}
 }
+
+func TestPlaceAt(t *testing.T) {
+	all := []string{"a", "b", "c", "d", "e"}
+	cases := []struct {
+		moved, want []string
+	}{
+		{[]string{"c", "b"}, []string{"a", "c", "b", "d", "e"}},
+		{[]string{"e", "a", "c"}, []string{"e", "b", "a", "d", "c"}},
+		{[]string{"x", "b", "b", "a"}, []string{"b", "a", "c", "d", "e"}},
+		{nil, all},
+	}
+	for _, c := range cases {
+		if got := placeAt(all, c.moved); !slices.Equal(got, c.want) {
+			t.Errorf("%v: %v", c.moved, got)
+		}
+	}
+	gs := []bot.Guild{{ID: "1", Name: "A"}, {ID: "2", Name: "B"}, {ID: "3", Name: "C"}}
+	got := orderGuilds(gs, []string{"3", "9", "1"})
+	if got[0].ID != "3" || got[1].ID != "1" || got[2].ID != "2" {
+		t.Errorf("orderGuilds: %v", got)
+	}
+}

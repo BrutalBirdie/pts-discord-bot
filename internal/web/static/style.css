@@ -674,3 +674,16 @@ img.av { object-fit: cover; padding: 0; }
 .room-members .nm .who { display: block; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
 .chrow .nm small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chrow .nm small .i { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
+
+/* server order */
+.list > li.sort-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.list > li.sort-row:not(:has(.sort-handle)) { grid-template-columns: minmax(0, 1fr) auto; }
+html:not(.js) .list > li.sort-row { grid-template-columns: minmax(0, 1fr) auto; }
+.sort-handle { display: grid; place-items: center; width: 28px; height: var(--tap); color: var(--muted); cursor: grab; touch-action: none; user-select: none; }
+.sort-handle:hover { color: var(--accent); }
+.sort-btns { display: flex; gap: 2px; }
+.sort-active, .sort-active * { cursor: grabbing !important; user-select: none; }
+.sorting { position: relative; z-index: 5; }
+.list > li.sorting { background: var(--surface); box-shadow: 0 6px 18px rgb(16 24 40 / .18); border-radius: var(--r-sm); }
+.room-rail .rail-g { touch-action: pan-x; }
+.rail-g.sorting { box-shadow: 0 6px 18px rgb(0 0 0 / .35); }

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"slices"
 	"testing"
 )
 
@@ -55,8 +56,9 @@ func TestLookFavoritesAndPreviewVolume(t *testing.T) {
 	must(s.SetPrefs(ctx, "ann", Prefs{ShowLabels: true}))
 	must(s.SetPreviewVolume(ctx, "ann", 35))
 	must(s.SetPlayVolume(ctx, "ann", 150))
+	must(s.SetGuildOrder(ctx, "ann", []string{"2", "1"}))
 	must(s.SetPrefs(ctx, "ann", Prefs{ShowLabels: true}))
-	if p, _ := s.Prefs(ctx, "ann"); p.PreviewVolume != 35 || p.PlayVolume != 150 || !p.ShowLabels {
+	if p, _ := s.Prefs(ctx, "ann"); p.PreviewVolume != 35 || p.PlayVolume != 150 || !slices.Equal(p.GuildOrder, []string{"2", "1"}) || !p.ShowLabels {
 		t.Errorf("prefs: %+v", p)
 	}
 	if p, _ := s.Prefs(ctx, "bob"); p.PreviewVolume != 100 || p.PlayVolume != 100 {
