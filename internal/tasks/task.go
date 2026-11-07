@@ -164,6 +164,7 @@ type Task struct {
 	Trigger      Trigger
 	Steps        []Step
 	PausedReason string // set when a run paused the task after a permanent error
+	Soundboard   bool   // a sound played by hand: it cuts short the sound played by hand before it, not stored
 	CreatedBy    string
 	UpdatedBy    string
 	UpdatedAt    time.Time

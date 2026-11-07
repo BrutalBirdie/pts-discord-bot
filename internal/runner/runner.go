@@ -105,10 +105,14 @@ type Runner struct {
 
 	runsMu  sync.Mutex
 	running map[int64]context.CancelCauseFunc // runs in progress, by run ID
+	board   map[string]int64                  // the sound played by hand per server, by run ID
 }
 
 // runStopped is the cause of a run a user stopped.
 type runStopped struct{ by string }
+
+// runReplaced ends a sound played by hand when the next one is played.
+var runReplaced = errors.New("replaced by the next sound")
 
 func (e *runStopped) Error() string { return "stopped by " + e.by }
 
@@ -125,7 +129,7 @@ func (r *Runner) StopRun(runID int64, by string) bool {
 
 func New(st *store.Store, b *bot.Bot, dir media.Dir, log *slog.Logger) *Runner {
 	return &Runner{st: st, bot: b, media: dir, log: log, entries: map[int64]cron.EntryID{}, locks: map[string]chan struct{}{},
-		events: map[int64]tasks.Task{}, cooldown: map[string]time.Time{}, running: map[int64]context.CancelCauseFunc{},
+		events: map[int64]tasks.Task{}, cooldown: map[string]time.Time{}, running: map[int64]context.CancelCauseFunc{}, board: map[string]int64{},
 		cron: cron.New(cron.WithLocation(time.UTC))}
 }
 
@@ -307,8 +311,12 @@ func PlayTask(guildID, channelID, title string, play tasks.Step, leave bool) tas
 	return tasks.Task{Name: title, GuildID: guildID, Busy: tasks.BusySkip, Steps: steps}
 }
 
+// PlayNow plays a sound by hand. It cuts short the sound played by hand
+// before it and waits for a task that uses voice.
 func (r *Runner) PlayNow(guildID, channelID string, m store.Media, volume int, leave bool, actor string) {
-	r.RunNow(PlayTask(guildID, channelID, "Play "+m.Label(), tasks.Step{MediaIDs: []int64{m.ID}, Volume: volume}, leave), actor)
+	t := PlayTask(guildID, channelID, "Play "+m.Label(), tasks.Step{MediaIDs: []int64{m.ID}, Volume: volume}, leave)
+	t.Soundboard, t.Busy = true, tasks.BusyWait
+	r.RunNow(t, actor)
 }
 
 // soundVolume is the volume of a sound when it has its own, else the volume of the step.
@@ -367,10 +375,21 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 	defer stop(nil)
 	r.runsMu.Lock()
 	r.running[runID] = stop
+	if t.Soundboard {
+		if prev, ok := r.board[t.GuildID]; ok {
+			if stop, ok := r.running[prev]; ok {
+				stop(runReplaced)
+			}
+		}
+		r.board[t.GuildID] = runID
+	}
 	r.runsMu.Unlock()
 	defer func() {
 		r.runsMu.Lock()
 		delete(r.running, runID)
+		if r.board[t.GuildID] == runID {
+			delete(r.board, t.GuildID)
+		}
 		r.runsMu.Unlock()
 	}()
 	stopped := func() (string, bool) {
@@ -379,6 +398,13 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 			return "Stopped by " + s.by + ".", true
 		}
 		return "", false
+	}
+	replaced := func() bool {
+		if context.Cause(ctx) != runReplaced {
+			return false
+		}
+		r.finish(log, runID, store.RunDone, nil, "Cut short by the next sound.")
+		return true
 	}
 
 	if t.UsesVoice() {
@@ -396,6 +422,9 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 				r.finish(log, runID, store.RunSkipped, nil, "The bot was busy with voice in this server.")
 				return errors.New("the bot is busy with voice in this server")
 			case <-ctx.Done():
+				if replaced() {
+					return nil
+				}
 				if msg, ok := stopped(); ok {
 					r.finish(log, runID, store.RunSkipped, nil, msg)
 					return nil
@@ -416,12 +445,18 @@ func (r *Runner) execute(t tasks.Task, source, actor string, ev *bot.Event) erro
 	defer cancel()
 	var notes []string
 	for i, s := range t.Steps {
+		if replaced() {
+			return nil
+		}
 		if msg, ok := stopped(); ok {
 			r.finish(log, runID, store.RunSkipped, nil, fmt.Sprintf("Before step %d: %s", i+1, msg))
 			return nil
 		}
 		if err := r.step(rctx, t, s, settings, ev); err != nil {
 			n := i + 1
+			if replaced() {
+				return nil
+			}
 			if msg, ok := stopped(); ok {
 				r.finish(log, runID, store.RunSkipped, nil, fmt.Sprintf("Step %d: %s", n, msg))
 				return nil
