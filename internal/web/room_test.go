@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
@@ -105,5 +106,45 @@ func TestPrefillAndTaskRelations(t *testing.T) {
 	if !usesChannel(tasks.Task{Steps: []tasks.Step{{Type: tasks.Join, ChannelID: "2"}}}, "2") || usesChannel(tasks.Task{Trigger: tasks.Trigger{Kind: tasks.Daily, ChannelID: "2"}}, "2") ||
 		!usesChannel(tasks.Task{Trigger: tasks.Trigger{Kind: tasks.Event, ChannelID: "2"}}, "2") {
 		t.Error("usesChannel")
+	}
+}
+
+func TestMessageButtons(t *testing.T) {
+	f := newScopeFixture(t)
+	ctx := context.Background()
+	form := func(kv ...string) url.Values {
+		v := url.Values{"op": {"save"}, "name": {"Raid " + f.tag}, "content": {"Raid tonight?"}, "embeds": {"0"}}
+		for i := 0; i+1 < len(kv); i += 2 {
+			v.Set(kv[i], kv[i+1])
+		}
+		return v
+	}
+	rec := f.do(f.discord, "POST", "/messages/new", form("buttons", "2",
+		"b0.label", "I am in", "b0.kind", "task", "b0.task", fmt.Sprint(f.taskA), "b0.style", "success", "b0.reply", "On the list, {member_name}.",
+		"b1.label", "Rules", "b1.kind", "link", "b1.url", "https://example.com/rules", "b1.task", fmt.Sprint(f.taskA)))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("save: %d %s", rec.Code, rec.Body.String())
+	}
+	list, err := f.st.FindMessages(ctx, store.MessageQuery{Search: "Raid " + f.tag})
+	if err != nil || len(list) != 1 {
+		t.Fatalf("saved: %v %v", list, err)
+	}
+	b := list[0].Buttons
+	if len(b) != 2 || b[0].TaskID != f.taskA || b[0].Style != "success" || b[0].Reply == "" || !b[1].IsLink() || b[1].URL != "https://example.com/rules" || b[1].Reply != "" {
+		t.Errorf("buttons: %+v", b)
+	}
+	if rec := f.do(f.discord, "POST", "/messages/new", form("buttons", "1", "b0.label", "Theirs", "b0.kind", "task", "b0.task", fmt.Sprint(f.taskB))); rec.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(rec.Body.String(), "Button 1: pick one of your tasks.") {
+		t.Errorf("task of another server: %d", rec.Code)
+	}
+	if rec := f.do(f.cloud, "POST", "/messages/new", form("buttons", "1", "b0.kind", "link", "b0.url", "ftp://x")); rec.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(rec.Body.String(), "Button 1: give it a label or an emoji.") || !strings.Contains(rec.Body.String(), "starts with https://") {
+		t.Errorf("bad link button: %d", rec.Code)
+	}
+	page := f.do(f.discord, "GET", fmt.Sprintf("/messages/%d", list[0].ID), nil).Body.String()
+	for _, want := range []string{`name="b0.label" value="I am in"`, `<span class="dbtn" data-style="success"`, `data-style="link"`, `value="up-button:1"`, `name="b1.url" value="https://example.com/rules"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("editor misses %q", want)
+		}
 	}
 }

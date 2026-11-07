@@ -79,6 +79,9 @@ var viewFuncs = template.FuncMap{
 	"untilLabel": tasks.UntilLabel,
 	"untils":     func() []string { return tasks.Untils },
 	"hasID":      func(list []int64, id int64) bool { return slices.Contains(list, id) },
+	"hasTask": func(list []taskChoice, id int64) bool {
+		return slices.ContainsFunc(list, func(t taskChoice) bool { return t.ID == id })
+	},
 	"json": func(v any) (string, error) {
 		b, err := json.Marshal(v)
 		return string(b), err

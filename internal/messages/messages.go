@@ -4,6 +4,7 @@ package messages
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,41 @@ const (
 	MaxRequestBytes = 25 << 20
 	MaxFileBytes    = 20 << 20
 )
+
+// Button limits from https://docs.discord.com/developers/components/reference#button
+const (
+	MaxButtons     = 25
+	ButtonsPerRow  = 5
+	MaxButtonLabel = 80
+	MaxButtonReply = 300
+	MaxButtonURL   = 512
+)
+
+// Button styles; a link button is always grey.
+const (
+	StylePrimary   = "primary"
+	StyleSecondary = "secondary"
+	StyleSuccess   = "success"
+	StyleDanger    = "danger"
+)
+
+var ButtonStyles = []string{StylePrimary, StyleSecondary, StyleSuccess, StyleDanger}
+
+func StyleLabel(s string) string {
+	return map[string]string{StylePrimary: "Blurple", StyleSecondary: "Grey", StyleSuccess: "Green", StyleDanger: "Red"}[s]
+}
+
+// Button starts a task for the member who clicks it, or opens a link.
+type Button struct {
+	Label  string `json:"label,omitempty"`
+	Emoji  string `json:"emoji,omitempty"`
+	Style  string `json:"style,omitempty"`
+	TaskID int64  `json:"task_id,omitempty"`
+	URL    string `json:"url,omitempty"`
+	Reply  string `json:"reply,omitempty"` // shown only to the member who clicked, "Started <task>." when empty
+}
+
+func (b Button) IsLink() bool { return b.TaskID == 0 }
 
 type Field struct {
 	Name   string `json:"name"`
@@ -49,8 +85,9 @@ type Message struct {
 	Content   string
 	Embeds    []Embed
 	Files     []int64 // media ids sent as attachments
-	GuildID   string  // server group, "" for none
-	GroupOnly bool    // not suggested to other servers than GuildID
+	Buttons   []Button
+	GuildID   string // server group, "" for none
+	GroupOnly bool   // not suggested to other servers than GuildID
 	UpdatedBy string
 	UpdatedAt time.Time
 }
@@ -91,7 +128,7 @@ func (m Message) Problems() []string {
 	if strings.TrimSpace(m.Name) == "" {
 		out = append(out, "Give the message a name.")
 	}
-	if m.Content == "" && len(m.Embeds) == 0 && len(m.Files) == 0 {
+	if m.Content == "" && len(m.Embeds) == 0 && len(m.Files) == 0 && len(m.Buttons) == 0 {
 		out = append(out, "Write a text, add an embed or a file.")
 	}
 	if n := m.ContentChars(); n > MaxContent {
@@ -105,6 +142,31 @@ func (m Message) Problems() []string {
 	}
 	if len(m.Files) > MaxFiles {
 		out = append(out, fmt.Sprintf("At most %d files.", MaxFiles))
+	}
+	if len(m.Buttons) > MaxButtons {
+		out = append(out, fmt.Sprintf("At most %d buttons.", MaxButtons))
+	}
+	for i, b := range m.Buttons {
+		p := fmt.Sprintf("Button %d: ", i+1)
+		if strings.TrimSpace(b.Label) == "" && b.Emoji == "" {
+			out = append(out, p+"give it a label or an emoji.")
+		}
+		if runes(b.Label) > MaxButtonLabel {
+			out = append(out, p+fmt.Sprintf("the label is longer than %d characters.", MaxButtonLabel))
+		}
+		if runes(b.Emoji) > 10 || strings.ContainsAny(b.Emoji, " <>") {
+			out = append(out, p+"use one emoji.")
+		}
+		if b.IsLink() {
+			if !strings.HasPrefix(b.URL, "https://") && !strings.HasPrefix(b.URL, "http://") || len(b.URL) > MaxButtonURL {
+				out = append(out, p+"pick a task or enter a link that starts with https://.")
+			}
+		} else if b.Style != "" && !slices.Contains(ButtonStyles, b.Style) {
+			out = append(out, p+fmt.Sprintf("unknown style %q.", b.Style))
+		}
+		if runes(b.Reply) > MaxButtonReply {
+			out = append(out, p+fmt.Sprintf("the reply is longer than %d characters.", MaxButtonReply))
+		}
 	}
 	for i, e := range m.Embeds {
 		p := fmt.Sprintf("Embed %d: ", i+1)

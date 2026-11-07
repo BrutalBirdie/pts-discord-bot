@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/disgoorg/disgo/discord"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/media"
+	"github.com/BrutalBirdie/pts-discord-bot/internal/messages"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/runner"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/store"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
@@ -26,6 +28,8 @@ type commandStore interface {
 	SearchSounds(ctx context.Context, guildID, q string, limit int) ([]store.Media, error)
 	Tags(ctx context.Context, guildID string) ([]string, error)
 	ListTasks(ctx context.Context, sc store.Scope) ([]tasks.Task, error)
+	Task(ctx context.Context, id int64) (tasks.Task, error)
+	Message(ctx context.Context, id int64) (messages.Message, error)
 	Audit(ctx context.Context, e store.AuditEntry) error
 }
 
@@ -34,11 +38,17 @@ type Handler struct {
 	bot *bot.Bot
 	run *runner.Runner
 	log *slog.Logger
+
+	clicksMu sync.Mutex
+	clicks   map[string]time.Time // last click per member and button
 }
 
 func New(st *store.Store, b *bot.Bot, r *runner.Runner, log *slog.Logger) *Handler {
-	return &Handler{st: st, bot: b, run: r, log: log}
+	return &Handler{st: st, bot: b, run: r, log: log, clicks: map[string]time.Time{}}
 }
+
+// buttonCooldown keeps a member from starting the same task again by clicking twice.
+const buttonCooldown = 3 * time.Second
 
 // Discord allows 25 autocomplete choices of at most 100 characters.
 const (
@@ -239,4 +249,63 @@ func (h *Handler) choices(ctx context.Context, command string, gid *snowflake.ID
 		}
 	}
 	return choices
+}
+
+// OnComponent starts the task of a message button for the member who clicked it.
+func (h *Handler) OnComponent(e *events.ComponentInteractionCreate) {
+	gid := e.GuildID()
+	if gid == nil {
+		bot.ReplyComponent(e, "Buttons start tasks only in a server.")
+		return
+	}
+	ev := eventOf(*gid, e.User(), e.Member())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	t, reply := h.buttonTask(ctx, ev, e.Data.CustomID(), time.Now())
+	if t != nil {
+		h.run.RunFromDiscord(*t, ev)
+		h.audit(ev, "task.run", t.Name, "button")
+	}
+	bot.ReplyComponent(e, reply)
+}
+
+// buttonTask finds the task a button starts and the answer for the member who clicked.
+func (h *Handler) buttonTask(ctx context.Context, ev bot.Event, customID string, now time.Time) (*tasks.Task, string) {
+	taskID, msgID, i, ok := runner.ParseButtonID(customID)
+	if !ok {
+		return nil, "This button does nothing any more."
+	}
+	t, err := h.st.Task(ctx, taskID)
+	if err != nil {
+		return nil, "The task of this button was deleted."
+	}
+	switch {
+	case t.GuildID != ev.GuildID:
+		return nil, "This button starts a task of another server."
+	case !t.Enabled:
+		return nil, t.Name + " is paused."
+	}
+	if problems := t.Problems(); len(problems) > 0 {
+		return nil, t.Name + " cannot run: " + strings.Join(problems, " ")
+	}
+	key := ev.UserID + " " + customID
+	h.clicksMu.Lock()
+	last, seen := h.clicks[key]
+	if !seen || now.Sub(last) >= buttonCooldown {
+		h.clicks[key] = now
+		for k, at := range h.clicks {
+			if now.Sub(at) >= buttonCooldown {
+				delete(h.clicks, k)
+			}
+		}
+	}
+	h.clicksMu.Unlock()
+	if seen && now.Sub(last) < buttonCooldown {
+		return nil, "Already started, wait a moment before clicking again."
+	}
+	reply := "Started " + t.Name + "."
+	if m, err := h.st.Message(ctx, msgID); err == nil && i < len(m.Buttons) && m.Buttons[i].TaskID == taskID && m.Buttons[i].Reply != "" {
+		reply = messages.Expand(m.Buttons[i].Reply, messages.Vars{Now: now, Server: h.bot.GuildName(ev.GuildID), MemberID: ev.UserID, MemberName: ev.UserName})
+	}
+	return &t, reply
 }

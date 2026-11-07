@@ -472,6 +472,14 @@
         previewForm.addEventListener('input', function (event) {
             const key = event.target.dataset.preview;
             if (!key) return;
+            if (key.startsWith('bstyle-') || key.startsWith('bkind-')) {
+                const i = key.split('-')[1];
+                const ed = event.target.closest('.button-ed');
+                const link = ed && ed.querySelector('input[value=link]').checked;
+                const btn = document.querySelector('[data-preview-target="bstyle-' + i + '"]');
+                if (btn) btn.dataset.style = link ? 'link' : ed.querySelector('select[name$=".style"]').value;
+                return;
+            }
             const target = document.querySelector('[data-preview-target="' + key + '"]');
             if (!target) return;
             if (key.startsWith('color-')) {

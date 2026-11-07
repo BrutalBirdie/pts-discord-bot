@@ -8,10 +8,10 @@ import (
 	"github.com/BrutalBirdie/pts-discord-bot/internal/messages"
 )
 
-const messageCols = `id, name, content, embeds, files, updated_by, updated_at, coalesce(guild_id, ''), group_only`
+const messageCols = `id, name, content, embeds, files, updated_by, updated_at, coalesce(guild_id, ''), group_only, buttons`
 
 func messageFields(m *messages.Message) []any {
-	return []any{&m.ID, &m.Name, &m.Content, &m.Embeds, &m.Files, &m.UpdatedBy, &m.UpdatedAt, &m.GuildID, &m.GroupOnly}
+	return []any{&m.ID, &m.Name, &m.Content, &m.Embeds, &m.Files, &m.UpdatedBy, &m.UpdatedAt, &m.GuildID, &m.GroupOnly, &m.Buttons}
 }
 
 func scanMessage(r pgx.Row) (messages.Message, error) {
@@ -52,14 +52,14 @@ ORDER BY `+ownFirst("g", "4")+`, lower(name), id LIMIT NULLIF($2, 0) OFFSET $3`,
 
 func (s *Store) CreateMessage(ctx context.Context, m messages.Message, by string) (int64, error) {
 	var id int64
-	err := s.pool.QueryRow(ctx, `INSERT INTO messages (name, content, embeds, files, created_by, updated_by, guild_id, group_only) VALUES ($1, $2, $3, $4, $5, $5, $6, $7) RETURNING id`,
-		m.Name, m.Content, m.Embeds, files(m.Files), by, nullable(m.GuildID), m.GroupOnly && m.GuildID != "").Scan(&id)
+	err := s.pool.QueryRow(ctx, `INSERT INTO messages (name, content, embeds, files, created_by, updated_by, guild_id, group_only, buttons) VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8) RETURNING id`,
+		m.Name, m.Content, m.Embeds, files(m.Files), by, nullable(m.GuildID), m.GroupOnly && m.GuildID != "", buttons(m.Buttons)).Scan(&id)
 	return id, err
 }
 
 func (s *Store) UpdateMessage(ctx context.Context, m messages.Message, by string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE messages SET name = $2, content = $3, embeds = $4, files = $5, updated_by = $6, updated_at = now(), guild_id = $7, group_only = $8
-WHERE id = $1 AND deleted_at IS NULL`, m.ID, m.Name, m.Content, m.Embeds, files(m.Files), by, nullable(m.GuildID), m.GroupOnly && m.GuildID != "")
+	tag, err := s.pool.Exec(ctx, `UPDATE messages SET name = $2, content = $3, embeds = $4, files = $5, updated_by = $6, updated_at = now(), guild_id = $7, group_only = $8, buttons = $9
+WHERE id = $1 AND deleted_at IS NULL`, m.ID, m.Name, m.Content, m.Embeds, files(m.Files), by, nullable(m.GuildID), m.GroupOnly && m.GuildID != "", buttons(m.Buttons))
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
@@ -96,4 +96,11 @@ func files(ids []int64) []int64 {
 		return []int64{}
 	}
 	return ids
+}
+
+func buttons(b []messages.Button) []messages.Button {
+	if b == nil {
+		return []messages.Button{}
+	}
+	return b
 }

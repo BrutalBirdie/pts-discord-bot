@@ -2,21 +2,27 @@ package commands
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/snowflake/v2"
 
+	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
+	"github.com/BrutalBirdie/pts-discord-bot/internal/messages"
+	"github.com/BrutalBirdie/pts-discord-bot/internal/runner"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/store"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
 )
 
 // fakeStore offers media like the SQL queries do.
 type fakeStore struct {
-	media []store.Media
-	tasks []tasks.Task
+	media    []store.Media
+	tasks    []tasks.Task
+	messages []messages.Message
 }
 
 func (f *fakeStore) Media(_ context.Context, id int64) (store.Media, error) {
@@ -77,6 +83,24 @@ func (f *fakeStore) ListTasks(_ context.Context, sc store.Scope) ([]tasks.Task, 
 }
 
 func (f *fakeStore) Audit(context.Context, store.AuditEntry) error { return nil }
+
+func (f *fakeStore) Task(_ context.Context, id int64) (tasks.Task, error) {
+	for _, t := range f.tasks {
+		if t.ID == id {
+			return t, nil
+		}
+	}
+	return tasks.Task{}, store.ErrNotFound
+}
+
+func (f *fakeStore) Message(_ context.Context, id int64) (messages.Message, error) {
+	for _, m := range f.messages {
+		if m.ID == id {
+			return m, nil
+		}
+	}
+	return messages.Message{}, store.ErrNotFound
+}
 
 const guildA, guildB snowflake.ID = 100, 200
 
@@ -147,5 +171,42 @@ func TestSoundValue(t *testing.T) {
 	}
 	if step, _, ok := h.soundValue(context.Background(), "tag:secret"); !ok || step.Tag != "secret" {
 		t.Errorf("tag value: %+v", step)
+	}
+}
+
+func TestButtonTask(t *testing.T) {
+	ok := []tasks.Step{{Type: tasks.Message, ChannelID: "1", Text: "hi"}}
+	st := &fakeStore{
+		tasks: []tasks.Task{
+			{ID: 20, Name: "Sign up", GuildID: guildA.String(), Enabled: true, Trigger: tasks.Trigger{Kind: tasks.Manual}, Steps: ok},
+			{ID: 21, Name: "Paused", GuildID: guildA.String(), Trigger: tasks.Trigger{Kind: tasks.Manual}, Steps: ok},
+		},
+		messages: []messages.Message{{ID: 7, Buttons: []messages.Button{{Label: "In", TaskID: 20, Reply: "You are on the list, {member_name}."}}}},
+	}
+	h := &Handler{st: st, bot: bot.New(bot.Config{Logger: slog.New(slog.DiscardHandler)}), clicks: map[string]time.Time{}}
+	ev := bot.Event{GuildID: guildA.String(), UserID: "5", UserName: "Mira"}
+	now := time.Now()
+	cases := []struct {
+		ev     bot.Event
+		id     string
+		at     time.Time
+		task   bool
+		answer string
+	}{
+		{ev, "play:1", now, false, "This button does nothing any more."},
+		{ev, runner.ButtonID(99, 7, 0), now, false, "The task of this button was deleted."},
+		{bot.Event{GuildID: guildB.String(), UserID: "5"}, runner.ButtonID(20, 7, 0), now, false, "This button starts a task of another server."},
+		{ev, runner.ButtonID(21, 7, 0), now, false, "Paused is paused."},
+		{ev, runner.ButtonID(20, 7, 0), now, true, "You are on the list, Mira."},
+		{ev, runner.ButtonID(20, 7, 0), now.Add(time.Second), false, "Already started, wait a moment before clicking again."},
+		{bot.Event{GuildID: guildA.String(), UserID: "6", UserName: "Jonas"}, runner.ButtonID(20, 7, 0), now.Add(time.Second), true, "You are on the list, Jonas."},
+		{ev, runner.ButtonID(20, 7, 0), now.Add(buttonCooldown + time.Second), true, "You are on the list, Mira."},
+		{ev, runner.ButtonID(20, 8, 0), now.Add(time.Minute), true, "Started Sign up."},
+	}
+	for _, c := range cases {
+		task, answer := h.buttonTask(context.Background(), c.ev, c.id, c.at)
+		if (task != nil) != c.task || answer != c.answer {
+			t.Errorf("%s by %s: task %v, %q", c.id, c.ev.UserName, task != nil, answer)
+		}
 	}
 }

@@ -816,11 +816,12 @@ func (r *Runner) Build(ctx context.Context, m messages.Message, vars messages.Va
 		}
 		mc.Embeds = append(mc.Embeds, de)
 	}
+	mc.Components = buttonRows(m.ID, m.Buttons)
 	if total > messages.MaxRequestBytes {
 		closeAll()
 		return mc, nil, &bot.PermanentError{Msg: fmt.Sprintf("The files have %d MB together, Discord accepts at most 25 MB per message.", total>>20)}
 	}
-	if mc.Content == "" && len(mc.Embeds) == 0 && len(mc.Files) == 0 {
+	if mc.Content == "" && len(mc.Embeds) == 0 && len(mc.Files) == 0 && len(mc.Components) == 0 {
 		closeAll()
 		return mc, nil, &bot.PermanentError{Msg: "The message is empty."}
 	}
@@ -831,4 +832,45 @@ func (r *Runner) Build(ctx context.Context, m messages.Message, vars messages.Va
 func (r *Runner) GuildOf(channelID string) (string, bool) {
 	_, gid, ok := r.bot.Channel(channelID)
 	return gid, ok
+}
+
+// ButtonID is the custom ID of a button: the task it starts, the saved message and the button's index there.
+func ButtonID(taskID, messageID int64, i int) string {
+	return fmt.Sprintf("task:%d:%d:%d", taskID, messageID, i)
+}
+
+// ParseButtonID reads a custom ID made by ButtonID.
+func ParseButtonID(id string) (taskID, messageID int64, i int, ok bool) {
+	n, err := fmt.Sscanf(id, "task:%d:%d:%d", &taskID, &messageID, &i)
+	return taskID, messageID, i, err == nil && n == 3 && taskID > 0
+}
+
+var buttonStyles = map[string]discord.ButtonStyle{messages.StylePrimary: discord.ButtonStylePrimary, messages.StyleSecondary: discord.ButtonStyleSecondary,
+	messages.StyleSuccess: discord.ButtonStyleSuccess, messages.StyleDanger: discord.ButtonStyleDanger}
+
+// buttonRows lays out the buttons of a message in rows of five.
+func buttonRows(messageID int64, list []messages.Button) []discord.LayoutComponent {
+	var rows []discord.LayoutComponent
+	var row []discord.InteractiveComponent
+	for i, b := range list {
+		var c discord.ButtonComponent
+		if b.IsLink() {
+			c = discord.NewLinkButton(b.Label, b.URL)
+		} else {
+			style, ok := buttonStyles[b.Style]
+			if !ok {
+				style = discord.ButtonStylePrimary
+			}
+			c = discord.NewButton(style, b.Label, ButtonID(b.TaskID, messageID, i), "", 0)
+		}
+		if b.Emoji != "" {
+			c = c.WithEmoji(discord.NewComponentEmoji(b.Emoji))
+		}
+		row = append(row, c)
+		if len(row) == messages.ButtonsPerRow || i == len(list)-1 {
+			rows = append(rows, discord.NewActionRow(row...))
+			row = nil
+		}
+	}
+	return rows
 }

@@ -604,3 +604,15 @@ img.dava { object-fit: cover; }
 .mdrow > code { font: .85rem var(--mono); color: #b5bac1; overflow-wrap: anywhere; }
 .mdrow.head { font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #949ba4; }
 .mdrow .dh1, .mdrow .dh2, .mdrow .dh3, .mdrow .dpre { margin: 0; }
+
+/* message buttons */
+.button-ed:has(input[value=link]:checked) .b-task, .button-ed:has(input[value=task]:checked) .b-link { display: none; }
+.button-ed .wide2 { grid-column: 1 / -1; }
+.dbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; max-width: 480px; }
+.dbtn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 16px; border-radius: 8px; background: #5865f2; color: #fff; font-weight: 700; font-size: .875rem; }
+.dbtn .i { display: none; width: 14px; height: 14px; }
+.dbtn[data-style=secondary], .dbtn[data-style=link] { background: #4e5058; }
+.dbtn[data-style=success] { background: #248046; }
+.dbtn[data-style=danger] { background: #da373c; }
+.dbtn[data-style=link] .i { display: inline; }
+.dbtn > span:empty { display: none; }

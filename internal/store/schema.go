@@ -148,6 +148,7 @@ ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS preview_volume integer NOT NULL 
 DROP TABLE IF EXISTS preview_volume;
 ALTER TABLE media ADD COLUMN IF NOT EXISTS emoji text NOT NULL DEFAULT '';
 ALTER TABLE media ADD COLUMN IF NOT EXISTS icon_media_id bigint REFERENCES media (id) ON DELETE SET NULL;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS buttons jsonb NOT NULL DEFAULT '[]';
 CREATE TABLE IF NOT EXISTS favorite_media (
     username text NOT NULL,
     media_id bigint NOT NULL REFERENCES media (id) ON DELETE CASCADE,

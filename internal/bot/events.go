@@ -25,6 +25,7 @@ type Handler interface {
 	Commands() []discord.ApplicationCommandCreate
 	OnCommand(e *events.ApplicationCommandInteractionCreate)
 	OnAutocomplete(e *events.AutocompleteInteractionCreate)
+	OnComponent(e *events.ComponentInteractionCreate)
 	OnEvent(ev Event)
 }
 
@@ -96,6 +97,11 @@ func (b *Bot) listeners() disgobot.EventListener {
 				h.OnAutocomplete(e)
 			}
 		},
+		OnComponentInteraction: func(e *events.ComponentInteractionCreate) {
+			if h := b.h(); h != nil {
+				h.OnComponent(e)
+			}
+		},
 		OnGuildVoiceStateUpdate: func(e *events.GuildVoiceStateUpdate) {
 			for _, ev := range voiceTransitions(e.VoiceState.GuildID, e.OldVoiceState.ChannelID, e.VoiceState.ChannelID, e.Member) {
 				b.emit(ev, e.Member.User.Bot)
@@ -123,6 +129,11 @@ func (b *Bot) listeners() disgobot.EventListener {
 
 // Reply answers a slash command only the user who sent it sees.
 func Reply(e *events.ApplicationCommandInteractionCreate, text string) {
+	_ = e.CreateMessage(discord.MessageCreate{Content: text, Flags: discord.MessageFlagEphemeral, AllowedMentions: &discord.AllowedMentions{}})
+}
+
+// ReplyComponent answers a button click, only the member who clicked sees it.
+func ReplyComponent(e *events.ComponentInteractionCreate, text string) {
 	_ = e.CreateMessage(discord.MessageCreate{Content: text, Flags: discord.MessageFlagEphemeral, AllowedMentions: &discord.AllowedMentions{}})
 }
 

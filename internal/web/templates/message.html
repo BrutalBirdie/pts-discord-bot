@@ -19,6 +19,7 @@
 <form method="post" action="{{if $e.New}}/messages/new{{else}}/messages/{{$m.ID}}{{end}}" class="stack" data-preview-form>
   <input type="hidden" name="csrf" value="{{$csrf}}">
   <input type="hidden" name="embeds" value="{{len $m.Embeds}}">
+  <input type="hidden" name="buttons" value="{{len $m.Buttons}}">
   <button type="submit" name="op" value="save" class="default-submit" tabindex="-1" aria-hidden="true">Save</button>
 
   <section class="card form">
@@ -75,6 +76,40 @@
     {{if lt (len $m.Embeds) 10}}<button type="submit" name="op" value="add-embed" class="ib with-label start">{{icon "plus"}}<span class="lbl">Add embed</span></button>{{end}}
   </section>
 
+  <section class="card form" aria-labelledby="buttons-title">
+    <div class="sec-head"><h2 id="buttons-title">Buttons</h2><span class="counter">{{len $m.Buttons}} of 25</span></div>
+    {{range $i, $b := $m.Buttons}}{{$p := print "b" $i "."}}
+    <div class="embed-ed button-ed">
+      <div class="sec-head"><span class="eyebrow">Button {{add $i 1}}</span>
+        <div class="btns">
+          {{if $i}}<button type="submit" name="op" value="up-button:{{$i}}" class="ib sm quiet" aria-label="Move button {{add $i 1}} left" data-tip="Move left">{{icon "arrow-up"}}</button>{{end}}
+          <button type="submit" name="op" value="del-button:{{$i}}" class="ib sm quiet danger" aria-label="Remove button {{add $i 1}}" data-tip="Remove button">{{icon "trash-2"}}</button>
+        </div></div>
+      <div class="grid2">
+        <label class="field"><span>Label</span><input type="text" name="{{$p}}label" value="{{$b.Label}}" maxlength="80" data-preview="blabel-{{$i}}"></label>
+        <label class="field"><span>Emoji</span><input type="text" name="{{$p}}emoji" value="{{$b.Emoji}}" maxlength="16" placeholder="optional" data-preview="bemoji-{{$i}}"></label>
+      </div>
+      <fieldset class="presets"><legend class="vh">When clicked</legend>
+        <label><input type="radio" name="{{$p}}kind" value="task"{{if not $b.URL}} checked{{end}} data-preview="bkind-{{$i}}">Start a task</label>
+        <label><input type="radio" name="{{$p}}kind" value="link"{{if $b.URL}} checked{{end}} data-preview="bkind-{{$i}}">Open a link</label>
+      </fieldset>
+      <div class="b-task grid2">
+        <label class="field"><span>Task</span><select name="{{$p}}task">
+          <option value="0">Pick a task</option>
+          {{if and $b.TaskID (not (hasTask $e.Tasks $b.TaskID))}}<option value="{{$b.TaskID}}" selected>{{index $e.TaskNames $b.TaskID}}</option>{{end}}
+          {{range $e.Tasks}}<option value="{{.ID}}"{{if eq .ID $b.TaskID}} selected{{end}}>{{.Name}} · {{.Guild}}</option>{{end}}
+        </select></label>
+        <label class="field"><span>Style</span><select name="{{$p}}style" data-preview="bstyle-{{$i}}">{{range $e.ButtonStyles}}<option value="{{.}}"{{if eq . $b.Style}} selected{{end}}>{{$e.StyleLabel .}}</option>{{end}}</select></label>
+        <span class="help wide2">The task runs for the member who clicked, like a slash command. It must be a task of the server the message is sent to.</span>
+        <label class="field wide2"><span>Answer to the member who clicked</span><input type="text" name="{{$p}}reply" value="{{$b.Reply}}" maxlength="300" placeholder="Started {task name}."><span class="help">Only they see it. Placeholders work, like <span class="mono">{member_name}</span>.</span></label>
+      </div>
+      <label class="field b-link"><span>Link</span><input type="url" name="{{$p}}url" value="{{$b.URL}}" placeholder="https://"><span class="help">Link buttons are always grey in Discord.</span></label>
+    </div>
+    {{end}}
+    {{if lt (len $m.Buttons) 25}}<button type="submit" name="op" value="add-button" class="ib with-label start">{{icon "plus"}}<span class="lbl">Add button</span></button>{{end}}
+    <p class="hint">Discord shows up to 5 buttons per row. Button colors are fixed by Discord: Blurple, Grey, Green and Red.</p>
+  </section>
+
   <section class="card form">
     <div class="sec-head"><h2>Files</h2><span class="counter{{if gt $e.FileBytes 26214400}} over{{end}}">{{bytes $e.FileBytes}} of 25 MB per message</span></div>
     <ul class="list">
@@ -120,6 +155,7 @@
           {{with $em.Footer}}<div class="dfoot">{{expand .}}</div>{{end}}
         </div>
         {{end}}
+        {{with $m.Buttons}}<div class="dbtns">{{range $i, $b := .}}<span class="dbtn" data-style="{{if $b.URL}}link{{else}}{{$b.Style}}{{end}}" data-preview-target="bstyle-{{$i}}"><span data-preview-target="bemoji-{{$i}}">{{$b.Emoji}}</span><span data-preview-target="blabel-{{$i}}">{{$b.Label}}</span>{{icon "external-link"}}</span>{{end}}</div>{{end}}
         {{range $m.Files}}{{$md := index $e.ByID .}}
         {{if eq $md.Kind "image"}}<img class="dimg mt" src="/media/{{.}}/file" alt="{{$md.Name}}">
         {{else}}<div class="dfile">{{icon "file"}}<div><span>{{$md.Name}}</span><div class="dfoot">{{bytes $md.SizeBytes}}</div></div></div>{{end}}

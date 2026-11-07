@@ -76,7 +76,19 @@ type messageEditor struct {
 	Limits     map[string]int
 	Embeddable map[int64]bool
 	Author     bot.Member // the bot as the message's server shows it
+	Tasks      []taskChoice
+	TaskNames  map[int64]string // tasks of the buttons, also those out of scope
 }
+
+// taskChoice is a task a button can start.
+type taskChoice struct {
+	ID    int64
+	Name  string
+	Guild string
+}
+
+func (e messageEditor) StyleLabel(s string) string { return messages.StyleLabel(s) }
+func (e messageEditor) ButtonStyles() []string     { return messages.ButtonStyles }
 
 func (s *Server) messageEditor(r *http.Request, m messages.Message, isNew bool) (messageEditor, error) {
 	e := messageEditor{Message: m, New: isNew, ByID: map[int64]store.Media{}, Names: map[string]string{}, Embeddable: map[int64]bool{},
@@ -102,6 +114,29 @@ func (s *Server) messageEditor(r *http.Request, m messages.Message, isNew bool) 
 		}
 	}
 	e.Author = s.author(m.GuildID)
+	all, err := s.store.ListTasks(r.Context(), sess.Scope())
+	if err != nil {
+		return e, err
+	}
+	e.TaskNames = map[int64]string{}
+	for _, t := range all {
+		e.Tasks = append(e.Tasks, taskChoice{ID: t.ID, Name: t.Name, Guild: s.bot.GuildName(t.GuildID)})
+		e.TaskNames[t.ID] = t.Name
+	}
+	slices.SortStableFunc(e.Tasks, func(a, b taskChoice) int {
+		return cmpBool(a.Guild != s.bot.GuildName(m.GuildID), b.Guild != s.bot.GuildName(m.GuildID))
+	})
+	for _, b := range m.Buttons {
+		if _, ok := e.TaskNames[b.TaskID]; b.TaskID != 0 && !ok {
+			name := "a task of another server"
+			if t, err := s.store.Task(r.Context(), b.TaskID); err != nil {
+				name = "deleted task"
+			} else if sess.Scope().Has(t.GuildID) {
+				name = t.Name
+			}
+			e.TaskNames[b.TaskID] = name
+		}
+	}
 	gs := s.guilds(r)
 	slices.SortStableFunc(gs, func(a, b bot.Guild) int { return cmpBool(a.ID != m.GuildID, b.ID != m.GuildID) })
 	for _, g := range gs {
@@ -254,6 +289,18 @@ func parseMessage(r *http.Request) messages.Message {
 			m.Files = append(m.Files, id)
 		}
 	}
+	n, _ = strconv.Atoi(f.Get("buttons"))
+	for i := range min(max(n, 0), messages.MaxButtons+1) {
+		p := "b" + strconv.Itoa(i) + "."
+		b := messages.Button{Label: strings.TrimSpace(f.Get(p + "label")), Emoji: strings.TrimSpace(f.Get(p + "emoji")), Style: f.Get(p + "style"),
+			Reply: strings.TrimSpace(f.Get(p + "reply"))}
+		if f.Get(p+"kind") == "link" {
+			b.URL, b.Style, b.Reply = strings.TrimSpace(f.Get(p+"url")), "", ""
+		} else {
+			b.TaskID, _ = strconv.ParseInt(f.Get(p+"task"), 10, 64)
+		}
+		m.Buttons = append(m.Buttons, b)
+	}
 	return m
 }
 
@@ -279,6 +326,18 @@ func applyMessageOp(m *messages.Message, op string, r *http.Request) {
 	case "del-field":
 		if inEmbeds && j >= 0 && j < len(m.Embeds[i].Fields) {
 			m.Embeds[i].Fields = slices.Delete(m.Embeds[i].Fields, j, j+1)
+		}
+	case "add-button":
+		if len(m.Buttons) < messages.MaxButtons {
+			m.Buttons = append(m.Buttons, messages.Button{Style: messages.StylePrimary})
+		}
+	case "del-button":
+		if i >= 0 && i < len(m.Buttons) {
+			m.Buttons = slices.Delete(m.Buttons, i, i+1)
+		}
+	case "up-button":
+		if i > 0 && i < len(m.Buttons) {
+			m.Buttons[i-1], m.Buttons[i] = m.Buttons[i], m.Buttons[i-1]
 		}
 	case "add-file":
 		if id, err := strconv.ParseInt(r.PostForm.Get("file_add"), 10, 64); err == nil && id > 0 && !slices.Contains(m.Files, id) {
@@ -314,6 +373,14 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	problems := m.Problems()
+	for i, b := range m.Buttons {
+		if b.IsLink() || slices.ContainsFunc(old.Buttons, func(o messages.Button) bool { return o.TaskID == b.TaskID }) {
+			continue
+		}
+		if t, err := s.store.Task(ctx, b.TaskID); err != nil || !sess.Scope().Has(t.GuildID) {
+			problems = append(problems, fmt.Sprintf("Button %d: pick one of your tasks.", i+1))
+		}
+	}
 	attached, err := s.store.MediaByIDs(ctx, attachedIDs(m))
 	if err != nil {
 		s.internalError(w, r, err)

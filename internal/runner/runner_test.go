@@ -1,9 +1,13 @@
 package runner
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/disgoorg/disgo/discord"
+
+	"github.com/BrutalBirdie/pts-discord-bot/internal/messages"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
 )
 
@@ -34,5 +38,35 @@ func TestRunLimit(t *testing.T) {
 		if got := runLimit(c.steps, soundTime, maxPlay); got != c.want {
 			t.Errorf("%s: got %s, want %s", name, got, c.want)
 		}
+	}
+}
+
+func TestButtonRows(t *testing.T) {
+	var list []messages.Button
+	for i := range 6 {
+		list = append(list, messages.Button{Label: fmt.Sprint(i), TaskID: 9, Style: messages.StyleSuccess})
+	}
+	list = append(list, messages.Button{Label: "Rules", URL: "https://example.com", Emoji: "📜"})
+	rows := buttonRows(4, list)
+	if len(rows) != 2 {
+		t.Fatalf("rows: %d", len(rows))
+	}
+	first, second := rows[0].(discord.ActionRowComponent), rows[1].(discord.ActionRowComponent)
+	if len(first.Components) != 5 || len(second.Components) != 2 {
+		t.Errorf("per row: %d %d", len(first.Components), len(second.Components))
+	}
+	b := second.Components[0].(discord.ButtonComponent)
+	if b.Style != discord.ButtonStyleSuccess || b.CustomID != "task:9:4:5" {
+		t.Errorf("task button: %+v", b)
+	}
+	link := second.Components[1].(discord.ButtonComponent)
+	if link.Style != discord.ButtonStyleLink || link.URL != "https://example.com" || link.CustomID != "" || link.Emoji == nil || link.Emoji.Name != "📜" {
+		t.Errorf("link button: %+v", link)
+	}
+	if task, msg, i, ok := ParseButtonID(b.CustomID); !ok || task != 9 || msg != 4 || i != 5 {
+		t.Errorf("parse: %d %d %d %v", task, msg, i, ok)
+	}
+	if _, _, _, ok := ParseButtonID("task:0:1:2"); ok {
+		t.Error("task 0 parsed")
 	}
 }
