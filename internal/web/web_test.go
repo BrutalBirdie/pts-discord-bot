@@ -30,11 +30,11 @@ func testServer(t *testing.T) *Server {
 }
 
 func room(view string, ch bot.Channel, more func(*roomData)) roomData {
-	mira := bot.Member{ID: "9", Name: "Mira", Username: "mira", VoiceID: "2", Voice: "Lounge"}
+	mira := bot.Member{ID: "9", Name: "Mira", Username: "mira", VoiceID: "2", Voice: "Lounge", Status: "idle", Mobile: true, Color: "#1f8b4c", Group: "Herrscher"}
 	d := roomData{Guilds: []bot.Guild{{ID: "1", Name: "PTS Server"}}, Guild: bot.Guild{ID: "1", Name: "PTS Server", BotVoice: "Lounge", Self: bot.Member{Name: "PTS Bot"}},
 		Text:  []roomChannel{{Channel: bot.Channel{ID: "4", Name: "general", Usable: true}, Tasks: 1}},
 		Voice: []roomChannel{{Channel: bot.Channel{ID: "2", Name: "Lounge", Voice: true, Usable: true, HasBot: true, People: []bot.Member{mira}}, Tasks: 1}},
-		View:  view, Channel: ch, Self: "/room/1?c=" + ch.ID, InVoice: []bot.Member{mira}, MPage: 1, Paging: paging{Page: 1},
+		View:  view, Channel: ch, Self: "/room/1?c=" + ch.ID, MGroups: []memberGroup{{Name: "Herrscher", Members: []bot.Member{mira}}}, MPage: 1, Paging: paging{Page: 1},
 		Tasks: []tasks.Task{{ID: 3, Name: "Adhan", Trigger: tasks.Trigger{Kind: tasks.Manual}}}}
 	more(&d)
 	return d
@@ -103,7 +103,7 @@ func TestPagesRender(t *testing.T) {
 		}), []string{`popovertarget="menu-c2"`, `data-menu="menu-v9"`, "Leave Lounge", `action="/media/5/favorite"`, `aria-pressed="true"`, `<span class="face" aria-hidden="true">🎺</span>`,
 			`id="sheet-sound"`, `action="/media/5/sound"`, `name="trim_start" min="0" step="0.01" value="1.50"`, `name="trim_end" min="0" step="0.01" value="225.00"`, `name="own_volume" checked`,
 			`src="https://cdn.discordapp.com/emojis/123456789012345678.png?size=48"`, `data-emoji-picker="[{&#34;ID&#34;:&#34;123456789012345678&#34;`, `data-start="0" data-end="0"`,
-			`href="/tasks/new?guild=1&amp;join=2&amp;play=5"`, "Tasks in Lounge", `data-preview-volume`, `data-play-volume`, `data-members="1" data-navigate="/room/1?m="`, `href="/room/1?c=2&amp;edit=5#sheet-sound"`}},
+			`href="/tasks/new?guild=1&amp;join=2&amp;play=5"`, "Tasks in Lounge", `data-preview-volume`, `data-play-volume`, `data-members="1" data-navigate="/room/1?m="`, "Herrscher — 1", `<span class="mava idle mobile" title="Away">`, `aria-label="Away on a phone"`, `data-color="#1f8b4c"`, `href="/room/1?c=2&amp;edit=5#sheet-sound"`}},
 		{"room", room("text", bot.Channel{ID: "4", Name: "general", Usable: true}, func(d *roomData) {
 			d.Messages = []messages.Message{msg}
 		}), []string{`action="/room/1/send"`, `name="channel" value="4"`, `<option value="7">Friday</option>`, "Tasks that use #general", `href="/tasks/new?guild=1&amp;post=4"`}},

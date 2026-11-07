@@ -210,15 +210,12 @@
         {{if eq $d.View "member"}}<input type="hidden" name="m" value="{{$d.Member.ID}}">{{else if $d.View}}<input type="hidden" name="c" value="{{$d.Channel.ID}}">{{end}}
         <span class="picker"><input type="search" name="mq" value="{{$d.MQuery}}" placeholder="Search members" aria-label="Search members" autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other" data-members="{{$g.ID}}" data-navigate="/room/{{$g.ID}}?m="></span>
       </form>
-      {{with $d.InVoice}}<span class="eyebrow">In voice · {{len .}}</span>
-      <ul class="chs">{{range .}}<li class="chrow person-row" data-menu="menu-m{{.ID}}">
-        <a href="{{$d.URL "m" .ID}}"{{if eq .ID $d.Member.ID}} aria-current="page"{{end}}>{{template "roomava" .}}<span class="nm">{{.Name}}<small>{{.Voice}}</small></span></a>
-        {{template "membermenu" (dict "ID" (print "menu-m" .ID) "M" . "D" $d)}}</li>{{end}}</ul>{{end}}
-      <span class="eyebrow">{{if $d.MQuery}}Matches{{else if $d.Presence}}Online{{else}}Members{{end}}</span>
-      <ul class="chs">{{range $d.Others}}<li class="chrow person-row" data-menu="menu-m{{.ID}}">
-        <a href="{{$d.URL "m" .ID}}"{{if eq .ID $d.Member.ID}} aria-current="page"{{end}}>{{template "roomava" .}}<span class="nm">{{.Name}}</span></a>
-        {{template "membermenu" (dict "ID" (print "menu-m" .ID) "M" . "D" $d)}}</li>
-      {{else}}<li class="hint">{{if $d.MQuery}}{{template "nomatch" $d.MQuery}}{{else if $d.Presence}}Nobody else is online.{{else}}No members known yet.{{end}}</li>{{end}}</ul>
+      {{range $d.MGroups}}
+      <span class="eyebrow">{{.Name}} — {{len .Members}}</span>
+      <ul class="chs">{{range .Members}}<li class="chrow person-row" data-menu="menu-m{{.ID}}">
+        <a href="{{$d.URL "m" .ID}}"{{if eq .ID $d.Member.ID}} aria-current="page"{{end}}{{if eq .Status "offline"}} class="off"{{end}}>{{template "memberava" .}}<span class="nm"><span class="who"{{with .Color}} data-color="{{.}}"{{end}}>{{.Name}}</span>{{if .VoiceID}}<small>{{icon "volume-2"}}{{.Voice}}</small>{{else if .Activity}}<small>{{if eq .Doing "playing"}}Playing {{else if eq .Doing "watching"}}Watching {{else if eq .Doing "competing"}}Competing in {{else if eq .Doing "streaming"}}Streaming {{else if eq .Doing "listening"}}{{icon "music"}}{{end}}{{.Activity}}</small>{{end}}</span></a>
+        {{template "membermenu" (dict "ID" (print "menu-m" .ID) "M" . "D" $d)}}</li>{{end}}</ul>
+      {{else}}<p class="hint">{{if $d.MQuery}}{{template "nomatch" $d.MQuery}}{{else if $d.Presence}}Nobody else is online.{{else}}No members known yet.{{end}}</p>{{end}}
       {{with $d.MHidden}}<p class="hint">{{plural . "more member" "more members"}}, search to find them.</p>{{end}}
       {{if or (gt $d.MPage 1) $d.MMore}}<nav class="pager" aria-label="Member pages">
         {{if gt $d.MPage 1}}<a class="ib sm" href="{{$d.MPrev}}" aria-label="Previous members" data-tip="Previous">{{icon "chevron-left"}}</a>{{else}}<span></span>{{end}}
@@ -230,6 +227,8 @@
 </div>
 {{end}}
 {{end}}
+
+{{define "memberava"}}<span class="mava{{with .Status}} {{.}}{{end}}{{if .Mobile}} mobile{{end}}"{{with .Status}} title="{{statusLabel .}}"{{end}}>{{template "roomava" .}}{{if .Status}}<span class="dot" aria-label="{{statusLabel .Status}}{{if .Mobile}} on a phone{{end}}"></span>{{end}}</span>{{end}}
 
 {{define "roomava"}}{{if .Avatar}}<img class="pava" src="{{.Avatar}}" alt="" width="24" height="24" loading="lazy" referrerpolicy="no-referrer">{{else}}<span class="pava" aria-hidden="true">{{initial .Name}}</span>{{end}}{{end}}
 

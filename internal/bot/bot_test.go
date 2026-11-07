@@ -212,3 +212,26 @@ func TestWaitVoice(t *testing.T) {
 		t.Errorf("already true: %v", err)
 	}
 }
+
+func TestPresenceView(t *testing.T) {
+	str := func(s string) *string { return &s }
+	cases := []struct {
+		p                   discord.Presence
+		status, doing, text string
+		online, mobile      bool
+	}{
+		{discord.Presence{Status: discord.OnlineStatusIdle, ClientStatus: discord.ClientStatus{Mobile: discord.OnlineStatusIdle}}, "idle", "", "", true, true},
+		{discord.Presence{Status: discord.OnlineStatusDND, ClientStatus: discord.ClientStatus{Mobile: "dnd", Desktop: "dnd"}}, "dnd", "", "", true, false},
+		{discord.Presence{Status: discord.OnlineStatusInvisible}, "offline", "", "", false, false},
+		{discord.Presence{Status: discord.OnlineStatusOnline, Activities: []discord.Activity{{Type: discord.ActivityTypeCustom, State: str("Happy to help!"), Emoji: &discord.PartialEmoji{Name: str("👋")}}}}, "online", "custom", "👋 Happy to help!", true, false},
+		{discord.Presence{Status: discord.OnlineStatusOnline, Activities: []discord.Activity{{Type: discord.ActivityTypeListening, Name: "Spotify", State: str("Lauren Spencer Smith")}}}, "online", "listening", "Lauren Spencer Smith", true, false},
+		{discord.Presence{Status: discord.OnlineStatusOnline, Activities: []discord.Activity{{Type: discord.ActivityTypeCustom}, {Type: discord.ActivityTypeGame, Name: "Valheim"}}}, "online", "playing", "Valheim", true, false},
+	}
+	for i, c := range cases {
+		var m Member
+		presenceView(&m, c.p)
+		if m.Status != c.status || m.Doing != c.doing || m.Activity != c.text || m.Online != c.online || m.Mobile != c.mobile {
+			t.Errorf("%d: %+v", i, m)
+		}
+	}
+}

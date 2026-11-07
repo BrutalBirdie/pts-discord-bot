@@ -152,26 +152,42 @@ func TestMessageButtons(t *testing.T) {
 func TestMemberList(t *testing.T) {
 	var all []bot.Member
 	for i := range 30 {
-		m := bot.Member{ID: fmt.Sprint(i), Name: fmt.Sprintf("m%02d", i), Username: fmt.Sprintf("u%02d", i), Online: i%2 == 0}
+		m := bot.Member{ID: fmt.Sprint(i), Name: fmt.Sprintf("m%02d", i), Username: fmt.Sprintf("u%02d", i), Online: i%2 == 0, Status: "online"}
+		if !m.Online {
+			m.Status = "offline"
+		}
 		if i >= 25 {
 			m.VoiceID = "2"
+		}
+		if i < 4 {
+			m.Group, m.GroupPos = "Admins", 5
+		}
+		if i == 4 {
+			m.Group, m.GroupPos = "Mods", 3
 		}
 		all = append(all, m)
 	}
 	all = append(all, bot.Member{ID: "99", Name: "Bot", Bot: true, Online: true})
-	inVoice, others, hidden, _ := memberList(all, "", 1, true)
-	if len(inVoice) != 5 || len(others) != 13 || hidden != 12 || others[0].Name != "m00" || others[1].Name != "m02" {
-		t.Errorf("online: %d in voice, %d others, %d hidden", len(inVoice), len(others), hidden)
+	names := func(gs []memberGroup) []string {
+		var out []string
+		for _, g := range gs {
+			out = append(out, fmt.Sprintf("%s:%d", g.Name, len(g.Members)))
+		}
+		return out
 	}
-	if _, others, _, _ := memberList(all, "", 1, false); others[1].Name != "m01" {
-		t.Errorf("without presences everyone fills up: %v", others[1].Name)
+	groups, hidden, _ := memberList(all, "", 1, true)
+	if got := names(groups); !slices.Equal(got, []string{"Admins:2", "Mods:1", "Online:12", "Offline:3"}) || hidden != 12 {
+		t.Errorf("groups %v, hidden %d", got, hidden)
 	}
-	_, hits, _, more := memberList(all, "m1", 1, true)
-	if len(hits) != 10 || more {
-		t.Errorf("search: %d %v", len(hits), more)
+	if groups, _, _ := memberList(all, "", 1, false); !slices.Equal(names(groups), []string{"Admins:4", "Mods:1", "Members:15"}) {
+		t.Errorf("without presences: %v", names(groups))
 	}
-	if _, hits, _, more := memberList(all, "u", 2, true); len(hits) != 10 || more {
-		t.Errorf("second page: %d %v", len(hits), more)
+	groups, _, more := memberList(all, "m1", 1, true)
+	if !slices.Equal(names(groups), []string{"Matches:10"}) || more {
+		t.Errorf("search: %v %v", names(groups), more)
+	}
+	if groups, _, more := memberList(all, "u", 2, true); !slices.Equal(names(groups), []string{"Matches:10"}) || more {
+		t.Errorf("second page: %v %v", names(groups), more)
 	}
 }
 

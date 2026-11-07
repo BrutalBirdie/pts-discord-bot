@@ -656,3 +656,21 @@ img.av { object-fit: cover; padding: 0; }
 .room-members .suggestions li { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 8px; row-gap: 0; overflow-wrap: anywhere; }
 .room-members .suggestions .sav { grid-row: span 2; }
 .room-members .suggestions li small { margin: 0; }
+
+/* member list like Discord: status dot on the avatar, role colors, activity */
+.mava { position: relative; flex: none; display: grid; }
+.mava .pava { width: 32px; height: 32px; }
+.mava .dot { position: absolute; right: -3px; bottom: -3px; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--surface); background: #80848e; box-sizing: border-box; }
+.mava.online .dot { background: #23a55a; }
+.mava.idle .dot { background: #f0b232; }
+.mava.idle .dot::after { content: ""; position: absolute; top: -2px; left: -2px; width: 6px; height: 6px; border-radius: 50%; background: var(--surface); }
+.mava.dnd .dot { background: #f23f43; }
+.mava.dnd .dot::after { content: ""; position: absolute; top: 3px; left: 1px; width: 6px; height: 2px; border-radius: 1px; background: var(--surface); }
+.mava.offline .dot::after { content: ""; position: absolute; top: 2px; left: 2px; width: 4px; height: 4px; border-radius: 50%; background: var(--surface); }
+.mava.mobile .dot { width: 11px; height: 16px; right: -2px; bottom: -4px; border-radius: 3px; border-width: 2px; }
+.mava.mobile .dot::after { content: ""; position: absolute; left: 2px; right: 2px; top: 2px; bottom: 4px; border-radius: 1px; background: var(--surface); width: auto; height: auto; }
+.person-row > a.off { opacity: .55; }
+.room-members .person-row > a { min-height: 44px; }
+.room-members .nm .who { display: block; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.chrow .nm small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chrow .nm small .i { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }

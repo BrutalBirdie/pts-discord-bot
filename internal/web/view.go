@@ -81,7 +81,10 @@ var viewFuncs = template.FuncMap{
 	"untils":     func() []string { return tasks.Untils },
 	"hasID":      func(list []int64, id int64) bool { return slices.Contains(list, id) },
 	"emojiURL":   emojiURL,
-	"seconds":    func(ms int) string { return strconv.FormatFloat(float64(ms)/1000, 'f', 2, 64) },
+	"statusLabel": func(s string) string {
+		return map[string]string{"online": "Online", "idle": "Away", "dnd": "Do not disturb", "offline": "Offline"}[s]
+	},
+	"seconds": func(ms int) string { return strconv.FormatFloat(float64(ms)/1000, 'f', 2, 64) },
 	"hasTask": func(list []taskChoice, id int64) bool {
 		return slices.ContainsFunc(list, func(t taskChoice) bool { return t.ID == id })
 	},

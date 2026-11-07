@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"errors"
 	"net/http"
 	"net/url"
@@ -47,8 +48,7 @@ type roomData struct {
 	Self    string // this page, for the next field of forms
 	query   url.Values
 
-	InVoice  []bot.Member
-	Others   []bot.Member // members not in voice, one page
+	MGroups  []memberGroup
 	MQuery   string
 	MPage    int
 	MMore    bool
@@ -170,7 +170,7 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 	d.MPage, _ = strconv.Atoi(q.Get("mp"))
 	d.MPage = max(d.MPage, 1)
 	d.Presence = s.bot.Status().PresenceIntent
-	d.InVoice, d.Others, d.MHidden, d.MMore = memberList(members, d.MQuery, d.MPage, d.Presence)
+	d.MGroups, d.MHidden, d.MMore = memberList(members, d.MQuery, d.MPage, d.Presence)
 
 	switch d.View {
 	case "voice":
@@ -415,28 +415,77 @@ func (s *Server) setFavorite(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, safeNext(r.PostForm.Get("next"), "/media"), "")
 }
 
+// memberGroup is a heading of the member list with its members, as Discord groups them.
+type memberGroup struct {
+	Name    string
+	Members []bot.Member
+}
+
 // memberList is the member column: with a search a page of the matches,
-// else the members in voice and then those online, membersPerPage at most.
-// Without the presence intent the online status is unknown, everyone fills up.
-func memberList(members []bot.Member, query string, page int, presence bool) (inVoice, others []bot.Member, hidden int, more bool) {
+// else the members in voice and then those online, membersPerPage at most,
+// grouped like Discord does: by the highest role shown separately, then
+// Online and Offline. Without the presence intent the online status is
+// unknown and everyone fills up.
+func memberList(members []bot.Member, query string, page int, presence bool) (groups []memberGroup, hidden int, more bool) {
 	humans := slices.DeleteFunc(slices.Clone(members), func(m bot.Member) bool { return m.Bot })
 	if query != "" {
 		hits := bot.SearchMembers(humans, query, len(humans))
 		from := min((page-1)*membersPerPage, len(hits))
 		to := min(from+membersPerPage, len(hits))
-		return nil, hits[from:to], 0, to < len(hits)
+		if from == to {
+			return nil, 0, false
+		}
+		return []memberGroup{{Name: "Matches", Members: hits[from:to]}}, 0, to < len(hits)
 	}
+	var picked []bot.Member
 	for _, m := range humans {
-		if m.VoiceID != "" && len(inVoice) < membersPerPage {
-			inVoice = append(inVoice, m)
+		if m.VoiceID != "" && len(picked) < membersPerPage {
+			picked = append(picked, m)
 		}
 	}
 	for _, m := range humans {
-		if m.VoiceID == "" && (m.Online || !presence) && len(inVoice)+len(others) < membersPerPage {
-			others = append(others, m)
+		if m.VoiceID == "" && (m.Online || !presence) && len(picked) < membersPerPage {
+			picked = append(picked, m)
 		}
 	}
-	return inVoice, others, len(humans) - len(inVoice) - len(others), false
+	rest, offline := "Online", "Offline"
+	if !presence {
+		rest = "Members"
+	}
+	pos := map[string]int{}
+	byName := map[string]*memberGroup{}
+	var order []string
+	slices.SortStableFunc(picked, func(a, b bot.Member) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	for _, m := range picked {
+		name := rest
+		switch {
+		case presence && !m.Online:
+			name = offline
+		case m.Group != "":
+			name, pos[m.Group] = m.Group, m.GroupPos
+		}
+		g, ok := byName[name]
+		if !ok {
+			g = &memberGroup{Name: name}
+			byName[name] = g
+			order = append(order, name)
+		}
+		g.Members = append(g.Members, m)
+	}
+	rank := func(name string) int {
+		switch name {
+		case rest:
+			return -1
+		case offline:
+			return -2
+		}
+		return pos[name]
+	}
+	slices.SortStableFunc(order, func(a, b string) int { return cmp.Compare(rank(b), rank(a)) })
+	for _, name := range order {
+		groups = append(groups, *byName[name])
+	}
+	return groups, len(humans) - len(picked), false
 }
 
 // millis reads seconds like 1.25 as milliseconds, 0 for anything else.

@@ -3,6 +3,7 @@ package bot
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -65,6 +66,13 @@ type Member struct {
 	VoiceID  string
 	Avatar   string // URL on Discord's CDN
 	Online   bool   // not offline, known with the presence intent only
+	Status   string // online, idle, dnd or offline; empty without the presence intent
+	Mobile   bool   // online on a phone only, Discord shows a phone instead of the dot
+	Color    string // #rrggbb of the highest role with a color, the name shows in it
+	Group    string // the highest role shown separately in the member list
+	GroupPos int    // its position, higher roles are listed first
+	Activity string // custom status, game, song
+	Doing    string // custom, playing, listening, watching, streaming or competing
 }
 
 // Emoji is a custom emoji of a server.
@@ -290,20 +298,34 @@ func (b *Bot) Members(guildID string) []Member {
 	if err != nil || !ok {
 		return nil
 	}
-	roles := map[snowflake.ID]string{}
+	roles := map[snowflake.ID]discord.Role{}
 	for r := range c.Caches.Roles(gid) {
-		roles[r.ID] = r.Name
+		roles[r.ID] = r
 	}
+	b.mu.RLock()
+	presences := b.presences
+	b.mu.RUnlock()
 	var out []Member
 	for m := range c.Caches.Members(gid) {
 		v := memberView(m)
-		for _, r := range m.RoleIDs {
-			if n, ok := roles[r]; ok {
-				v.Roles = append(v.Roles, n)
+		colorPos, groupPos := -1, -1
+		for _, id := range m.RoleIDs {
+			r, ok := roles[id]
+			if !ok {
+				continue
+			}
+			v.Roles = append(v.Roles, r.Name)
+			if r.Color != 0 && r.Position > colorPos {
+				colorPos, v.Color = r.Position, fmt.Sprintf("#%06x", r.Color)
+			}
+			if r.Hoist && r.Position > groupPos {
+				groupPos, v.Group, v.GroupPos = r.Position, r.Name, r.Position
 			}
 		}
-		if p, ok := c.Caches.Presence(gid, m.User.ID); ok && p.Status != discord.OnlineStatusOffline && p.Status != "" {
-			v.Online = true
+		if p, ok := c.Caches.Presence(gid, m.User.ID); ok {
+			presenceView(&v, p)
+		} else if presences {
+			v.Status = string(discord.OnlineStatusOffline)
 		}
 		if vs, ok := c.Caches.VoiceState(gid, m.User.ID); ok && vs.ChannelID != nil {
 			if ch, ok := c.Caches.Channel(*vs.ChannelID); ok {
@@ -314,6 +336,42 @@ func (b *Bot) Members(guildID string) []Member {
 	}
 	slices.SortFunc(out, func(a, b Member) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
 	return out
+}
+
+var doing = map[discord.ActivityType]string{discord.ActivityTypeGame: "playing", discord.ActivityTypeStreaming: "streaming", discord.ActivityTypeListening: "listening",
+	discord.ActivityTypeWatching: "watching", discord.ActivityTypeCustom: "custom", discord.ActivityTypeCompeting: "competing"}
+
+// presenceView fills the status and the activity Discord shows under a member's name.
+func presenceView(v *Member, p discord.Presence) {
+	v.Status = string(p.Status)
+	if p.Status == discord.OnlineStatusInvisible || p.Status == "" {
+		v.Status = string(discord.OnlineStatusOffline)
+	}
+	v.Online = v.Status != string(discord.OnlineStatusOffline)
+	v.Mobile = v.Online && p.ClientStatus.Mobile != "" && p.ClientStatus.Desktop == "" && p.ClientStatus.Web == ""
+	text := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+	for _, a := range p.Activities {
+		switch a.Type {
+		case discord.ActivityTypeCustom:
+			v.Activity = strings.TrimSpace(text(a.State))
+			if a.Emoji != nil && a.Emoji.ID == nil && a.Emoji.Name != nil {
+				v.Activity = strings.TrimSpace(*a.Emoji.Name + " " + v.Activity)
+			}
+		case discord.ActivityTypeListening:
+			v.Activity = cmp.Or(text(a.State), text(a.Details), a.Name)
+		default:
+			v.Activity = a.Name
+		}
+		if v.Activity != "" {
+			v.Doing = doing[a.Type]
+			return
+		}
+	}
 }
 
 func memberView(m discord.Member) Member {

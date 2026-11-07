@@ -1103,4 +1103,9 @@
         });
         show();
     });
+
+    // role colors of member names, set here because the CSP allows no inline styles
+    document.querySelectorAll('[data-color]').forEach(function (el) {
+        if (/^#[0-9a-f]{6}$/i.test(el.dataset.color)) el.style.color = el.dataset.color;
+    });
 })();
