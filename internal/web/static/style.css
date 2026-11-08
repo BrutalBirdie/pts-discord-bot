@@ -771,3 +771,21 @@ img.tface { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; }
 }
 .guild img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .snd-upload [data-upload-status]:empty { display: none; }
+
+/* image picker: thumbnails to pick one image of the library */
+.imgpick { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
+.imgpick legend { font-weight: 700; font-size: .95rem; padding: 0; margin-bottom: 6px; }
+.imgpick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.imgopt { position: relative; display: grid; gap: 4px; justify-items: center; padding: 6px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; min-width: 0; }
+.imgopt[hidden] { display: none; }
+.imgopt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
+.imgopt:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+.imgopt input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.imgopt img, .imgopt .imgbox { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: var(--surface-2); }
+.imgopt .imgbox { display: grid; place-items: center; color: var(--muted); }
+.imgopt .nm { max-width: 100%; font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imgpick .pager[hidden] { display: none; }
+.imgpick input[type=search][hidden] { display: none; }
+.step .fields { align-items: flex-start; }
+.step .fields > .imgpick { flex-basis: 100%; }
+.grid2:has(.emoji-btn) { align-items: start; }

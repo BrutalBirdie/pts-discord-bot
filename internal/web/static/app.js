@@ -833,7 +833,9 @@
         const picked = box.querySelector('[data-picked]');
         const send = box.form && box.form.querySelector('[data-pick-send]');
         const per = Number(box.dataset.pickList) || 8;
-        let page = 0;
+        // start on the page of the picked item
+        const first = items.findIndex((el) => el.querySelector('input:checked'));
+        let page = first > 0 ? Math.floor(first / per) : 0;
         function show() {
             const q = search.value.trim().toLowerCase();
             const match = items.filter((el) => !q || el.dataset.pick.toLowerCase().includes(q));
@@ -841,13 +843,14 @@
             page = Math.min(page, pages - 1);
             items.forEach((el) => { el.hidden = true; });
             match.slice(page * per, page * per + per).forEach((el) => { el.hidden = false; });
-            info.textContent = match.length ? 'Page ' + (page + 1) + ' of ' + pages : 'No server matches.';
+            info.textContent = match.length ? 'Page ' + (page + 1) + ' of ' + pages : (box.dataset.pickEmpty || 'No server matches.');
             prev.disabled = page === 0;
             next.disabled = page >= pages - 1;
             pager.hidden = pages === 1 && match.length > 0;
             search.hidden = items.length <= per;
         }
         function count() {
+            if (!picked) return;
             const n = box.querySelectorAll('input[type=checkbox]:checked').length;
             picked.textContent = String(n);
             if (send) send.disabled = n === 0;
@@ -1187,6 +1190,8 @@
         }
         function pick(value) {
             input.value = value;
+            // previews listen for input on the form
+            input.dispatchEvent(new Event('input', { bubbles: true }));
             show();
             close();
             btn.focus();

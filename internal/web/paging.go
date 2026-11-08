@@ -1,8 +1,10 @@
 package web
 
 import (
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -55,10 +57,17 @@ func (p paging) Limit() int { return p.per() + 1 }
 
 func (p paging) Path() string { return p.path }
 
-func (p paging) Filters() map[string]string {
-	out := make(map[string]string, len(p.filters))
-	for k := range p.filters {
-		out[k] = p.filters.Get(k)
+// filter is a query value a search form keeps.
+type filter struct{ Name, Value string }
+
+// Filters are the query values a search keeps, a filter that repeats once per value.
+func (p paging) Filters() []filter {
+	var out []filter
+	keys := slices.Sorted(maps.Keys(p.filters))
+	for _, k := range keys {
+		for _, v := range p.filters[k] {
+			out = append(out, filter{k, v})
+		}
 	}
 	return out
 }

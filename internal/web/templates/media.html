@@ -60,13 +60,13 @@
 <div class="contents" data-live="list" data-live-list>
 {{if not $d.Batch}}
 <div class="pills">
-  <a href="{{$p.With "" ""}}"{{if not (or $d.Kind $d.Tag)}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
+  <a href="{{$p.With "" ""}}"{{if not $d.Kind}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
   <a href="{{$p.With "kind" "sound"}}"{{if eq $d.Kind "sound"}} aria-current="page"{{end}}>Sounds {{index $d.Counts "sound"}}</a>
   <a href="{{$p.With "kind" "image"}}"{{if eq $d.Kind "image"}} aria-current="page"{{end}}>Images {{index $d.Counts "image"}}</a>
   <a href="{{$p.With "kind" "video"}}"{{if eq $d.Kind "video"}} aria-current="page"{{end}}>Videos {{index $d.Counts "video"}}</a>
   <a href="{{$p.With "kind" "file"}}"{{if eq $d.Kind "file"}} aria-current="page"{{end}}>Files {{index $d.Counts "file"}}</a>
-  {{range $d.Tags}}<a href="{{$p.With "tag" .}}"{{if eq . $d.Tag}} aria-current="page"{{end}}>{{icon "hash"}}{{.}}</a>{{end}}
 </div>
+{{template "tagbar" (dict "D" $d "One" "file" "Many" "files" "All" "All tags")}}
 {{if not $d.Guild}}{{template "groupfilter" (dict "P" $p "Groups" $d.Groups "Group" $d.Group)}}{{end}}
 {{end}}
 
@@ -94,7 +94,7 @@
         <div class="row-main">
           <span class="row-title">{{if .DisplayName}}{{.DisplayName}} <span class="row-sub mono">{{.Name}}</span>{{else}}<span class="mono">{{.Name}}</span>{{end}}{{if gt .SizeBytes 20971520}} <span class="chip warn">{{icon "triangle-alert"}}over 20 MB for Discord messages</span>{{end}}</span>
           <span class="row-sub" data-preview-detail>{{if .DurationMS}}{{clock .DurationMS}} · {{end}}{{if .Width}}{{.Width}} × {{.Height}} · {{end}}{{bytes .SizeBytes}} · {{if or .UsedBy .UsedElse}}used by {{join .UsedBy ", "}}{{if and .UsedBy .UsedElse}}, {{end}}{{with .UsedElse}}{{plural . "task" "tasks"}} in other servers{{end}}{{else}}not used{{end}}</span>
-          {{if or .Tags .GuildID}}<span class="meta">{{with $d.GroupName .}}<span class="chip">{{icon "server"}}{{.}}</span>{{end}}{{if .GroupOnly}}<span class="chip" data-tip="Not suggested to other servers">{{icon "lock"}}only this server</span>{{end}}{{range .Tags}}<a class="chip accent" href="{{$p.With "tag" .}}">{{.}}</a>{{end}}</span>{{end}}
+          {{if or .Tags .GuildID}}<span class="meta">{{with $d.GroupName .}}<span class="chip">{{icon "server"}}{{.}}</span>{{end}}{{if .GroupOnly}}<span class="chip" data-tip="Not suggested to other servers">{{icon "lock"}}only this server</span>{{end}}{{range .Tags}}<a class="chip accent" href="{{$d.OnlyURL .}}">{{.}}</a>{{end}}</span>{{end}}
         </div>
       </div>
       <div class="btns">
@@ -108,13 +108,14 @@
       </div>
     </li>
     {{else}}
-    <li>{{if $p.Query}}{{template "nomatch" $p.Query}}{{else}}<span class="muted">{{if or $d.Kind $d.Tag}}Nothing of this kind.{{else}}No files yet. Upload sounds to play them in voice channels and images or files to send them in messages.{{end}}</span>{{end}}</li>
+    <li>{{if $p.Query}}{{template "nomatch" $p.Query}}{{else}}<span class="muted">{{if or $d.Kind $d.Tags}}Nothing of this kind.{{else}}No files yet. Upload sounds to play them in voice channels and images or files to send them in messages.{{end}}</span>{{end}}</li>
     {{end}}
   </ul>
   {{template "pager" $p}}
 </section>
 <p class="hint">Files in use by a task or message can only be deleted after they are removed there.{{if $.TrashDays}} Deleted files stay in the <a href="/trash?kind=media">Trash</a> for {{plural $.TrashDays "day" "days"}}.{{end}}</p>
 
+{{with $d.TagEdit}}{{template "tagsheet" (dict "T" . "D" $d "CSRF" $csrf)}}{{end}}
 {{with $d.Edit}}{{template "mediasheet" (dict "M" . "Groups" ($d.GroupsWith .GuildID) "Next" $d.EditNext "CSRF" $csrf "Review" $d.Review "Emojis" $d.Emojis "Images" $d.Images)}}{{end}}
 {{range $d.Items}}{{if or (eq .Kind "sound") (eq .Kind "video")}}
 <div popover id="sheet-play-{{.ID}}" class="sheet" aria-labelledby="sheet-play-{{.ID}}-title">

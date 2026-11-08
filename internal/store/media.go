@@ -165,12 +165,17 @@ type SoundTag struct {
 // SoundTags returns the tags of the sounds offered to a server by name. Count
 // is the number of sounds with the tag among those that have all of within.
 func (s *Store) SoundTags(ctx context.Context, guildID string, within []string) ([]SoundTag, error) {
+	return s.MediaTags(ctx, guildID, KindSound, within)
+}
+
+// MediaTags is SoundTags for the files of a kind, every kind when kind is empty.
+func (s *Store) MediaTags(ctx context.Context, guildID, kind string, within []string) ([]SoundTag, error) {
 	if within == nil {
 		within = []string{}
 	}
 	rows, err := s.pool.Query(ctx, `SELECT t.tag, t.n, coalesce(l.emoji, ''), coalesce(l.icon_media_id, 0)
-FROM (SELECT unnest(tags) AS tag, count(*) AS n FROM media m WHERE kind = 'sound' AND deleted_at IS NULL AND `+offered("m", "1")+` AND tags @> $2 GROUP BY 1) t
-LEFT JOIN tag_looks l ON l.tag = t.tag ORDER BY t.tag`, guildID, within)
+FROM (SELECT unnest(tags) AS tag, count(*) AS n FROM media m WHERE ($3 = '' OR kind = $3) AND deleted_at IS NULL AND `+offered("m", "1")+` AND tags @> $2 GROUP BY 1) t
+LEFT JOIN tag_looks l ON l.tag = t.tag ORDER BY t.tag`, guildID, within, kind)
 	if err != nil {
 		return nil, err
 	}

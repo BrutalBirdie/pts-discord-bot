@@ -88,6 +88,11 @@ func (d roomData) ToggleURL(tag string) string {
 
 func (d roomData) TagOn(tag string) bool { return slices.Contains(d.Tags, tag) }
 
+// TagEditURL opens the icon sheet of a tag.
+func (d roomData) TagEditURL(tag string) string {
+	return d.HereURL() + "&" + url.Values{"tagedit": {tag}}.Encode()
+}
+
 func (d roomData) URL(key, value string) string {
 	v := url.Values{}
 	if key != "" {

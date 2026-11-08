@@ -430,9 +430,9 @@ func TestProfileStepEditor(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.render(rec, req, http.StatusOK, "task", e)
 	body := rec.Body.String()
-	for _, want := range []string{`<option value="set" selected>Set the nickname to`, `name="s0.nick" value="DJ {member_name}"`, `<option value="7" selected>cat.png`,
-		`<option value="reset" selected>Reset to the bot's name`, `<option value="reset" selected>Reset to the bot's avatar`,
-		`<option value="9" selected>Deleted image`, `<option value="8" selected>huge.png`, "huge.png has 8.0 MB, an avatar may have at most 8 MB. Pick another image.",
+	for _, want := range []string{`<option value="set" selected>Set the nickname to`, `name="s0.nick" value="DJ {member_name}"`, `value="7" checked><img src="/media/7/file"`,
+		`<option value="reset" selected>Reset to the bot's name`, `value="reset" checked><span class="imgbox">`,
+		`value="9" checked><span class="imgbox">`, `data-pick="huge.png" title="huge.png"><input type="radio" name="s3.avatar" value="8" checked>`, "huge.png has 8.0 MB, an avatar may have at most 8 MB. Pick another image.",
 		`<li class="step bad">`, "Change bot profile", "Nickname and avatar in this server", `value="add:profile"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
@@ -672,11 +672,11 @@ func TestListSearchAndPager(t *testing.T) {
 		data         any
 		want         []string
 	}{
-		{"media", "/media?kind=sound&q=beep&page=2", mediaData{Kind: "sound", Items: []store.Media{sound}, Counts: map[string]int{"": 1}, Tags: []string{"fun"},
+		{"media", "/media?kind=sound&q=beep&page=2", mediaData{Kind: "sound", Items: []store.Media{sound}, Counts: map[string]int{"": 1}, SoundTags: []store.SoundTag{{Name: "fun", Count: 1}},
 			Paging: more(paged("/media?kind=sound&q=beep&page=2", "kind", "sound"))},
 			[]string{`<form class="search" method="get" action="/media" data-live-search>`, `<input type="hidden" name="kind" value="sound">`, `type="search" name="q" value="beep"`, `aria-label="Search media"`,
 				`href="/media?kind=sound&amp;q=beep" rel="prev"`, `href="/media?kind=sound&amp;page=3&amp;q=beep" rel="next"`, "Page 2",
-				`href="/media?kind=video&amp;q=beep"`, `href="/media?q=beep&amp;tag=fun"`, `href="/media?q=beep"`}},
+				`href="/media?kind=video&amp;q=beep"`, `href="/media?kind=sound&amp;q=beep&amp;tag=fun"`, `href="/media?q=beep"`}},
 		{"media", "/media?q=nope", mediaData{Counts: map[string]int{}, Paging: paged("/media?q=nope")}, []string{`Nothing matches "nope".`}},
 		{"messages", "/messages?page=2", messagesData{Paging: paged("/messages?page=2")}, []string{`aria-label="Search messages"`, `href="/messages" rel="prev"`, "No saved messages yet."}},
 		{"messages", "/messages?q=fri", messagesData{Paging: paged("/messages?q=fri")}, []string{`Nothing matches "fri".`}},

@@ -90,7 +90,7 @@
 
 {{define "search"}}
 <form class="search" method="get" action="{{.P.Path}}" data-live-search>
-  {{range $k, $v := .P.Filters}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
+  {{range .P.Filters}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">{{end}}
   <input type="search" name="q" value="{{.P.Query}}" placeholder="{{.Placeholder}}" aria-label="{{.Label}}">
   <button type="submit" class="ib" aria-label="Search" data-tip="Search">{{icon "search"}}<span class="lbl">Search</span></button>
 </form>
@@ -176,7 +176,7 @@
       <div class="field"><span id="emoji-label">Emoji</span>
         <input type="text" name="emoji" value="{{$m.Emoji}}" maxlength="64" autocomplete="off" aria-labelledby="emoji-label" data-emoji-picker="{{json .Emojis}}">
       </div>
-      <label class="field"><span>Or an image from Media</span><select name="icon"><option value="0">No image</option>{{range .Images}}<option value="{{.ID}}"{{if eq .ID $m.IconID}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      {{template "imagepick" (dict "Name" "icon" "Label" "Or an image from Media" "Value" $m.IconID "Images" .Images "Empty" "No image")}}
     </section>
     <section class="reveal">
       <label class="switch-row"><span>Own volume<small>Plays this sound at this volume everywhere, also in tasks, instead of the soundboard or step volume.</small></span><input type="checkbox" class="switch" name="own_volume"{{if $m.Volume}} checked{{end}}></label>
@@ -235,3 +235,59 @@
 {{end}}
 
 {{define "taskstatus"}}{{if .Run}}<span class="chip accent">running</span>{{else if .Task.PausedReason}}<span class="chip danger">{{icon "circle-x"}}paused after error</span>{{else if not .Task.Enabled}}<span class="chip">paused</span>{{else if eq .Task.Trigger.Kind "manual"}}<span class="chip">manual only</span>{{else}}<span class="chip ok">active</span>{{end}}{{end}}
+
+{{/* tagbar: the tags of a list with icons and counts, several can be picked. D has Tags (picked), SoundTags, AllURL, ToggleURL, OnlyURL, TagOn, TagEditURL; One and Many name the items, All the link without tags, Media a media page to show a tag in */}}
+{{define "tagbar"}}{{$d := .D}}{{$top := .}}{{with $d.SoundTags}}
+<div class="pills tagbar" role="navigation" aria-label="{{$top.Many}} by tag">
+  {{if $d.Tags}}<a href="{{$d.AllURL}}" class="tag-back">{{icon "arrow-left"}}{{$top.All}}</a>{{else}}<a href="{{$d.AllURL}}" aria-current="page">{{$top.All}}</a>{{end}}
+  {{range $i, $t := .}}<a href="{{$d.ToggleURL .Name}}"{{if $d.TagOn .Name}} aria-current="page" aria-label="{{.Name}}, picked, {{plural .Count $top.One $top.Many}}"{{else}} aria-label="{{.Name}}, {{plural .Count $top.One $top.Many}}{{if $d.Tags}} with the picked tags{{end}}"{{end}} data-menu="menu-tag-{{$i}}">{{template "tagface" .}}<span>{{.Name}}</span><span class="badge">{{.Count}}</span>{{if $d.TagOn .Name}}{{icon "x"}}{{end}}</a>{{end}}
+</div>
+{{range $i, $t := .}}
+<div popover id="menu-tag-{{$i}}" class="menu" role="menu" aria-label="Tag {{.Name}}">
+  <span class="menu-title">#{{.Name}} · {{plural .Count $top.One $top.Many}}</span>
+  <a role="menuitem" href="{{$d.OnlyURL .Name}}">{{icon "hash"}}Show only the {{$top.Many}} tagged {{.Name}}</a>
+  <a role="menuitem" href="{{$d.TagEditURL .Name}}#sheet-tag">{{icon "smile"}}Set icon</a>
+  {{with $top.Media}}<a role="menuitem" href="{{.}}?tag={{$t.Name}}">{{icon "image"}}Show in Media</a>{{end}}
+</div>
+{{end}}
+{{end}}{{end}}
+
+{{/* tagsheet: T the tag, D has Emojis, Images and HereURL, CSRF */}}
+{{define "tagsheet"}}{{$d := .D}}{{$t := .T}}
+<div popover id="sheet-tag" class="sheet" aria-labelledby="sheet-tag-title">
+  {{template "sheethead" (dict "ID" "sheet-tag" "Icon" "hash" "Title" "Icon for the tag" "Name" $t.Name)}}
+  <form method="post" action="/tags/look" class="sheet-body form" data-fetch data-done="Saved the icon of {{$t.Name}}.">
+    <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="tag" value="{{$t.Name}}"><input type="hidden" name="next" value="{{$d.HereURL}}">
+    <div class="field"><span id="tag-emoji-label">Emoji</span>
+      <input type="text" name="emoji" value="{{$t.Emoji}}" maxlength="64" autocomplete="off" aria-labelledby="tag-emoji-label" data-emoji-picker="{{json $d.Emojis}}">
+    </div>
+    {{template "imagepick" (dict "Name" "icon" "Label" "Or an image from Media" "Value" $t.IconID "Images" $d.Images "Empty" "No image")}}
+    <p class="hint">The icon shows in the tag lists of the soundboard and the media page, for every server.</p>
+    <div class="btns">
+      <button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button>
+      <button type="button" class="ib with-label" popovertarget="sheet-tag" popovertargetaction="hide"><span class="lbl">Never mind</span></button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{/* imagepick: images of the library to pick one, with thumbnails, search and pages. Name, Label, Value (the picked ID or value), Images;
+     Empty the label of the choice without image, EmptyValue its value (default 0); Reset adds a choice with the value reset;
+     Picked names a picked image that is not among Images, like one that cannot be used */}}
+{{define "imagepick"}}{{$v := print .Value}}{{$ev := "0"}}{{with .EmptyValue}}{{$ev = .}}{{end}}
+<fieldset class="imgpick" data-pick-list="12" data-pick-empty="No image matches.">
+  <legend>{{.Label}}</legend>
+  <input type="search" class="js-only" placeholder="Search images" aria-label="Search images for {{.Label}}" data-pick-search>
+  <div class="imgpick-grid">
+    <label class="imgopt" data-pick="{{.Empty}}"><input type="radio" name="{{.Name}}" value="{{$ev}}"{{if or (eq $v $ev) (and (eq $ev "0") (eq $v ""))}} checked{{end}}><span class="imgbox">{{icon "x"}}</span><span class="nm">{{.Empty}}</span></label>
+    {{with .Reset}}<label class="imgopt" data-pick="{{.}}"><input type="radio" name="{{$.Name}}" value="reset"{{if eq $v "reset"}} checked{{end}}><span class="imgbox">{{icon "rotate-ccw"}}</span><span class="nm">{{.}}</span></label>{{end}}
+    {{with .Picked}}<label class="imgopt bad" data-pick="{{.}}" title="{{.}}"><input type="radio" name="{{$.Name}}" value="{{$v}}" checked><span class="imgbox">{{icon "triangle-alert"}}</span><span class="nm">{{.}}</span></label>{{end}}
+    {{range .Images}}<label class="imgopt" data-pick="{{.Label}} {{.Name}}" title="{{.Label}}"><input type="radio" name="{{$.Name}}" value="{{.ID}}"{{if eq (print .ID) $v}} checked{{end}}><img src="/media/{{.ID}}/file" alt="" loading="lazy"><span class="nm">{{.Label}}</span></label>{{end}}
+  </div>
+  <div class="pager js-only" data-pick-pager>
+    <button type="button" class="ib sm" data-prev aria-label="Previous images">{{icon "chevron-left"}}</button>
+    <span class="hint" data-page-text></span>
+    <button type="button" class="ib sm" data-next aria-label="More images">{{icon "chevron-right"}}</button>
+  </div>
+</fieldset>
+{{end}}

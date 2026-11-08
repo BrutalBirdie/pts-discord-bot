@@ -38,8 +38,9 @@ type mediaData struct {
 	Split        int // the first item of another server, -1 when all are of the open one
 	Items        []store.Media
 	Kind         string
-	Tag          string
-	Tags         []string
+	Tags         []string         // the list shows only the files with all of these tags
+	SoundTags    []store.SoundTag // the tags of the files of the kind, counted within the picked ones
+	TagEdit      *store.SoundTag  // the tag in the tag icon sheet
 	Counts       map[string]int
 	TotalBytes   int64
 	Voice        []voiceGroup
@@ -59,6 +60,40 @@ type mediaData struct {
 	Review       *review       // Edit goes through the files of the upload
 	Ask          bool          // just uploaded or tagged: the Uploaded sheet opens and asks what next
 	Tagged       bool
+}
+
+// tagsURL is the list with only the files that have all of the tags, other filters stay.
+func (d mediaData) tagsURL(tags []string, extra url.Values) string {
+	v := url.Values{}
+	for k, vs := range d.Paging.filters {
+		if k != "tag" {
+			v[k] = vs
+		}
+	}
+	for _, t := range tags {
+		v.Add("tag", t)
+	}
+	for k, vs := range extra {
+		v[k] = vs
+	}
+	return d.Paging.link(v, 1)
+}
+
+// AllURL, HereURL, OnlyURL, ToggleURL, TagOn and TagEditURL feed the tag bar, as on the soundboard.
+func (d mediaData) AllURL() string            { return d.tagsURL(nil, nil) }
+func (d mediaData) HereURL() string           { return d.tagsURL(d.Tags, nil) }
+func (d mediaData) OnlyURL(tag string) string { return d.tagsURL([]string{tag}, nil) }
+func (d mediaData) TagOn(tag string) bool     { return slices.Contains(d.Tags, tag) }
+
+func (d mediaData) ToggleURL(tag string) string {
+	if d.TagOn(tag) {
+		return d.tagsURL(slices.DeleteFunc(slices.Clone(d.Tags), func(t string) bool { return t == tag }), nil)
+	}
+	return d.tagsURL(append(slices.Clone(d.Tags), tag), nil)
+}
+
+func (d mediaData) TagEditURL(tag string) string {
+	return d.tagsURL(d.Tags, url.Values{"tagedit": {tag}})
 }
 
 // BatchTags is the tag picker for all files of the upload, in the sheet or on the page.
@@ -190,7 +225,7 @@ func (s *Server) showMedia(w http.ResponseWriter, r *http.Request, guildID strin
 		s.internalError(w, r, err)
 		return
 	}
-	d := mediaData{Guild: guildID, Base: mediaBase(guildID), Kind: q.Get("kind"), Tag: q.Get("tag"), Group: q.Get("server"), Counts: sum.Counts, TotalBytes: sum.Bytes, Tags: sum.Tags, Voice: s.voiceGroups(r), MaxUploadMB: settings.MaxUploadMB, Paging: newPaging(r),
+	d := mediaData{Guild: guildID, Base: mediaBase(guildID), Kind: q.Get("kind"), Group: q.Get("server"), Counts: sum.Counts, TotalBytes: sum.Bytes, Voice: s.voiceGroups(r), MaxUploadMB: settings.MaxUploadMB, Paging: newPaging(r),
 		Names: map[string]string{}, Batch: q.Get("batch"), Problems: problems}
 	if d.Groups, err = s.groupChoices(ctx, r, ""); err != nil {
 		s.internalError(w, r, err)
@@ -206,7 +241,12 @@ func (s *Server) showMedia(w http.ResponseWriter, r *http.Request, guildID strin
 		d.DefaultGroup, d.Group = guildID, ""
 	}
 	d.Paging.Keep("kind", d.Kind)
-	d.Paging.Keep("tag", d.Tag)
+	for _, v := range q["tag"] {
+		if t := ParseTags(v); len(t) == 1 && !slices.Contains(d.Tags, t[0]) && len(d.Tags) < maxTags {
+			d.Tags = append(d.Tags, t[0])
+			d.Paging.Add("tag", t[0])
+		}
+	}
 	d.Paging.Keep("server", d.Group)
 	d.Paging.Keep("batch", d.Batch)
 	if d.Batch != "" {
@@ -218,13 +258,37 @@ func (s *Server) showMedia(w http.ResponseWriter, r *http.Request, guildID strin
 		d.Tagged = done == "tagged"
 		d.Ask = q.Get("edit") == "" && (len(problems) > 0 || len(d.Uploaded) > 1 && (done == "uploaded" || d.Tagged))
 	}
-	items, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: sess.Scope(), Offer: guildID, Group: d.Group, Kind: d.Kind, Tag: d.Tag, Batch: d.Batch, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
+	items, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: sess.Scope(), Offer: guildID, Group: d.Group, Kind: d.Kind, AllTags: d.Tags, Batch: d.Batch, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
 	d.Items = cut(&d.Paging, items)
 	d.Self = d.Paging.Self()
+	if d.SoundTags, err = s.store.MediaTags(ctx, guildID, d.Kind, d.Tags); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	for _, t := range d.Tags {
+		if !slices.ContainsFunc(d.SoundTags, func(x store.SoundTag) bool { return x.Name == t }) {
+			d.SoundTags = append(d.SoundTags, store.SoundTag{Name: t})
+		}
+	}
+	if t := ParseTags(q.Get("tagedit")); len(t) == 1 {
+		d.TagEdit = &store.SoundTag{Name: t[0]}
+		if i := slices.IndexFunc(d.SoundTags, func(x store.SoundTag) bool { return x.Name == t[0] }); i >= 0 {
+			d.TagEdit = &d.SoundTags[i]
+		}
+		guild := guildID
+		if guild == "" && len(d.Groups) > 0 {
+			guild = d.Groups[0].ID
+		}
+		d.Emojis = s.bot.Emojis(guild)
+		if d.Images, err = s.store.ListMedia(ctx, guild, store.KindImage); err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+	}
 	d.Split = -1
 	if guildID != "" {
 		d.Split = slices.IndexFunc(d.Items, func(m store.Media) bool { return m.GuildID != guildID })

@@ -162,12 +162,8 @@
               <option value="reset"{{if $s.ResetNick}} selected{{end}}>Reset to the bot's name</option>
             </select>
             <input type="text" name="{{$p}}nick" value="{{$s.Nick}}" maxlength="32" placeholder="Nickname, {member_name} {server} {date} {time} work" aria-label="Nickname" class="nick-text" spellcheck="false" autocomplete="off">
-            <select name="{{$p}}avatar" aria-label="Server avatar">
-              <option value="">Keep the avatar</option>
-              <option value="reset"{{if $s.ResetAvatar}} selected{{end}}>Reset to the bot's avatar</option>
-              {{with $av.Picked}}<option value="{{$s.AvatarMediaID}}" selected>{{.}}</option>{{end}}
-              <optgroup label="Images from the media library">{{range $av.Images}}<option value="{{.ID}}"{{if eq .ID $s.AvatarMediaID}} selected{{end}}>{{.Name}}</option>{{end}}</optgroup>
-            </select>
+            {{$avv := $s.AvatarMediaID}}{{if $s.ResetAvatar}}{{$avv = "reset"}}{{else if not $s.AvatarMediaID}}{{$avv = ""}}{{end}}
+            {{template "imagepick" (dict "Name" (print $p "avatar") "Label" "Server avatar" "Value" $avv "Images" $av.Images "Empty" "Keep the avatar" "EmptyValue" "" "Reset" "Reset to the bot's avatar" "Picked" $av.Picked)}}
           {{else if eq $s.Type "leave"}}
             <span class="small muted">Stops playback and disconnects the bot from voice in this server.</span>
           {{end}}

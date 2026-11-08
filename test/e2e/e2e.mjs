@@ -176,7 +176,8 @@ const steps = {
         await page.locator('.suggestions li').first().click();
         check('mention inserted into the text', (await page.inputValue('textarea[name=content]')).endsWith('<@111111111111111111>'));
         await page.unroute('**/members?*');
-        await page.selectOption('select[name="e0.image"]', { label: 'friday_card.png' });
+        await page.locator('.imgopt:has(input[name="e0.image"])', { hasText: 'friday_card.png' }).click();
+        check('the image picker shows thumbnails and marks the pick', await page.locator('.imgopt:has(input[name="e0.image"]:checked) img[src^="/media/"]').count() === 1);
         await page.click('button[value="add-field:0"]');
         await page.fill('input[name="e0.f0.name"]', 'Khutbah');
         await page.fill('input[name="e0.f0.value"]', '13:15');
@@ -286,7 +287,7 @@ const steps = {
         const hiddenFirst = await nick.isHidden();
         await page.selectOption('select[name="s4.nick_mode"]', 'set');
         check('profile step shows the nickname field when set', hiddenFirst && await nick.isVisible());
-        check('profile step offers library images', (await page.locator('select[name="s4.avatar"] option').allInnerTexts()).includes('friday_card.png'));
+        check('profile step offers library images', (await page.locator('.imgopt:has(input[name="s4.avatar"])').allInnerTexts()).some((t) => t.includes('friday_card.png')));
 
         const throwaway = async (name) => {
             await page.goto(BASE + '/messages/new');

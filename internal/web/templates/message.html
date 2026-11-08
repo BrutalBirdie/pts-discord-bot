@@ -56,9 +56,9 @@
       </div>
       {{end}}
       <button type="submit" name="op" value="add-field:{{$i}}" class="ib sm with-label start">{{icon "plus"}}<span class="lbl">Field</span></button>
-      <div class="grid2">
-        <label class="field"><span>Image</span><select name="{{$p}}image"><option value="0">none</option>{{range $e.Media}}{{if index $e.Embeddable .ID}}<option value="{{.ID}}"{{if eq .ID $em.ImageMediaID}} selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select></label>
-        <label class="field"><span>Thumbnail</span><select name="{{$p}}thumb"><option value="0">none</option>{{range $e.Media}}{{if index $e.Embeddable .ID}}<option value="{{.ID}}"{{if eq .ID $em.ThumbMediaID}} selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select></label>
+      <div class="stack">
+        {{template "imagepick" (dict "Name" (print $p "image") "Label" "Image" "Value" $em.ImageMediaID "Images" $e.EmbedImages "Empty" "None")}}
+        {{template "imagepick" (dict "Name" (print $p "thumb") "Label" "Thumbnail" "Value" $em.ThumbMediaID "Images" $e.EmbedImages "Empty" "None")}}
       </div>
       <label class="field"><span>Footer</span><input type="text" name="{{$p}}footer" value="{{$em.Footer}}" maxlength="2048"></label>
     </div>
@@ -77,7 +77,7 @@
         </div></div>
       <div class="grid2">
         <label class="field"><span>Label</span><input type="text" name="{{$p}}label" value="{{$b.Label}}" maxlength="80" data-preview="blabel-{{$i}}"></label>
-        <label class="field"><span>Emoji</span><input type="text" name="{{$p}}emoji" value="{{$b.Emoji}}" maxlength="16" placeholder="optional" data-preview="bemoji-{{$i}}"></label>
+        <div class="field"><span id="bemoji-label-{{$i}}">Emoji, optional</span><input type="text" name="{{$p}}emoji" value="{{$b.Emoji}}" maxlength="16" aria-labelledby="bemoji-label-{{$i}}" data-emoji-picker="[]" data-preview="bemoji-{{$i}}"></div>
       </div>
       <fieldset class="presets"><legend class="vh">When clicked</legend>
         <label><input type="radio" name="{{$p}}kind" value="task"{{if not $b.URL}} checked{{end}} data-preview="bkind-{{$i}}">Start a task</label>

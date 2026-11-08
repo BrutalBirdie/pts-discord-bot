@@ -113,7 +113,18 @@ type taskChoice struct {
 }
 
 func (e messageEditor) StyleLabel(s string) string { return messages.StyleLabel(s) }
-func (e messageEditor) ButtonStyles() []string     { return messages.ButtonStyles }
+
+// EmbedImages are the files an embed can show as image or thumbnail.
+func (e messageEditor) EmbedImages() []store.Media {
+	var out []store.Media
+	for _, m := range e.Media {
+		if e.Embeddable[m.ID] {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+func (e messageEditor) ButtonStyles() []string { return messages.ButtonStyles }
 
 func (s *Server) messageEditor(r *http.Request, m messages.Message, isNew bool) (messageEditor, error) {
 	e := messageEditor{Message: m, New: isNew, ByID: map[int64]store.Media{}, Names: map[string]string{}, Embeddable: map[int64]bool{},
