@@ -9,7 +9,34 @@
 </head>
 <body data-preview-vol="{{.Prefs.PreviewVolume}}"{{if and .Session (not .Prefs.ConfirmActions)}} data-confirm="off"{{end}}>
 {{template "icons"}}
-{{with .Shell}}{{$sh := .}}
+{{with .Shell}}{{$sh := .}}{{if .Settings}}
+<div class="app settings" id="app">
+  <nav class="set-nav" aria-label="Settings">
+    <div class="set-nav-in">
+      <span class="eyebrow">User settings</span>
+      <a href="/settings"{{if eq .Section "account"}} aria-current="page"{{end}}>{{icon "user"}}My account</a>
+      {{if $.Session.IsAdmin}}
+      <span class="eyebrow">Admin</span>
+      <a href="/admin"{{if eq .Section "admin-overview"}} aria-current="page"{{end}}>{{icon "plug"}}Discord connection</a>
+      <a href="/admin/settings"{{if eq .Section "admin-settings"}} aria-current="page"{{end}}>{{icon "settings"}}App settings</a>
+      <a href="/admin/access"{{if eq .Section "admin-access"}} aria-current="page"{{end}}>{{icon "users"}}Access{{with $.Pending}}<span class="badge accent" aria-label="{{.}} open access requests">{{.}}</span>{{end}}</a>
+      <a href="/admin/audit"{{if eq .Section "admin-audit"}} aria-current="page"{{end}}>{{icon "list"}}Audit log</a>
+      {{end}}
+      <hr>
+      <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{$.Session.CSRFToken}}">
+        <button type="submit" class="set-logout">{{icon "log-out"}}Log out</button></form>
+    </div>
+  </nav>
+  <main class="app-main set-main" id="main">
+    <a class="set-close" href="/" data-close-settings aria-label="Close the settings">{{icon "x"}}<span>Esc</span></a>
+    <div class="contents" data-live="botstatus">{{if not $.Session.Discord}}{{if not $.Bot.Connected}}
+    <div class="callout warn">{{icon "triangle-alert"}}<span>The bot is not connected to Discord.{{with $.Bot.Error}} {{.}}{{end}}</span></div>
+    {{end}}{{end}}</div>
+    {{template "notice" $}}
+    {{template "content" $}}
+  </main>
+</div>
+{{else}}
 <div class="app{{if .Members}} with-members{{end}}" id="app">
   <aside class="app-side drawer" id="app-side" popover aria-label="Servers and channels">
     <nav class="rail" aria-label="Servers">
@@ -24,7 +51,7 @@
       <div class="side-foot">
         <span class="avatar sm" aria-hidden="true">{{initials $.Session.DisplayName}}</span>
         <span class="row-main"><strong>{{$.Session.DisplayName}}</strong><span class="row-sub">{{if $.Session.IsAdmin}}administrator{{else if $.Session.Discord}}Discord account{{else}}{{$.Session.Username}}{{end}}</span></span>
-        <button type="button" class="ib quiet" popovertarget="sheet-account" aria-label="Account and settings" data-tip="Account and settings">{{icon "settings"}}</button>
+        <a class="ib quiet" href="/settings" aria-label="Settings" data-tip="Settings">{{icon "settings"}}</a>
       </div>
     </div>
   </aside>
@@ -42,6 +69,7 @@
   </main>
   {{if .Members}}{{template "members" $}}{{end}}
 </div>
+{{end}}
 {{else}}
 <header class="topbar">
   <div class="wrap">
@@ -54,7 +82,7 @@
 {{template "content" .}}
 </main>
 {{end}}
-{{with .Session}}
+{{if not .Shell}}{{with .Session}}
 <div popover id="sheet-account" class="sheet" aria-labelledby="sheet-account-title">
   {{template "sheethead" (dict "ID" "sheet-account" "Icon" "user" "Title" "Account")}}
   <div class="sheet-body">
@@ -87,7 +115,7 @@
     </section>
   </div>
 </div>
-{{end}}
+{{end}}{{end}}
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="/static/app.js"></script>
 </body>

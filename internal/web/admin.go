@@ -18,10 +18,8 @@ type adminData struct {
 	MediaCount int
 	MediaBytes int64
 	Audit      []store.AuditEntry
-	Search     string
 	Category   string
-	Page       int
-	More       bool
+	Paging     paging // of the audit log
 	Timezones  []string
 	Access     *accessTab
 }
@@ -59,24 +57,25 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "audit":
-		q := r.URL.Query()
-		d.Search, d.Category = strings.TrimSpace(q.Get("q")), q.Get("category")
-		d.Page, _ = strconv.Atoi(q.Get("page"))
-		d.Page = max(d.Page, 1)
-		list, err := s.store.ListAudit(ctx, store.AuditQuery{Category: d.Category, Search: d.Search, Limit: auditPerPage + 1, Offset: (d.Page - 1) * auditPerPage})
+		d.Category, d.Paging = r.URL.Query().Get("category"), newPaging(r)
+		d.Paging.Keep("category", d.Category)
+		d.Paging.Per, d.Paging.Dated = auditPerPage, true
+		list, err := s.store.ListAudit(ctx, store.AuditQuery{Category: d.Category, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
 		if err != nil {
 			s.internalError(w, r, err)
 			return
 		}
-		if d.More = len(list) > auditPerPage; d.More {
-			list = list[:auditPerPage]
-		}
-		d.Audit = list
+		d.Audit = cut(&d.Paging, list)
 	default:
 		s.notFound(w, r)
 		return
 	}
-	s.render(w, r, http.StatusOK, "admin", d)
+	s.render(w, at(r, place{Section: "admin-" + d.Tab, Settings: true}), http.StatusOK, "admin", d)
+}
+
+// settings shows the user's own settings: display and safety.
+func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
+	s.render(w, at(r, place{Section: "account", Settings: true}), http.StatusOK, "settings", nil)
 }
 
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {

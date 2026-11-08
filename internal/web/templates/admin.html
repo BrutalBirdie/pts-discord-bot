@@ -1,14 +1,8 @@
 {{define "content"}}
 {{$d := .Data}}{{$st := $d.Settings}}
-<div class="page-head"><div><span class="eyebrow">Administration</span><h1>Admin</h1></div></div>
-<nav class="tabs" aria-label="Admin">
-  <a class="tab" href="/admin"{{if eq $d.Tab "overview"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}Overview</a>
-  <a class="tab" href="/admin/settings"{{if eq $d.Tab "settings"}} aria-current="page"{{end}}>{{icon "settings"}}Settings</a>
-  <a class="tab" href="/admin/access"{{if eq $d.Tab "access"}} aria-current="page"{{end}}>{{icon "users"}}Access{{with .Pending}}<span class="badge accent" aria-label="{{.}} open requests">{{.}}</span>{{end}}</a>
-  <a class="tab" href="/admin/audit"{{if eq $d.Tab "audit"}} aria-current="page"{{end}}>{{icon "list"}}Audit log</a>
-</nav>
 
 {{if eq $d.Tab "overview"}}
+<h1>Discord connection</h1>
 <div class="tiles">
   <div class="tile"><span class="k">{{icon "bot"}}Bot user</span><span class="v">{{if .Bot.User}}{{.Bot.User}}{{else}}unknown{{end}}</span><span class="s mono">{{if .Bot.ApplicationID}}{{.Bot.ApplicationID}}{{else}}not connected{{end}}</span></div>
   <div class="tile"><span class="k">{{icon "activity"}}Gateway</span><span class="v">{{if .Bot.Ready}}Connected{{else if .Bot.Connected}}Connecting{{else}}Offline{{end}}</span><span class="s">{{if .Bot.Ready}}{{.Bot.Latency.Milliseconds}} ms · since {{when .Bot.Since}}{{else}}{{.Bot.Error}}{{end}}</span></div>
@@ -38,6 +32,7 @@
 {{end}}
 
 {{if eq $d.Tab "settings"}}
+<h1>App settings</h1>
 <form method="post" action="/admin/settings" class="card">
   {{template "csrf" .}}
   <div class="param"><div><div class="name">Default timezone</div><div class="row-sub">For new tasks and all times on these pages.</div></div>
@@ -57,17 +52,16 @@
 {{end}}
 
 {{if eq $d.Tab "access"}}{{$a := $d.Access}}{{$csrf := .Session.CSRFToken}}
+<h1>Access</h1>
 <p class="hint">Discord members of servers the bot is in can ask for access. An approved member manages tasks, messages and media of the servers you approve. Requests nobody answers are denied after 7 days.</p>
-<form class="search" method="get" action="/admin/access">
-  <input type="hidden" name="state" value="{{$a.State}}">
-  <input type="search" name="q" value="{{$a.Search}}" placeholder="Search by name, username or server" aria-label="Search requests">
-  <button type="submit" class="ib" aria-label="Search" data-tip="Search">{{icon "search"}}</button>
-</form>
+{{$p := $a.Paging}}
+{{template "search" (dict "P" $p "Label" "Search requests" "Placeholder" "Search by name, username or server")}}
+<div class="contents" data-live="list" data-live-list>
 <div class="pills">
-  <a href="/admin/access?state=pending&amp;q={{$a.Search}}"{{if eq $a.State "pending"}} aria-current="page"{{end}}>Pending {{index $a.Counts "pending"}}</a>
-  <a href="/admin/access?state=approved&amp;q={{$a.Search}}"{{if eq $a.State "approved"}} aria-current="page"{{end}}>Approved {{index $a.Counts "approved"}}</a>
-  <a href="/admin/access?state=denied&amp;q={{$a.Search}}"{{if eq $a.State "denied"}} aria-current="page"{{end}}>Denied {{index $a.Counts "denied"}}</a>
-  <a href="/admin/access?state=blocked&amp;q={{$a.Search}}"{{if eq $a.State "blocked"}} aria-current="page"{{end}}>Blocked {{index $a.Counts "blocked"}}</a>
+  <a href="{{$p.With "state" "pending"}}"{{if eq $a.State "pending"}} aria-current="page"{{end}}>Pending {{index $a.Counts "pending"}}</a>
+  <a href="{{$p.With "state" "approved"}}"{{if eq $a.State "approved"}} aria-current="page"{{end}}>Approved {{index $a.Counts "approved"}}</a>
+  <a href="{{$p.With "state" "denied"}}"{{if eq $a.State "denied"}} aria-current="page"{{end}}>Denied {{index $a.Counts "denied"}}</a>
+  <a href="{{$p.With "state" "blocked"}}"{{if eq $a.State "blocked"}} aria-current="page"{{end}}>Blocked {{index $a.Counts "blocked"}}</a>
 </div>
 <section class="card" aria-label="{{$a.State}} requests">
   <ul class="list">
@@ -87,7 +81,7 @@
       </div>
       <div class="btns">
         <form method="post" action="/admin/access/{{.ID}}" id="{{$form}}">
-          <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="state" value="{{$a.State}}"><input type="hidden" name="q" value="{{$a.Search}}"><input type="hidden" name="page" value="{{$a.Page}}">
+          <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="state" value="{{$a.State}}"><input type="hidden" name="q" value="{{$p.Query}}"><input type="hidden" name="page" value="{{$p.Page}}">
           {{if eq .State "pending"}}
           <button type="submit" name="do" value="approve" class="ib primary" aria-label="Approve {{.Name}}" data-tip="Approve" data-confirm-desc="Gives @{{.Username}} access to the checked servers.">{{icon "check"}}<span class="lbl">Approve</span></button>
           <button type="submit" name="do" value="deny" class="ib" aria-label="Deny {{.Name}}" data-tip="Deny" data-confirm-desc="Denies the request. {{.Name}} can ask again later.">{{icon "x"}}<span class="lbl">Deny</span></button>
@@ -104,45 +98,35 @@
       </div>
     </li>
     {{else}}
-    <li><span class="muted">{{if $a.Search}}Nothing matches {{$a.Search}}.{{else if eq $a.State "pending"}}No open requests.{{else if eq $a.State "approved"}}Nobody from Discord has access yet.{{else if eq $a.State "denied"}}No denied requests.{{else}}Nobody is blocked.{{end}}</span></li>
+    <li><span class="muted">{{if $p.Query}}Nothing matches {{$p.Query}}.{{else if eq $a.State "pending"}}No open requests.{{else if eq $a.State "approved"}}Nobody from Discord has access yet.{{else if eq $a.State "denied"}}No denied requests.{{else}}Nobody is blocked.{{end}}</span></li>
     {{end}}
   </ul>
-  {{if $a.Total}}
-  <div class="pager mt">
-    {{if gt $a.Page 1}}<a class="ib with-label" href="/admin/access?state={{$a.State}}&amp;q={{$a.Search}}&amp;page={{add $a.Page -1}}"><span class="lbl">Newer</span></a>{{else}}<span></span>{{end}}
-    <span class="hint">Page {{$a.Page}} of {{$a.Pages}} · {{plural $a.Total "request" "requests"}}</span>
-    {{if lt $a.Page $a.Pages}}<a class="ib with-label" href="/admin/access?state={{$a.State}}&amp;q={{$a.Search}}&amp;page={{add $a.Page 1}}"><span class="lbl">Older</span></a>{{else}}<span></span>{{end}}
-  </div>
-  {{end}}
+  {{template "pager" $p}}
 </section>
+</div>
 {{end}}
 
-{{if eq $d.Tab "audit"}}
-<form class="search" method="get" action="/admin/audit">
-  {{with $d.Category}}<input type="hidden" name="category" value="{{.}}">{{end}}
-  <input type="search" name="q" value="{{$d.Search}}" placeholder="User, action or target" aria-label="Search the audit log">
-  <button type="submit" class="ib" aria-label="Search" data-tip="Search">{{icon "search"}}</button>
-</form>
+{{if eq $d.Tab "audit"}}{{$p := $d.Paging}}
+<h1>Audit log</h1>
+{{template "search" (dict "P" $p "Label" "Search the audit log" "Placeholder" "User, action or target")}}
+<div class="contents" data-live="list" data-live-list>
 <div class="pills">
-  <a href="/admin/audit?q={{$d.Search}}"{{if not $d.Category}} aria-current="page"{{end}}>All</a>
-  <a href="/admin/audit?category=task&amp;q={{$d.Search}}"{{if eq $d.Category "task"}} aria-current="page"{{end}}>Tasks</a>
-  <a href="/admin/audit?category=message&amp;q={{$d.Search}}"{{if eq $d.Category "message"}} aria-current="page"{{end}}>Messages</a>
-  <a href="/admin/audit?category=media&amp;q={{$d.Search}}"{{if eq $d.Category "media"}} aria-current="page"{{end}}>Media</a>
-  <a href="/admin/audit?category=voice&amp;q={{$d.Search}}"{{if eq $d.Category "voice"}} aria-current="page"{{end}}>Voice</a>
-  <a href="/admin/audit?category=settings&amp;q={{$d.Search}}"{{if eq $d.Category "settings"}} aria-current="page"{{end}}>Settings</a>
-  <a href="/admin/audit?category=access&amp;q={{$d.Search}}"{{if eq $d.Category "access"}} aria-current="page"{{end}}>Access</a>
+  <a href="{{$p.With "" ""}}"{{if not $d.Category}} aria-current="page"{{end}}>All</a>
+  <a href="{{$p.With "category" "task"}}"{{if eq $d.Category "task"}} aria-current="page"{{end}}>Tasks</a>
+  <a href="{{$p.With "category" "message"}}"{{if eq $d.Category "message"}} aria-current="page"{{end}}>Messages</a>
+  <a href="{{$p.With "category" "media"}}"{{if eq $d.Category "media"}} aria-current="page"{{end}}>Media</a>
+  <a href="{{$p.With "category" "voice"}}"{{if eq $d.Category "voice"}} aria-current="page"{{end}}>Voice</a>
+  <a href="{{$p.With "category" "settings"}}"{{if eq $d.Category "settings"}} aria-current="page"{{end}}>Settings</a>
+  <a href="{{$p.With "category" "access"}}"{{if eq $d.Category "access"}} aria-current="page"{{end}}>Access</a>
 </div>
 <section class="card">
   <ul class="list">
     {{range $d.Audit}}
     <li><div class="row-main"><div class="row-title"><span class="when">{{when .At}}</span>{{.Actor}} · {{.Target}}</div>{{with .Detail}}<div class="row-sub">{{.}}</div>{{end}}</div><span class="chip{{if eq .Action "task.pause"}} danger{{end}}">{{.Action}}</span></li>
-    {{else}}<li><span class="muted">No entries.</span></li>{{end}}
+    {{else}}<li>{{if $p.Query}}{{template "nomatch" $p.Query}}{{else}}<span class="muted">No entries.</span>{{end}}</li>{{end}}
   </ul>
-  <div class="pager mt">
-    {{if gt $d.Page 1}}<a class="ib with-label" href="/admin/audit?page={{add $d.Page -1}}&amp;category={{$d.Category}}&amp;q={{$d.Search}}"><span class="lbl">Newer</span></a>{{else}}<span></span>{{end}}
-    <span class="hint">Page {{$d.Page}}</span>
-    {{if $d.More}}<a class="ib with-label" href="/admin/audit?page={{add $d.Page 1}}&amp;category={{$d.Category}}&amp;q={{$d.Search}}"><span class="lbl">Older</span></a>{{else}}<span></span>{{end}}
-  </div>
+  {{template "pager" $p}}
 </section>
+</div>
 {{end}}
 {{end}}

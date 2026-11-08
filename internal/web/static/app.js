@@ -685,8 +685,7 @@
         if (close) close.closest('.notice').remove();
     });
 
-    const account = document.querySelector('form[data-autosave]');
-    if (account) {
+    onPage((root) => root.querySelectorAll('form[data-autosave]').forEach(function (account) {
         account.addEventListener('change', function (event) {
             if (event.target.name === 'show_labels') document.documentElement.classList.toggle('labels', event.target.checked);
             if (event.target.name === 'confirm_actions') {
@@ -701,7 +700,15 @@
                 () => toast('Not saved, check your connection'),
             );
         });
-    }
+    }));
+
+    // Escape closes the settings like in Discord, unless a field or a sheet has it
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector(':popover-open')) return;
+        if (event.target.closest && event.target.closest('input, textarea, select')) return;
+        const close = document.querySelector('[data-close-settings]');
+        if (close) close.click();
+    });
 
     // steps move in the page; the form is saved as it is ordered when submitted
     onPage((root) => root.querySelectorAll('ol[data-steps]').forEach(function (list) {

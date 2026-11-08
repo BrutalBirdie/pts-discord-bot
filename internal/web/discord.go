@@ -289,6 +289,7 @@ var discordStart = map[string]bool{
 // user's servers. Media and messages are open to every user.
 var discordRoutes = map[string]bool{
 	"GET /servers":                    true,
+	"GET /settings":                   true,
 	"GET /servers/{id}":               true,
 	"POST /servers/order":             true,
 	"GET /members":                    true,

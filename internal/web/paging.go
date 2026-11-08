@@ -15,8 +15,11 @@ type paging struct {
 	Page    int
 	Query   string
 	More    bool
-	Dated   bool // newest first, the pager says Newer and Older
-	Per     int  // rows per page, perPage when zero
+	Dated   bool      // newest first, the pager says Newer and Older
+	Per     int       // rows per page, perPage when zero
+	Of      int       // number of pages, when known
+	Total   int       // number of rows, when known
+	Noun    [2]string // what the rows are, one and many, for the total
 	path    string
 	filters url.Values
 }

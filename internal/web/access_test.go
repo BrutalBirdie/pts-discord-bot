@@ -386,7 +386,8 @@ func TestAccessPageStates(t *testing.T) {
 func TestAccessTabRenders(t *testing.T) {
 	s := testServer(t)
 	admin := &store.Session{Username: "ann", DisplayName: "Ann", IsAdmin: true, CSRFToken: "tok"}
-	tab := &accessTab{State: "pending", Counts: map[string]int{"pending": 2, "blocked": 1}, Page: 1, Pages: 2, Total: 26, Search: "pts",
+	tab := &accessTab{State: "pending", Counts: map[string]int{"pending": 2, "blocked": 1},
+		Paging: paging{Page: 1, More: true, Of: 2, Total: 26, Noun: [2]string{"request", "requests"}, Query: "pts", Dated: true, path: "/admin/access", filters: url.Values{"state": {"pending"}}},
 		Rows: []accessRow{
 			{ID: "9", Name: "Mira", Username: "mira.k", State: "pending", Chip: "denied in 5 days", Sub: "Requested 2 days ago", Note: "raid nights",
 				ServersLabel: "Asks for", Editable: true, Servers: []accessServer{{ID: "1", Name: "PTS Gaming"}}, Avatar: discordCDN + "/avatars/9/abc.png?size=64"},
@@ -395,12 +396,12 @@ func TestAccessTabRenders(t *testing.T) {
 		}}
 	body := renderAs(t, s, admin, "admin", adminData{Tab: "access", Access: tab})
 	for _, want := range []string{
-		`href="/admin/access" aria-current="page"`, "Pending 2", "Blocked 1", "Approved 0", `value="pts"`,
+		`href="/admin/access?q=pts&amp;state=pending" aria-current="page"`, "Pending 2", "Blocked 1", "Approved 0", `value="pts"`,
 		`action="/admin/access/9" id="access-9"`, `name="guild" value="1" form="access-9" checked`, `name="do" value="approve"`, `name="do" value="deny"`,
 		`value="block" class="ib danger" aria-label="Block Mira" data-tip="Block" data-confirm-desc="Denies the request and stops @mira.k from asking again until you unblock them." data-irreversible`,
 		`value="revoke"`, `data-confirm-desc="Logs Lee out and removes their access." data-irreversible`, `value="unblock"`,
 		`<blockquote class="note">raid nights</blockquote>`, `<img src="https://cdn.discordapp.com/avatars/9/abc.png?size=64"`, "Page 1 of 2", "26 requests",
-		`href="/admin/access?state=pending&amp;q=pts&amp;page=2"`, `<span class="lbl">Approve</span>`,
+		`href="/admin/access?page=2&amp;q=pts&amp;state=pending"`, `<span class="lbl">Approve</span>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("access tab: missing %q", want)
@@ -409,7 +410,7 @@ func TestAccessTabRenders(t *testing.T) {
 	if strings.Count(body, `name="do" value="unblock"`) != 1 || strings.Count(body, `value="block"`) != 2 {
 		t.Error("wrong actions per state")
 	}
-	empty := renderAs(t, s, admin, "admin", adminData{Tab: "access", Access: &accessTab{State: "denied", Counts: map[string]int{}, Page: 1, Pages: 1}})
+	empty := renderAs(t, s, admin, "admin", adminData{Tab: "access", Access: &accessTab{State: "denied", Counts: map[string]int{}, Paging: paging{Page: 1, Of: 1, path: "/admin/access"}}})
 	if !strings.Contains(empty, "No denied requests.") || strings.Contains(empty, "Page 1 of") {
 		t.Error("empty denied tab")
 	}
@@ -419,11 +420,11 @@ func TestPendingBadgeAndCSP(t *testing.T) {
 	s := testServer(t)
 	admin := &store.Session{Username: "ann", DisplayName: "Ann", IsAdmin: true, CSRFToken: "tok"}
 	var b strings.Builder
-	if err := s.pages["admin"].Execute(&b, pageData{Session: admin, Nav: "admin", Pending: 3, Data: adminData{Tab: "overview"}}); err != nil {
+	if err := s.pages["admin"].Execute(&b, pageData{Session: admin, Pending: 3, Data: adminData{Tab: "overview"}, Shell: &shell{Settings: true, Section: "admin-overview"}}); err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(b.String(), `<span class="badge accent" aria-label="3 open`); n != 2 {
-		t.Errorf("pending badge on nav and tab: %d", n)
+	if n := strings.Count(b.String(), `<span class="badge accent" aria-label="3 open`); n != 1 {
+		t.Errorf("pending badge in the settings menu: %d", n)
 	}
 	rec := httptest.NewRecorder()
 	securityHeaders(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))

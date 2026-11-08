@@ -744,3 +744,28 @@ img.tface { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; }
 .upload-inline [data-upload-status]:empty { display: none; }
 .app-main.over { outline: 3px dashed var(--accent); outline-offset: -6px; background: var(--accent-soft); }
 .card:has(> .bulk):not(:has(.pick:checked)) > .bulk { display: none; }
+
+/* settings: full window with its own menu, like Discord's user settings */
+.app.settings { grid-template-columns: minmax(220px, 1fr) minmax(0, 2.4fr); }
+.set-nav { display: flex; justify-content: flex-end; overflow-y: auto; padding: max(48px, env(safe-area-inset-top, 0px)) 12px 24px max(16px, env(safe-area-inset-left, 0px)); background: var(--bg); border-right: 1px solid var(--line); }
+.set-nav-in { width: 220px; display: grid; gap: 2px; align-content: start; }
+.set-nav .eyebrow { padding: 14px 10px 4px; }
+.set-nav a, .set-logout { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--muted); font: 700 .95rem var(--font); text-decoration: none; cursor: pointer; width: 100%; text-align: left; }
+.set-nav a:hover, .set-logout:hover { background: var(--surface-2); color: var(--fg); }
+.set-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+.set-nav a .badge { margin-left: auto; }
+.set-nav hr { border: 0; border-top: 1px solid var(--line); margin: 8px 10px; }
+.set-logout { color: var(--danger); }
+.set-main { padding-top: max(48px, env(safe-area-inset-top, 0px)); padding-right: 88px; max-width: 900px; position: relative; }
+.set-close { position: absolute; top: max(40px, env(safe-area-inset-top, 0px)); right: 24px; display: grid; justify-items: center; gap: 2px; color: var(--muted); font-size: .75rem; font-weight: 700; text-decoration: none; }
+.set-close .i { width: 36px; height: 36px; padding: 6px; border: 2px solid currentColor; border-radius: 50%; box-sizing: border-box; }
+.set-close:hover { color: var(--fg); }
+@media (max-width: 760px) {
+  .app.settings { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .set-nav { justify-content: flex-start; padding: max(12px, env(safe-area-inset-top, 0px)) 12px 8px; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .set-nav-in { width: auto; display: flex; gap: 4px; }
+  .set-nav .eyebrow, .set-nav hr { display: none; }
+  .set-nav a, .set-logout { white-space: nowrap; width: auto; }
+  .set-main { padding-top: 16px; padding-right: 64px; }
+  .set-close { top: 12px; right: 12px; }
+}

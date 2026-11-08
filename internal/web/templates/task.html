@@ -220,13 +220,7 @@
     <ul class="list">
       {{range $e.Runs}}{{template "runrow" (dict "R" . "ShowTitle" false "CSRF" $csrf "Next" (print "/tasks/" $t.ID))}}{{else}}<li><span class="muted small">No runs yet.</span></li>{{end}}
     </ul>
-    {{if gt $e.Pages 1}}
-    <div class="pager mt">
-      {{if gt $e.Page 1}}<a class="ib with-label" href="/tasks/{{$t.ID}}?page={{add $e.Page -1}}"><span class="lbl">Newer</span></a>{{else}}<span></span>{{end}}
-      <span class="hint">Page {{$e.Page}} of {{$e.Pages}}</span>
-      {{if lt $e.Page $e.Pages}}<a class="ib with-label" href="/tasks/{{$t.ID}}?page={{add $e.Page 1}}"><span class="lbl">Older</span></a>{{else}}<span></span>{{end}}
-    </div>
-    {{end}}
+    {{template "pager" $e.RunPages}}
   </section>
   {{if $t.Enabled}}
   <form method="post" action="/tasks/{{$t.ID}}/pause" class="btns"><input type="hidden" name="csrf" value="{{$csrf}}">

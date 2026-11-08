@@ -38,10 +38,7 @@ type accessTab struct {
 	State  string
 	Counts map[string]int
 	Rows   []accessRow
-	Search string
-	Page   int
-	Pages  int
-	Total  int
+	Paging paging
 }
 
 func day(t time.Time) string {
@@ -128,29 +125,31 @@ func newAccessRow(e store.AccessEntry, name func(string) string, now time.Time) 
 func (s *Server) accessTab(r *http.Request) (*accessTab, error) {
 	ctx := r.Context()
 	q := r.URL.Query()
-	t := &accessTab{State: q.Get("state"), Search: strings.TrimSpace(q.Get("q"))}
+	t := &accessTab{State: q.Get("state"), Paging: newPaging(r)}
 	if !slices.Contains(accessStates, t.State) {
 		t.State = store.AccessPending
 	}
-	t.Page, _ = strconv.Atoi(q.Get("page"))
-	t.Page = max(t.Page, 1)
+	p := &t.Paging
+	p.Keep("state", t.State)
+	p.Per, p.Dated, p.Noun = accessPerPage, true, [2]string{"request", "requests"}
 	var err error
 	if t.Counts, err = s.store.AccessCounts(ctx); err != nil {
 		return nil, err
 	}
 	var guildIDs []string
-	if t.Search != "" {
+	if p.Query != "" {
 		for _, g := range s.bot.Guilds() {
-			if strings.Contains(strings.ToLower(g.Name), strings.ToLower(t.Search)) {
+			if strings.Contains(strings.ToLower(g.Name), strings.ToLower(p.Query)) {
 				guildIDs = append(guildIDs, g.ID)
 			}
 		}
 	}
-	list, total, err := s.store.ListAccess(ctx, store.AccessQuery{State: t.State, Search: t.Search, GuildIDs: guildIDs, Limit: accessPerPage, Offset: (t.Page - 1) * accessPerPage})
+	list, total, err := s.store.ListAccess(ctx, store.AccessQuery{State: t.State, Search: p.Query, GuildIDs: guildIDs, Limit: accessPerPage, Offset: p.Offset()})
 	if err != nil {
 		return nil, err
 	}
-	t.Total, t.Pages = total, max(1, (total+accessPerPage-1)/accessPerPage)
+	p.Total, p.Of = total, max(1, (total+accessPerPage-1)/accessPerPage)
+	p.More = p.Page < p.Of
 	now := time.Now()
 	for _, e := range list {
 		t.Rows = append(t.Rows, newAccessRow(e, s.bot.GuildName, now))

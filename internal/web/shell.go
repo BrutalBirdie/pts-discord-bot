@@ -19,6 +19,8 @@ type place struct {
 	Guild   string
 	Section string // home: overview, trash, servers, media, messages; server: tasks, messages, media, settings, "" for channels and members
 	Members bool   // the member column is shown
+	// Settings shows the page full window with the settings menu instead of the rail and channels
+	Settings bool
 }
 
 type placeKey struct{}
@@ -34,11 +36,12 @@ var homeSections = map[string]string{"dashboard": "overview", "trash": "trash", 
 // shell is the frame of every page: the server rail, the channel list of the
 // open server or the Home list, and the member column.
 type shell struct {
-	Guilds  []bot.Guild
-	Guild   bot.Guild
-	Section string
-	Path    string // this page with its query, for forms that come back here
-	query   url.Values
+	Guilds   []bot.Guild
+	Guild    bot.Guild
+	Section  string
+	Settings bool
+	Path     string // this page with its query, for forms that come back here
+	query    url.Values
 
 	Text      []roomChannel
 	Voice     []roomChannel
@@ -105,9 +108,12 @@ func (s *Server) buildShell(r *http.Request, page string) *shell {
 	q.Del("done")
 	q.Del("undo")
 	q.Del("as")
-	sh := &shell{Guilds: s.guilds(r), Section: p.Section, Path: r.URL.Path, query: q}
+	sh := &shell{Guilds: s.guilds(r), Section: p.Section, Settings: p.Settings, Path: r.URL.Path, query: q}
 	if len(q) > 0 {
 		sh.Path += "?" + q.Encode()
+	}
+	if p.Settings {
+		return sh
 	}
 	if p.Guild == "" {
 		if sh.Section == "" {

@@ -62,7 +62,7 @@ type Server struct {
 	discord  discordAPI
 }
 
-var pageNames = []string{"login", "error", "dashboard", "servers", "server", "tasks", "task", "messages", "message", "media", "trash", "admin", "access", "room"}
+var pageNames = []string{"login", "error", "dashboard", "servers", "server", "tasks", "task", "messages", "message", "media", "trash", "admin", "access", "room", "settings"}
 
 func New(cfg Config, st *store.Store, b *bot.Bot, r *runner.Runner, log *slog.Logger) (*Server, error) {
 	s := &Server{cfg: cfg, store: st, bot: b, run: r, log: log, pages: map[string]*template.Template{}, live: newHub(), discord: httpDiscord{client: &http.Client{Timeout: 15 * time.Second}}}
@@ -98,6 +98,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("GET /{$}", s.requireLogin(s.home))
 	mux.Handle("GET /events", s.requireLogin(s.events))
 	mux.Handle("POST /logout", s.requireLogin(s.logout))
+	mux.Handle("GET /settings", s.requireLogin(s.settings))
 	mux.Handle("POST /account", s.requireLogin(s.saveAccount))
 
 	mux.Handle("GET /servers", s.requireLogin(s.servers))

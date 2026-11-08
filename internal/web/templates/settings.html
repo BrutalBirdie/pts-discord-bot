@@ -1,0 +1,21 @@
+{{define "content"}}
+<h1>My account</h1>
+<section class="card stack">
+  <div class="profile"><span class="avatar">{{initials .Session.DisplayName}}</span><span><strong>{{.Session.DisplayName}}</strong><span class="small muted">{{if .Session.Discord}}Discord account{{else}}{{.Session.Username}}{{end}}{{if .Session.IsAdmin}} · administrator{{end}}</span></span></div>
+</section>
+<form method="post" action="/account" class="card form" data-autosave>
+  <input type="hidden" name="csrf" value="{{.Session.CSRFToken}}">
+  <input type="hidden" name="next" value="/settings">
+  <section class="stack">
+    <span class="eyebrow">Display</span>
+    <label class="switch-row"><span>Show labels on buttons<small>Text next to every icon.</small></span><input type="checkbox" class="switch" name="show_labels"{{if .Prefs.ShowLabels}} checked{{end}}></label>
+  </section>
+  <section class="stack">
+    <span class="eyebrow">Safety</span>
+    <label class="switch-row"><span>Confirm actions<small>Ask once before moving something to the Trash or restoring it. Turn off if you know your way around; Undo still works.</small></span><input type="checkbox" class="switch" name="confirm_actions"{{if .Prefs.ConfirmActions}} checked{{end}}></label>
+    <p class="hint">Deleting for good and emptying the Trash always ask.</p>
+  </section>
+  <div class="btns no-js"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>
+</form>
+<p class="hint">Changes are saved right away. The sound preview and play volumes are set on the soundboard.</p>
+{{end}}

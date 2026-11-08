@@ -101,7 +101,7 @@
 {{define "pager"}}{{if .Shown}}
 <nav class="pager mt" aria-label="Pages">
   {{if gt .Page 1}}<a class="ib with-label" href="{{.Prev}}" rel="prev">{{icon "chevron-left"}}<span class="lbl">{{if .Dated}}Newer{{else}}Previous{{end}}</span></a>{{else}}<span></span>{{end}}
-  <span class="hint">Page {{.Page}}</span>
+  <span class="hint">Page {{.Page}}{{with .Of}} of {{.}}{{end}}{{if .Total}} · {{plural .Total (index .Noun 0) (index .Noun 1)}}{{end}}</span>
   {{if .More}}<a class="ib with-label" href="{{.Next}}" rel="next"><span class="lbl">{{if .Dated}}Older{{else}}Next{{end}}</span>{{icon "chevron-right"}}</a>{{else}}<span></span>{{end}}
 </nav>
 {{end}}{{end}}

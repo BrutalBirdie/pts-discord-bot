@@ -85,7 +85,7 @@ func TestPagesRender(t *testing.T) {
 			[]string{"Daily 05:00, 16:35", `action="/tasks/3/pause"`, "Active 1"}},
 		{"task", taskEditor{Task: adhan, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, TimesText: "05:00 16:35",
 			Voice: []bot.Channel{{ID: "2", Name: "prayer", Voice: true}}, Text: []bot.Channel{{ID: "44", Name: "general"}}, Labels: map[string]string{"9": "Amira (@amira)"},
-			Sounds: []store.Media{sound}, Messages: []messages.Message{msg}, Next: adhan.Trigger.Next(now, 3), Runs: runs, RunCount: 2, Page: 1, Pages: 1},
+			Sounds: []store.Media{sound}, Messages: []messages.Message{msg}, Next: adhan.Trigger.Next(now, 3), Runs: runs, RunCount: 2},
 			[]string{`name="s0.target"`, `value="2" selected`, `name="s0.follow" value=""`, `data-members="1"`, `<input type="hidden" name="s1.media" value="5">`, `data-preview-media="5"`, "Total 3:45 / 10:00", `name="s1.volume" value="80"`, `value="add:wait"`, `value="daily" checked`, "Unknown channel 4", `name="s3.user" value="Amira (@amira)"`, `name="s4.wait" value="5s"`, `action="/tasks/3/delete"`, "As cron"}},
 		{"task", taskEditor{Task: tasks.Task{Trigger: tasks.Trigger{Kind: tasks.Manual}}, New: true, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Problems: []string{"Give the task a name."}},
 			[]string{"Create task", "Give the task a name.", `action="/tasks/new"`}},
@@ -121,9 +121,10 @@ func TestPagesRender(t *testing.T) {
 			d.Greets = []tasks.Task{adhan, adhan}
 			d.Tasks[0].Run = 77
 		}), []string{"@mira · in Lounge", "2 tasks start when Mira joins", `name="member" value="9"`, `href="/tasks/new?guild=1&amp;member=9"`, `action="/runs/77/stop"`, `<span class="chip accent">running</span>`, "Tasks that leave Mira out"}},
+		{"settings", nil, []string{`name="confirm_actions" checked`, `action="/account"`, "data-autosave"}},
 		{"admin", adminData{Tab: "overview", Admins: []string{"ann"}, Groups: []string{"bot-admins"}}, []string{"BOT_ADMIN_GROUP", "bot-admins"}},
 		{"admin", adminData{Tab: "settings", Settings: store.DefaultSettings, Timezones: commonTimezones}, []string{`name="max_play_minutes" value="10"`, `value="Europe/Berlin"`}},
-		{"admin", adminData{Tab: "audit", Page: 1, Audit: []store.AuditEntry{{At: now, Actor: "ann", Action: "task.run", Target: "Adhan"}}}, []string{"task.run"}},
+		{"admin", adminData{Tab: "audit", Paging: paging{Page: 1, path: "/admin/audit"}, Audit: []store.AuditEntry{{At: now, Actor: "ann", Action: "task.run", Target: "Adhan"}}}, []string{"task.run"}},
 	}
 	for _, p := range pages {
 		req := httptest.NewRequest("GET", "/?done=saved", nil)
@@ -139,7 +140,7 @@ func TestPagesRender(t *testing.T) {
 			t.Errorf("%s: incomplete page:\n%s", p.name, body)
 			continue
 		}
-		for _, w := range append(p.want, "Saved.", `name="confirm_actions" checked`, `<body data-preview-vol="100">`) {
+		for _, w := range append(p.want, "Saved.", `<body data-preview-vol="100">`) {
 			if !strings.Contains(body, w) {
 				t.Errorf("%s: missing %q", p.name, w)
 			}
@@ -286,7 +287,7 @@ func TestEventEditorRenders(t *testing.T) {
 		Trigger: tasks.Trigger{Kind: tasks.Event, Event: tasks.VoiceJoin, ChannelID: "2", Cooldown: 45, UserIDs: []string{"9"}},
 		Steps:   []tasks.Step{{Type: tasks.Join, ToTrigger: true}, {Type: tasks.Play, Tag: "greeting", Volume: 100}, {Type: tasks.DM, ToTrigger: true, Text: "Hi {member}"}}}
 	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Events: tasks.EventTypes, Tags: []string{"greeting"},
-		Voice: []bot.Channel{{ID: "2", Name: "lounge", Voice: true}}, Labels: map[string]string{}, EvMembers: []bot.Member{{ID: "9", Name: "amira", Username: "amira"}}, Page: 1, Pages: 1}
+		Voice: []bot.Channel{{ID: "2", Name: "lounge", Voice: true}}, Labels: map[string]string{}, EvMembers: []bot.Member{{ID: "9", Name: "amira", Username: "amira"}}}
 	req := httptest.NewRequest("GET", "/tasks/4", nil)
 	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
 	rec := httptest.NewRecorder()
@@ -341,7 +342,7 @@ func TestWaitUntil(t *testing.T) {
 	s := testServer(t)
 	sess := &store.Session{Username: "ann", CSRFToken: "tok"}
 	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames,
-		Voice: []bot.Channel{{ID: "2", Name: "lounge", Voice: true}}, Labels: map[string]string{"Jane": "Jane (@jane)"}, Page: 1, Pages: 1}
+		Voice: []bot.Channel{{ID: "2", Name: "lounge", Voice: true}}, Labels: map[string]string{"Jane": "Jane (@jane)"}}
 	req := httptest.NewRequest("GET", "/tasks/new", nil)
 	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
 	rec := httptest.NewRecorder()
@@ -366,7 +367,7 @@ func TestPlayEditorRenders(t *testing.T) {
 	sounds := []store.Media{{ID: 3, Name: "intro.ogg", Kind: store.KindSound, DurationMS: 330000, Tags: []string{"intro"}}, {ID: 5, Name: "outro.ogg", Kind: store.KindSound, DurationMS: 0}}
 	task := tasks.Task{ID: 4, Name: "Jingles", GuildID: "1", Busy: tasks.BusyWait, Trigger: tasks.Trigger{Kind: tasks.Manual},
 		Steps: []tasks.Step{{Type: tasks.Play, Tag: "intro", MediaIDs: []int64{3, 5, 3}, Order: tasks.OrderSequence, Volume: 100}, {Type: tasks.Play, MediaIDs: []int64{3, 3}, Order: tasks.OrderRandom, Volume: 50}}}
-	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Sounds: sounds, MaxPlayMinutes: 10, Page: 1, Pages: 1}
+	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Sounds: sounds, MaxPlayMinutes: 10}
 	req := httptest.NewRequest("GET", "/tasks/4", nil)
 	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
 	rec := httptest.NewRecorder()
@@ -423,7 +424,7 @@ func TestProfileStepEditor(t *testing.T) {
 
 	s := testServer(t)
 	sess := &store.Session{Username: "ann", CSRFToken: "tok"}
-	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Images: images, Page: 1, Pages: 1}
+	e := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Images: images}
 	req := httptest.NewRequest("GET", "/tasks/new", nil)
 	req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, sess))
 	rec := httptest.NewRecorder()
@@ -491,7 +492,7 @@ func TestConfirmAndPreviewMarkup(t *testing.T) {
 		return b.String()
 	}
 	task := tasks.Task{ID: 3, Name: "Adhan", GuildID: "1", Trigger: tasks.Trigger{Kind: tasks.Manual}}
-	editor := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Page: 1, Pages: 1}
+	editor := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames}
 
 	body := render("task", editor, store.DefaultPrefs)
 	if !strings.Contains(body, `<body data-preview-vol="100">`) || !strings.Contains(body, `name="confirm_actions" checked`) {

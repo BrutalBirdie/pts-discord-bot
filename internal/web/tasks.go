@@ -212,8 +212,7 @@ type taskEditor struct {
 	Next      []time.Time
 	Runs      []store.Run
 	RunCount  int
-	Page      int
-	Pages     int
+	RunPages  paging // of the run history
 	TimesText string
 	CronText  string
 	Timezones []string
@@ -305,10 +304,13 @@ func (s *Server) editor(r *http.Request, t tasks.Task, isNew bool) (taskEditor, 
 		if e.RunCount, err = s.store.CountRuns(ctx, q); err != nil {
 			return e, err
 		}
-		e.Pages = max(1, (e.RunCount+runsPerPage-1)/runsPerPage)
-		e.Page, _ = strconv.Atoi(r.URL.Query().Get("page"))
-		e.Page = min(max(e.Page, 1), e.Pages)
-		q.Limit, q.Offset = runsPerPage, (e.Page-1)*runsPerPage
+		p := paging{Page: 1, Per: runsPerPage, Dated: true, path: "/tasks/" + strconv.FormatInt(t.ID, 10), filters: url.Values{}}
+		p.Of = max(1, (e.RunCount+runsPerPage-1)/runsPerPage)
+		p.Page, _ = strconv.Atoi(r.URL.Query().Get("page"))
+		p.Page = min(max(p.Page, 1), p.Of)
+		p.More = p.Page < p.Of
+		e.RunPages = p
+		q.Limit, q.Offset = runsPerPage, p.Offset()
 		if e.Runs, err = s.store.ListRuns(ctx, q); err != nil {
 			return e, err
 		}
