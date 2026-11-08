@@ -2,12 +2,11 @@
 {{$d := .Data}}{{$csrf := .Session.CSRFToken}}
 <div class="page-head">
   <h1 class="with-icon">{{icon "calendar"}}Tasks</h1>
-  {{if $d.Guild.ID}}<div class="btns"><a class="ib primary with-label" href="/tasks/new?guild={{$d.Guild.ID}}">{{icon "plus"}}<span class="lbl">New task</span></a></div>{{end}}
+  <div class="btns"><a class="ib primary with-label" href="/tasks/new{{with $d.Guild.ID}}?guild={{.}}{{end}}">{{icon "plus"}}<span class="lbl">New task</span></a></div>
 </div>
 
 {{$p := $d.Paging}}
-{{if $d.Guild.ID}}
-{{template "search" (dict "P" $p "Label" (print "Search the tasks of " $d.Guild.Name) "Placeholder" "Task name")}}
+{{template "search" (dict "P" $p "Label" "Search tasks" "Placeholder" "Task name")}}
 <div class="contents" data-live="list" data-live-list>
 <div class="pills">
   <a href="{{$p.With "" ""}}"{{if not $d.Filter}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
@@ -20,14 +19,11 @@
   <ul class="list">
     {{range $d.Rows}}{{template "taskrow" (dict "R" . "CSRF" $csrf "Next" $p.Self)}}
     {{else}}
-    <li>{{if $p.Query}}{{template "nomatch" $p.Query}}{{else}}<span class="muted">{{if $d.Filter}}No tasks match.{{else}}No tasks in {{$d.Guild.Name}} yet. A task joins a voice channel, plays sounds or sends messages, on a schedule or when you start it.{{end}}</span>{{end}}</li>
+    <li>{{if $p.Query}}{{template "nomatch" $p.Query}}{{else}}<span class="muted">{{if $d.Filter}}No tasks match.{{else}}No tasks yet. A task joins a voice channel, plays sounds or sends messages, on a schedule or when you start it.{{end}}</span>{{end}}</li>
     {{end}}
   </ul>
   {{template "pager" $p}}
 </section>
 </div>
 <p class="hint">Times are in each task's timezone. Runs missed while the app was down are not repeated, they show up as skipped.</p>
-{{else}}
-<section class="card stack"><p>Tasks belong to a server. <a href="/servers">Add the bot to a server</a> first.</p></section>
-{{end}}
 {{end}}

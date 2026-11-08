@@ -737,3 +737,10 @@ img.tface { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; }
 }
 .list > li.list-head { display: flex; align-items: center; gap: 8px; padding: 14px 0 4px; border-top: 0; font-size: .85rem; font-weight: 700; color: var(--muted); }
 .list > li.list-head .i { width: 16px; height: 16px; }
+.bulk-tags { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; flex: 1 1 320px; min-width: 0; }
+.bulk-tags > .field { flex: 1 1 240px; min-width: 0; }
+.upload-inline { display: contents; }
+.upload-inline progress { width: 120px; }
+.upload-inline [data-upload-status]:empty { display: none; }
+.app-main.over { outline: 3px dashed var(--accent); outline-offset: -6px; background: var(--accent-soft); }
+.card:has(> .bulk):not(:has(.pick:checked)) > .bulk { display: none; }

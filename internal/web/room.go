@@ -2,9 +2,6 @@ package web
 
 import (
 	"cmp"
-	"errors"
-	"fmt"
-	"github.com/BrutalBirdie/pts-discord-bot/internal/media"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -57,6 +54,7 @@ type roomData struct {
 	Edit      *store.Media     // the sound in the Edit sound sheet
 	Emojis    []bot.Emoji      // custom emojis of the server, for the emoji picker
 	Images    []store.Media
+	Groups    []bot.Guild // server group choices of the sound in the Edit sheet
 
 	Messages []messages.Message
 	Author   bot.Member        // the bot in this server, for the message preview
@@ -263,6 +261,9 @@ func (s *Server) roomSounds(r *http.Request, d *roomData) error {
 	if id, err := strconv.ParseInt(r.URL.Query().Get("edit"), 10, 64); err == nil {
 		if m, err := s.store.Media(ctx, id); err == nil && m.Kind == store.KindSound {
 			d.Edit, d.Emojis = &m, s.bot.Emojis(d.Guild.ID)
+			if d.Groups, err = s.groupChoices(ctx, r, m.GuildID); err != nil {
+				return err
+			}
 			if d.Images, err = s.store.ListMedia(ctx, d.Guild.ID, store.KindImage); err != nil {
 				return err
 			}
@@ -359,85 +360,6 @@ func validEmoji(s string) bool {
 		}
 	}
 	return true
-}
-
-// editSound saves the Edit sound sheet: name, emoji or image, own volume and the part to play.
-func (s *Server) editSound(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r)
-	if !ok {
-		s.notFound(w, r)
-		return
-	}
-	ctx := r.Context()
-	m, err := s.store.Media(ctx, id)
-	if err != nil {
-		s.storeErr(w, r, err)
-		return
-	}
-	f := r.PostForm
-	e := store.SoundEdit{ID: id, Name: strings.TrimSpace(f.Get("name")), DisplayName: strings.TrimSpace(f.Get("display_name")), Emoji: strings.TrimSpace(f.Get("emoji"))}
-	if e.Name == "" {
-		e.Name = m.Name
-	}
-	if e.Name != m.Name {
-		name, err := media.CleanName(e.Name)
-		if err != nil {
-			s.fail(w, r, http.StatusBadRequest, err.Error()+".")
-			return
-		}
-		e.Name = name
-	}
-	if f.Has("tag_find") {
-		e.Tags = ParseTags(strings.Join(append(f["tag"], f.Get("tag_find")), ","))
-		if e.Tags == nil {
-			e.Tags = []string{}
-		}
-		if len(e.Tags) > maxTags {
-			s.fail(w, r, http.StatusBadRequest, fmt.Sprintf("At most %d tags.", maxTags))
-			return
-		}
-	}
-	if utf8.RuneCountInString(e.DisplayName) > maxDisplayName {
-		s.fail(w, r, http.StatusBadRequest, fmt.Sprintf("The display name is longer than %d characters.", maxDisplayName))
-		return
-	}
-	if !validEmoji(e.Emoji) {
-		s.fail(w, r, http.StatusBadRequest, "Use one emoji.")
-		return
-	}
-	if v := f.Get("icon"); v != "" && v != "0" {
-		e.IconID, _ = strconv.ParseInt(v, 10, 64)
-		img, err := s.store.Media(ctx, e.IconID)
-		if err != nil || img.Kind != store.KindImage {
-			s.fail(w, r, http.StatusBadRequest, "Pick an image from the media library.")
-			return
-		}
-		e.Emoji = ""
-	}
-	if f.Get("own_volume") == "on" {
-		e.Volume, err = strconv.Atoi(f.Get("volume"))
-		if err != nil || e.Volume < 1 || e.Volume > tasks.MaxVolume {
-			s.fail(w, r, http.StatusBadRequest, "The volume must be between 1 and 200 %.")
-			return
-		}
-	}
-	e.TrimStartMS, e.TrimEndMS = millis(f.Get("trim_start")), millis(f.Get("trim_end"))
-	if m.DurationMS > 0 && e.TrimEndMS >= m.DurationMS {
-		e.TrimEndMS = 0
-	}
-	if e.TrimStartMS < 0 || e.TrimEndMS < 0 || e.TrimEndMS > 0 && e.TrimEndMS <= e.TrimStartMS || m.DurationMS > 0 && e.TrimStartMS >= m.DurationMS {
-		s.fail(w, r, http.StatusBadRequest, "The start of the sound must be before its end.")
-		return
-	}
-	if err := s.store.EditSound(ctx, e); errors.Is(err, store.ErrNameTaken) {
-		s.fail(w, r, http.StatusConflict, "Another file is called "+e.Name+".")
-		return
-	} else if err != nil {
-		s.storeErr(w, r, err)
-		return
-	}
-	s.audit(r, "media.update", e.Name, "sound settings")
-	redirect(w, r, safeNext(f.Get("next"), "/media"), "saved")
 }
 
 func (s *Server) setFavorite(w http.ResponseWriter, r *http.Request) {

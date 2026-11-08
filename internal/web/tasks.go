@@ -134,7 +134,8 @@ type tasksData struct {
 	Paging paging
 }
 
-// tasks lists the tasks of a server. /tasks opens the user's first server.
+// tasks lists the tasks of a server. /tasks opens the user's first server,
+// and lists all tasks when the bot knows no server, like while it is offline.
 func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	d := tasksData{Filter: r.URL.Query().Get("filter"), Counts: map[string]int{}, Paging: newPaging(r)}
@@ -143,6 +144,7 @@ func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, withQuery("/room/"+g.ID+"/tasks", r.URL.RawQuery), http.StatusSeeOther)
 			return
 		}
+		r = at(r, place{Section: "tasks"})
 	} else {
 		g, ok := s.bot.Guild(r.PathValue("id"))
 		if !ok || !sessionFrom(r).CanGuild(g.ID) {
@@ -160,7 +162,7 @@ func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
 	d.Paging.Keep("filter", d.Filter)
 	var shown []tasks.Task
 	for _, t := range list {
-		if t.GuildID != d.Guild.ID {
+		if d.Guild.ID != "" && t.GuildID != d.Guild.ID {
 			continue
 		}
 		state := "paused"
@@ -179,7 +181,7 @@ func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
 			shown = append(shown, t)
 		}
 	}
-	if d.Rows, err = s.taskRows(r, window(&d.Paging, shown), false); err != nil {
+	if d.Rows, err = s.taskRows(r, window(&d.Paging, shown), d.Guild.ID == ""); err != nil {
 		s.internalError(w, r, err)
 		return
 	}

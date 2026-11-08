@@ -2,9 +2,15 @@
 {{$d := .Data}}{{$csrf := .Session.CSRFToken}}
 <div class="page-head">
   <h1 class="with-icon">{{icon "image"}}Media</h1>
-  <div class="btns"><span class="chip">{{icon "hard-drive"}}{{bytes $d.TotalBytes}} in {{plural (index $d.Counts "") "file" "files"}}</span></div>
+  <div class="btns">
+    <span class="chip">{{icon "hard-drive"}}{{bytes $d.TotalBytes}} in {{plural (index $d.Counts "") "file" "files"}}</span>
+    <button type="button" class="ib with-label" popovertarget="sheet-link">{{icon "download"}}<span class="lbl">Add from a link</span></button>
+    {{if $d.Guild}}{{template "uploadform" (dict "D" $d "CSRF" $csrf)}}{{end}}
+  </div>
 </div>
-
+{{if $d.Guild}}
+<p class="hint">Uploads go into the {{$d.GuildName}} group. Drop files anywhere on this page. Sounds in any format ffmpeg reads, images, videos and other files, up to {{$d.MaxUploadMB}} MB each, a .zip is unpacked. Discord accepts 20 MB per file in messages, more with server boosts.</p>
+{{else}}
 <form method="post" action="/media" enctype="multipart/form-data" class="drop" data-upload>
   <input type="hidden" name="csrf" value="{{$csrf}}">
   {{template "grouppick" (dict "Groups" $d.Groups "Current" $d.DefaultGroup)}}
@@ -17,17 +23,18 @@
   <span class="small" role="status" data-upload-status></span>
   <button type="submit" class="ib with-label no-js">{{icon "upload"}}<span class="lbl">Upload</span></button>
 </form>
+{{end}}
 
-<form method="post" action="/media/url" class="card form">
-  <input type="hidden" name="csrf" value="{{$csrf}}">
-  <span class="eyebrow">Add from a link</span>
-  <div class="grid2">
-    <label class="field"><span>Link to the file</span><input type="url" name="url" placeholder="https://example.com/sound.ogg" required></label>
+<div popover id="sheet-link" class="sheet" aria-labelledby="sheet-link-title">
+  {{template "sheethead" (dict "ID" "sheet-link" "Icon" "download" "Title" "Add from a link")}}
+  <form method="post" action="/media/url" class="sheet-body form">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label class="field"><span>Link to the file</span><input type="url" name="url" placeholder="https://example.com/sound.ogg" required><span class="help">Direct links to files only, not video pages like YouTube.</span></label>
     <label class="field"><span>Name, optional</span><input type="text" name="name" placeholder="From the link"></label>
-  </div>
-  {{template "grouppick" (dict "Groups" $d.Groups "Current" $d.DefaultGroup)}}
-  <div class="btns"><button type="submit" class="ib with-label">{{icon "download"}}<span class="lbl">Add</span></button><span class="hint">Direct links to files only, not video pages like YouTube.</span></div>
-</form>
+    {{template "grouppick" (dict "Groups" $d.Groups "Current" $d.DefaultGroup)}}
+    <div class="btns"><button type="submit" class="ib primary with-label">{{icon "download"}}<span class="lbl">Add</span></button></div>
+  </form>
+</div>
 
 {{$p := $d.Paging}}
 {{if $d.Batch}}
@@ -71,12 +78,11 @@
     <select name="guild" aria-label="Server group for the selected files"><option value="">No server</option>{{range $d.Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
     <label class="inline small"><input type="checkbox" name="group_only">not suggested to other servers</label>
     <button type="submit" class="ib with-label">{{icon "server"}}<span class="lbl">Set server group of selected</span></button>
-    <span class="bulk-tags"><input type="text" name="tags" placeholder="Tags, comma separated" aria-label="Tags to add to the selected files" spellcheck="false" autocomplete="off">
-    <button type="submit" class="ib with-label" formaction="/media/tags" data-done="Tags added.">{{icon "hash"}}<span class="lbl">Add tags to selected</span></button></span>
+    <div class="bulk-tags">{{template "tokens" $d.BulkTags}}
+    <button type="submit" class="ib with-label" formaction="/media/tags" data-done="Tags added.">{{icon "hash"}}<span class="lbl">Add tags to selected</span></button></div>
   </form>
   {{end}}
   <ul class="list">
-    {{with $d.Edit}}{{if eq .Kind "sound"}}{{template "soundsheet" (dict "M" . "Next" $d.EditNext "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf "Review" $d.Review)}}{{end}}{{end}}
 {{range $i, $_ := $d.Items}}
     {{if and $d.Guild (eq $i 0) (ne $d.Split 0)}}<li class="list-head">{{icon "server"}}{{$d.GuildName}}</li>{{end}}
     {{if and $d.Guild (eq $i $d.Split)}}<li class="list-head">{{icon "image"}}Other servers and no group</li>{{end}}
@@ -95,8 +101,7 @@
         {{if or (eq .Kind "sound") (eq .Kind "video")}}
         <button type="button" class="ib" popovertarget="sheet-play-{{.ID}}" aria-label="Play {{.Name}} in a voice channel" data-tip="Play in a voice channel">{{icon "volume-2"}}<span class="lbl">Play</span></button>
         {{end}}
-        <button type="button" class="ib" popovertarget="sheet-edit-{{.ID}}" aria-label="Edit {{.Name}}" data-tip="Name, tags and server group">{{icon "pencil"}}<span class="lbl">Edit</span></button>
-        {{if eq .Kind "sound"}}<a class="ib" href="{{$p.With "edit" (print .ID)}}#sheet-sound" aria-label="Edit sound {{.Name}}: length, volume, emoji" data-tip="Length, volume, emoji">{{icon "smile"}}<span class="lbl">Sound</span></a>{{end}}
+        <a class="ib" href="{{$p.With "edit" (print .ID)}}#sheet-edit" aria-label="Edit {{.Name}}" data-tip="Edit">{{icon "pencil"}}<span class="lbl">Edit</span></a>
         <a class="ib" href="/media/{{.ID}}/file?download=1" aria-label="Download {{.Name}}" data-tip="Download">{{icon "download"}}<span class="lbl">Download</span></a>
         <form method="post" action="/media/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$csrf}}">
           <button type="submit" class="ib danger" aria-label="Delete {{.Name}}" data-tip="Delete"{{if or .UsedBy .UsedElse}} disabled{{end}} data-confirm-desc="{{if $.TrashDays}}Moves {{.Name}} to the Trash.{{else}}Removes {{.Name}} right away. This cannot be undone.{{end}}"{{if not $.TrashDays}} data-irreversible{{end}}>{{icon "trash-2"}}<span class="lbl">Delete</span></button></form>
@@ -110,8 +115,7 @@
 </section>
 <p class="hint">Files in use by a task or message can only be deleted after they are removed there.{{if $.TrashDays}} Deleted files stay in the <a href="/trash?kind=media">Trash</a> for {{plural $.TrashDays "day" "days"}}.{{end}}</p>
 
-{{range $d.Items}}{{if not (and $d.Edit (eq $d.Edit.ID .ID) (ne .Kind "sound"))}}{{template "filesheet" (dict "M" . "Groups" ($d.GroupsWith .GuildID) "Next" $d.Self "CSRF" $csrf)}}{{end}}{{end}}
-{{with $d.Edit}}{{if ne .Kind "sound"}}{{template "filesheet" (dict "M" . "Groups" ($d.GroupsWith .GuildID) "Next" $d.EditNext "CSRF" $csrf "Review" $d.Review "Open" true)}}{{end}}{{end}}
+{{with $d.Edit}}{{template "mediasheet" (dict "M" . "Groups" ($d.GroupsWith .GuildID) "Next" $d.EditNext "CSRF" $csrf "Review" $d.Review "Emojis" $d.Emojis "Images" $d.Images)}}{{end}}
 {{range $d.Items}}{{if or (eq .Kind "sound") (eq .Kind "video")}}
 <div popover id="sheet-play-{{.ID}}" class="sheet" aria-labelledby="sheet-play-{{.ID}}-title">
   {{template "sheethead" (dict "ID" (print "sheet-play-" .ID) "Icon" "volume-2" "Title" "Play" "Name" .Name)}}
@@ -135,25 +139,6 @@
 </div>
 {{end}}
 
-{{define "filesheet"}}{{$m := .M}}{{$id := print "sheet-edit-" $m.ID}}
-<div popover id="{{$id}}" class="sheet" aria-labelledby="{{$id}}-title"{{if .Open}} data-edit-sheet{{end}}>
-  {{template "sheethead" (dict "ID" $id "Icon" "pencil" "Title" "Edit" "Name" $m.Name)}}
-  <div class="sheet-body">
-    {{with .Review}}{{template "reviewpos" .}}{{end}}
-    {{if or (eq $m.Kind "image") (eq $m.Kind "video")}}<div class="sheet-media">{{if eq $m.Kind "image"}}<img src="/media/{{$m.ID}}/file" alt="" loading="lazy">{{else}}<video src="/media/{{$m.ID}}/file" controls preload="none"></video>{{end}}</div>{{end}}
-    <form method="post" action="/media/{{$m.ID}}" class="form"{{if not .Review}} data-fetch data-done="Saved {{$m.Label}}."{{end}}>
-      <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <input type="hidden" name="next" value="{{.Next}}">
-      <label class="field"><span>Display name</span><input type="text" name="display_name" value="{{$m.DisplayName}}" maxlength="80" placeholder="{{$m.Name}}"><span class="help">Optional. Shown on the soundboard, in pickers and in /play instead of the file name.</span></label>
-      <label class="field"><span>File name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="200" required><span class="help">Also the file name in Discord messages.</span></label>
-      {{template "tokens" (tagTokens $m)}}
-      {{template "grouppick" (dict "Groups" .Groups "Current" $m.GuildID "Only" $m.GroupOnly)}}
-      {{if .Review}}{{template "reviewbtns" (dict "R" .Review "Sheet" $id)}}{{else}}<div class="btns"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>{{end}}
-    </form>
-  </div>
-</div>
-{{end}}
-
 {{define "batchactions"}}{{$d := .D}}{{$n := len $d.Uploaded}}
 {{with $d.Problems}}<div class="callout warn">{{icon "triangle-alert"}}<div><strong>Not added:</strong><ul class="problems">{{range .}}<li>{{.}}</li>{{end}}</ul></div></div>{{end}}
 {{if gt $n 1}}
@@ -173,4 +158,15 @@
     {{if eq .Where "sheet"}}<button type="button" class="ib with-label" popovertarget="sheet-upload" popovertargetaction="hide"><span class="lbl">Later</span></button>{{else}}<a class="ib with-label" href="{{$d.Base}}">{{icon "x"}}<span class="lbl">Done, show all media</span></a>{{end}}
   </div>
 </div>
+{{end}}
+
+{{define "uploadform"}}{{$d := .D}}
+<form method="post" action="/media" enctype="multipart/form-data" class="upload-inline" data-upload data-drop-page>
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="guild" value="{{$d.Guild}}">
+  <label class="ib primary with-label pick-files">{{icon "upload"}}<span class="lbl">Upload</span><input type="file" name="file" multiple class="vh"></label>
+  <button type="submit" class="ib with-label no-js">{{icon "upload"}}<span class="lbl">Send</span></button>
+  <progress max="100" value="0" hidden data-upload-progress></progress>
+  <span class="small" role="status" data-upload-status></span>
+</form>
 {{end}}

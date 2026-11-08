@@ -109,10 +109,10 @@ func TestPagesRender(t *testing.T) {
 			d.SoundTags, d.Tags = []store.SoundTag{{Name: "fun", Count: 3, Emoji: "🎉"}, {Name: "loud", Count: 1}}, []string{"fun"}
 			d.TagEdit = &d.SoundTags[0]
 		}), []string{`popovertarget="menu-c2"`, `data-menu="menu-v9"`, "Leave Lounge", `action="/media/5/favorite"`, `aria-pressed="true"`, `<span class="face" aria-hidden="true">🎺</span>`,
-			`id="sheet-sound"`, `action="/media/5/sound"`, `href="/room/1?c=2" class="tag-back"`, `href="/room/1?c=2" aria-current="page" aria-label="fun, picked, 3 sounds" data-menu="menu-tag-0"`,
+			`id="sheet-edit"`, `action="/media/5"`, `href="/room/1?c=2" class="tag-back"`, `href="/room/1?c=2" aria-current="page" aria-label="fun, picked, 3 sounds" data-menu="menu-tag-0"`,
 			`<span class="tface" aria-hidden="true">🎉</span><span>fun</span><span class="badge">3</span>`, `href="/room/1?c=2&amp;tag=fun&amp;tag=loud" aria-label="loud, 1 sound with the picked tags"`, `id="sheet-tag"`, `action="/tags/look"`, `name="tag" value="fun"`, `data-tokens="tag"`, `name="trim_start" min="0" step="0.01" value="1.50"`, `name="trim_end" min="0" step="0.01" value="225.00"`, `name="own_volume" checked`,
 			`src="https://cdn.discordapp.com/emojis/123456789012345678.png?size=48"`, `data-emoji-picker="[{&#34;ID&#34;:&#34;123456789012345678&#34;`, `data-start="0" data-end="0"`,
-			`href="/tasks/new?guild=1&amp;join=2&amp;play=5"`, "Tasks in Lounge", `action="/tasks/3/run"`, `action="/tasks/3/resume"`, `data-preview-volume`, `data-play-volume`, `data-members="1" data-navigate="/room/1?m="`, "Herrscher · <span data-count>1</span>", `<span class="mava idle mobile" title="Away">`, `aria-label="Away on a phone"`, `data-color="#1f8b4c"`, `href="/room/1?c=2&amp;edit=5#sheet-sound"`}},
+			`href="/tasks/new?guild=1&amp;join=2&amp;play=5"`, "Tasks in Lounge", `action="/tasks/3/run"`, `action="/tasks/3/resume"`, `data-preview-volume`, `data-play-volume`, `data-members="1" data-navigate="/room/1?m="`, "Herrscher · <span data-count>1</span>", `<span class="mava idle mobile" title="Away">`, `aria-label="Away on a phone"`, `data-color="#1f8b4c"`, `href="/room/1?c=2&amp;edit=5#sheet-edit"`}},
 		{"room", room("text", bot.Channel{ID: "4", Name: "general", Usable: true}, func(d *roomData) {
 			d.Messages = []messages.Message{msg}
 		}), []string{`action="/room/1/send"`, `name="channel" value="4"`, `<option value="7">Friday</option>`, "Tasks that use #general", `href="/tasks/new?guild=1&amp;post=4"`}},

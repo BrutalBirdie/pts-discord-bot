@@ -20,11 +20,11 @@ func TestLookFavoritesAndPreviewVolume(t *testing.T) {
 	pic, err := s.AddMedia(ctx, Media{Name: "face.png", Kind: KindImage, SizeBytes: 1, UploadedBy: "t"})
 	must(err)
 
-	must(s.EditSound(ctx, SoundEdit{ID: horn, Name: "horn.ogg", Emoji: "🎺", IconID: pic, Volume: 80, TrimStartMS: 500, TrimEndMS: 1500}))
+	must(s.UpdateMedia(ctx, Media{ID: horn, Name: "horn.ogg", Emoji: "🎺", IconID: pic, Volume: 80, TrimStartMS: 500, TrimEndMS: 1500}))
 	if m, _ := s.Media(ctx, horn); m.Emoji != "🎺" || m.IconID != pic || m.Volume != 80 || m.PlayMS() != 1000 {
 		t.Errorf("edit: %+v", m)
 	}
-	must(s.EditSound(ctx, SoundEdit{ID: horn, Name: "horn.ogg", DisplayName: "Big Horn", Volume: 80, TrimStartMS: 500, TrimEndMS: 1500}))
+	must(s.UpdateMedia(ctx, Media{ID: horn, Name: "horn.ogg", DisplayName: "Big Horn", Volume: 80, TrimStartMS: 500, TrimEndMS: 1500}))
 	if hits, _ := s.SearchSounds(ctx, "", "big h", 5); len(hits) != 1 || hits[0].Label() != "Big Horn" {
 		t.Errorf("search by display name: %v", hits)
 	}
@@ -54,10 +54,10 @@ func TestLookFavoritesAndPreviewVolume(t *testing.T) {
 	if (Media{Name: "x.ogg"}).Label() != "x.ogg" {
 		t.Error("label without a display name")
 	}
-	if err := s.EditSound(ctx, SoundEdit{ID: horn, Name: "face.png"}); err != ErrNameTaken {
+	if err := s.UpdateMedia(ctx, Media{ID: horn, Name: "face.png"}); err != ErrNameTaken {
 		t.Errorf("taken name: %v", err)
 	}
-	if err := s.EditSound(ctx, SoundEdit{ID: 999, Name: "x"}); err != ErrNotFound {
+	if err := s.UpdateMedia(ctx, Media{ID: 999, Name: "x"}); err != ErrNotFound {
 		t.Errorf("edit of a missing file: %v", err)
 	}
 	if (Media{DurationMS: 3000, TrimStartMS: 1000}).PlayMS() != 2000 || (Media{DurationMS: 3000, TrimEndMS: 5000}).PlayMS() != 3000 {

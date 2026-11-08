@@ -24,17 +24,7 @@
 
   <section class="card form">
     <label class="field"><span>Name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="100" required><span class="help">Only shown here and in task steps.</span></label>
-    <div class="field"><span>Server group</span>
-      <div class="inline">
-        <select name="guild" data-reload aria-label="Server group" class="grow">
-          <option value="">No server</option>
-          {{range $e.Groups}}<option value="{{.ID}}"{{if eq .ID $m.GuildID}} selected{{end}}>{{.Name}}</option>{{end}}
-        </select>
-        <button type="submit" name="op" value="reload" class="ib no-js" aria-label="List the files of this server first" data-tip="Reload files">{{icon "refresh-cw"}}</button>
-      </div>
-      <span class="help">Optional. Tasks of this server list it first, and its files come first here. Every server can send it.</span>
-    </div>
-    <label class="switch-row"><span>Do not suggest to other servers<small>Tasks of other servers find it only when it is picked already. Needs a server group.</small></span><input type="checkbox" class="switch" name="group_only"{{if $m.GroupOnly}} checked{{end}}></label>
+    {{template "grouppick" (dict "Groups" $e.Groups "Current" $m.GuildID "Only" $m.GroupOnly "Reload" true "Help" "Optional. Tasks of this server list it first, and its files come first here. Every server can send it.")}}
     <label class="field"><span>Text <span class="counter" data-count="content" data-max="{{index $e.Limits "content"}}">{{$m.ContentChars}} / {{index $e.Limits "content"}}</span></span>
       <textarea name="content" rows="5" class="prose" data-preview="content">{{$m.Content}}</textarea>
       <span class="help">Discord markdown works, see Formatting help next to the preview. Placeholders: <span class="mono">{date} {time} {server} {channel}</span>, and in runs started by a member <span class="mono">{member}</span> (a mention) and <span class="mono">{member_name}</span>. A member mention is written as <span class="mono">&lt;@id&gt;</span>.</span>

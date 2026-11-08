@@ -4,12 +4,13 @@
   <ul class="chs">
     <li class="chrow"><a href="/"{{if eq $sh.Section "overview"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span class="nm">Overview</span></a></li>
     {{if not $sh.Guilds}}
+    <li class="chrow"><a href="/tasks"{{if eq $sh.Section "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span class="nm">Tasks</span></a></li>
     <li class="chrow"><a href="/messages"{{if eq $sh.Section "messages"}} aria-current="page"{{end}}>{{icon "message-square"}}<span class="nm">Messages</span></a></li>
     <li class="chrow"><a href="/media"{{if eq $sh.Section "media"}} aria-current="page"{{end}}>{{icon "image"}}<span class="nm">Media</span></a></li>
     {{end}}
     <li class="chrow"><a href="/trash"{{if eq $sh.Section "trash"}} aria-current="page"{{end}}>{{icon "trash-2"}}<span class="nm">Trash</span>{{with $.Trash}}<span class="badge" aria-label="{{.}} items">{{.}}</span>{{end}}</a></li>
   </ul>
-  <p class="hint">{{if $sh.Guilds}}Your servers are on the left. Open one for its channels, tasks, messages and media.{{else}}The bot is in no server you may manage yet. The + on the left adds it to one.{{end}}</p>
+  <p class="hint">{{if $sh.Guilds}}Your servers are on the left. Open one for its channels, tasks, messages and media.{{else}}The bot knows no server you may manage right now: it is offline, or in none yet. The + on the left adds it to one.{{end}}</p>
 </div>
 {{end}}
 

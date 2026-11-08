@@ -1576,18 +1576,21 @@
             event.preventDefault();
             if (input.files.length) uploadFiles(form, input.files);
         });
-        form.addEventListener('dragover', function (event) {
+        // a form in the page head takes files dropped anywhere on the page
+        const area = form.hasAttribute('data-drop-page') ? document.getElementById('main') : form;
+        area.addEventListener('dragover', function (event) {
             if (!event.dataTransfer.types.includes('Files')) return;
             event.preventDefault();
-            form.classList.add('over');
+            area.classList.add('over');
         });
-        form.addEventListener('dragleave', function (event) {
-            if (!form.contains(event.relatedTarget)) form.classList.remove('over');
+        area.addEventListener('dragleave', function (event) {
+            if (!area.contains(event.relatedTarget)) area.classList.remove('over');
         });
-        form.addEventListener('drop', function (event) {
+        area.addEventListener('drop', function (event) {
+            if (!event.dataTransfer.files.length) return;
             event.preventDefault();
-            form.classList.remove('over');
-            if (event.dataTransfer.files.length && !form.classList.contains('busy')) uploadFiles(form, event.dataTransfer.files);
+            area.classList.remove('over');
+            if (!form.classList.contains('busy')) uploadFiles(form, event.dataTransfer.files);
         });
     }));
 })();

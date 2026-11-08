@@ -40,7 +40,7 @@
     <span class="menu-title">#{{.Name}} · {{plural .Count "sound" "sounds"}}</span>
     <a role="menuitem" href="{{$d.OnlyURL .Name}}">{{icon "music"}}Show only the sounds tagged {{.Name}}</a>
     <a role="menuitem" href="{{$d.HereURL}}&amp;tagedit={{.Name}}#sheet-tag">{{icon "smile"}}Set icon</a>
-    <a role="menuitem" href="/media?tag={{.Name}}">{{icon "image"}}Show in Media</a>
+    <a role="menuitem" href="/room/{{$g.ID}}/media?tag={{.Name}}">{{icon "image"}}Show in Media</a>
   </div>
   {{end}}
   {{end}}
@@ -49,7 +49,7 @@
   {{if $d.Own}}{{template "soundgroup" (dict "Title" $g.Name "Icon" "server" "Sounds" $d.Own "D" $d "CSRF" $csrf "Upload" (not $d.Rest))}}{{end}}
   {{if $d.Rest}}{{template "soundgroup" (dict "Title" "Other sounds" "Icon" "music" "Sounds" $d.Rest "D" $d "CSRF" $csrf "Upload" true)}}{{end}}
   {{if not (or $d.Own $d.Rest)}}<ul class="sounds">{{template "uploadtile" (dict "D" $d "CSRF" $csrf)}}</ul>{{end}}
-  {{if not (or $d.Own $d.Rest)}}<p class="muted">{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}No sounds yet. <a href="/media">Upload some</a>.{{end}}</p>{{end}}
+  {{if not (or $d.Own $d.Rest)}}<p class="muted">{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}No sounds yet. <a href="/room/{{$g.ID}}/media">Upload some</a>.{{end}}</p>{{end}}
   {{template "pager" $d.Paging}}
   </div>
   <p class="hint">A click plays the sound in {{$ch.Name}}, the bot joins first and stays. The speaker previews it for you only, the star keeps it under Favorites. Sounds that another server keeps to itself are not listed.</p>
@@ -72,7 +72,7 @@
   </form>
 </div>
 {{end}}
-{{with $d.Edit}}{{template "soundsheet" (dict "M" . "Next" ($d.URL "c" $d.Channel.ID) "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf)}}{{end}}
+{{with $d.Edit}}{{template "mediasheet" (dict "M" . "Groups" $d.Groups "Next" ($d.URL "c" $d.Channel.ID) "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf)}}{{end}}
 
 {{else if eq $d.View "text"}}{{$ch := $d.Channel}}
 <div class="page-head">
@@ -166,8 +166,8 @@
         <form method="post" action="/servers/{{$g.ID}}/play" data-fetch data-done="Playing {{.Label}} in {{$ch.Name}}">
           <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="media" value="{{.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
           <button type="submit" role="menuitem">{{icon "play"}}Play in {{$ch.Name}}</button></form>
-        <a role="menuitem" href="{{$d.URL "c" $ch.ID}}&amp;edit={{.ID}}#sheet-sound">{{icon "pencil"}}Edit sound</a>
-        <a role="menuitem" href="/media?q={{.Name}}">{{icon "image"}}Show in Media</a>
+        <a role="menuitem" href="{{$d.URL "c" $ch.ID}}&amp;edit={{.ID}}#sheet-edit">{{icon "pencil"}}Edit sound</a>
+        <a role="menuitem" href="/room/{{$g.ID}}/media?q={{.Name}}">{{icon "image"}}Show in Media</a>
         <a role="menuitem" href="/tasks/new?guild={{$g.ID}}&amp;join={{$ch.ID}}&amp;play={{.ID}}">{{icon "plus"}}Create task with this sound</a>
       </div>
     </li>

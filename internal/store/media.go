@@ -63,13 +63,21 @@ func nullable(guildID string) *string {
 }
 
 // UpdateMedia renames a file and sets its tags and server group.
+// UpdateMedia saves what the Edit sheet changes: names, tags, server group
+// and, for sounds, the emoji or image, the own volume and the part to play.
 func (s *Store) UpdateMedia(ctx context.Context, m Media) error {
 	tags := m.Tags
 	if tags == nil {
 		tags = []string{}
 	}
-	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, tags = $3, guild_id = $4, group_only = $5, display_name = $6 WHERE id = $1 AND deleted_at IS NULL`,
-		m.ID, m.Name, tags, nullable(m.GuildID), m.GroupOnly && m.GuildID != "", m.DisplayName)
+	var icon *int64
+	if m.IconID != 0 {
+		icon = &m.IconID
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, tags = $3, guild_id = $4, group_only = $5, display_name = $6,
+  emoji = $7, icon_media_id = $8, volume = $9, trim_start_ms = $10, trim_end_ms = $11
+WHERE id = $1 AND deleted_at IS NULL`,
+		m.ID, m.Name, tags, nullable(m.GuildID), m.GroupOnly && m.GuildID != "", m.DisplayName, m.Emoji, icon, m.Volume, m.TrimStartMS, m.TrimEndMS)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return ErrNameTaken
@@ -98,36 +106,6 @@ func (m Media) PlayMS() int {
 }
 
 // SoundEdit is what the Edit sound dialog changes.
-type SoundEdit struct {
-	ID          int64
-	Name        string
-	DisplayName string
-	Tags        []string
-	Emoji       string
-	IconID      int64
-	Volume      int
-	TrimStartMS int
-	TrimEndMS   int
-}
-
-func (s *Store) EditSound(ctx context.Context, e SoundEdit) error {
-	var icon *int64
-	if e.IconID != 0 {
-		icon = &e.IconID
-	}
-	tag, err := s.pool.Exec(ctx, `UPDATE media SET name = $2, emoji = $3, icon_media_id = $4, volume = $5, trim_start_ms = $6, trim_end_ms = $7, display_name = $8,
-  tags = coalesce($9, tags)
-WHERE id = $1 AND deleted_at IS NULL`, e.ID, e.Name, e.Emoji, icon, e.Volume, e.TrimStartMS, e.TrimEndMS, e.DisplayName, e.Tags)
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return ErrNameTaken
-	}
-	if err == nil && tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return err
-}
-
 // Favorites returns the IDs of the sounds a user starred.
 func (s *Store) Favorites(ctx context.Context, username string) (map[int64]bool, error) {
 	rows, err := s.pool.Query(ctx, `SELECT media_id FROM favorite_media WHERE username = $1`, username)

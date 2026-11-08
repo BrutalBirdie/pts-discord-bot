@@ -23,6 +23,7 @@ import (
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/media"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/store"
+	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
 )
 
 type voiceGroup struct {
@@ -64,6 +65,12 @@ type mediaData struct {
 func (d mediaData) BatchTags(where string) tokenField {
 	return tokenField{Field: "tag", Find: "tag_find", Label: "Tags for all of them", LabelID: "tags-batch-" + where, Placeholder: "Search or add tags", Empty: "No tags picked",
 		Help: "Added to the tags each file has.", Source: "/tags", Max: maxTags, Plain: true}
+}
+
+// BulkTags is the tag picker for the files selected in the list.
+func (d mediaData) BulkTags() tokenField {
+	return tokenField{Field: "tag", Find: "tag_find", Label: "Tags to add to the selected files", LabelID: "tags-bulk", Placeholder: "Search or add tags", Empty: "No tags picked",
+		Source: "/tags", Max: maxTags, Plain: true}
 }
 
 // review is the place of the file in the Edit sheet among the files of an upload.
@@ -399,7 +406,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		// a single new sound opens Edit sound, to cut it right away
 		if len(saved) == 1 && saved[0].Kind == store.KindSound {
 			sep := map[bool]string{true: "&", false: "?"}[strings.Contains(next, "?")]
-			http.Redirect(w, r, fmt.Sprintf("%s%sedit=%d&done=uploaded#sheet-sound", next, sep, saved[0].ID), http.StatusSeeOther)
+			http.Redirect(w, r, fmt.Sprintf("%s%sedit=%d&done=uploaded#sheet-edit", next, sep, saved[0].ID), http.StatusSeeOther)
 			return
 		}
 		redirect(w, r, next, "uploaded")
@@ -633,43 +640,89 @@ func (s *Server) searchTags(w http.ResponseWriter, r *http.Request) {
 // maxDisplayName fits a soundboard tile and Discord's 100 characters of an autocomplete choice.
 const maxDisplayName = 80
 
+// updateMedia saves the Edit sheet of a file. Fields the form does not send
+// keep their value: the tags without the tag field, the server group without
+// its picker, and the sound settings for files that are no sound.
 func (s *Server) updateMedia(w http.ResponseWriter, r *http.Request) {
 	m, ok := s.loadMedia(w, r)
 	if !ok {
 		return
 	}
-	name, err := media.CleanName(r.PostForm.Get("name"))
-	if err != nil {
-		s.fail(w, r, http.StatusBadRequest, err.Error()+".")
-		return
+	ctx := r.Context()
+	f := r.PostForm
+	if name := strings.TrimSpace(f.Get("name")); name != "" && name != m.Name {
+		clean, err := media.CleanName(name)
+		if err != nil {
+			s.fail(w, r, http.StatusBadRequest, err.Error()+".")
+			return
+		}
+		m.Name = clean
 	}
-	tags := ParseTags(strings.Join(append(r.PostForm["tag"], r.PostForm.Get("tags"), r.PostForm.Get("tag_find")), ","))
-	if len(tags) > maxTags {
-		s.fail(w, r, http.StatusBadRequest, "At most 20 tags.")
-		return
+	if f.Has("display_name") {
+		m.DisplayName = strings.TrimSpace(f.Get("display_name"))
+		if utf8.RuneCountInString(m.DisplayName) > maxDisplayName {
+			s.fail(w, r, http.StatusBadRequest, fmt.Sprintf("The display name is longer than %d characters.", maxDisplayName))
+			return
+		}
 	}
-	group := r.PostForm.Get("guild")
-	if !validGroup(sessionFrom(r), group, m.GuildID) {
-		s.fail(w, r, http.StatusBadRequest, "Pick one of your servers.")
-		return
+	if f.Has("tag_find") || f.Has("tags") || f.Has("tag") {
+		m.Tags = ParseTags(strings.Join(append(f["tag"], f.Get("tags"), f.Get("tag_find")), ","))
+		if len(m.Tags) > maxTags {
+			s.fail(w, r, http.StatusBadRequest, fmt.Sprintf("At most %d tags.", maxTags))
+			return
+		}
 	}
-	only := r.PostForm.Get("group_only") == "on" && group != ""
-	display := strings.TrimSpace(r.PostForm.Get("display_name"))
-	if utf8.RuneCountInString(display) > maxDisplayName {
-		s.fail(w, r, http.StatusBadRequest, fmt.Sprintf("The display name is longer than %d characters.", maxDisplayName))
-		return
+	if f.Has("guild") {
+		group := f.Get("guild")
+		if !validGroup(sessionFrom(r), group, m.GuildID) {
+			s.fail(w, r, http.StatusBadRequest, "Pick one of your servers.")
+			return
+		}
+		m.GuildID, m.GroupOnly = group, f.Get("group_only") == "on" && group != ""
 	}
-	err = s.store.UpdateMedia(r.Context(), store.Media{ID: m.ID, Name: name, DisplayName: display, Tags: tags, GuildID: group, GroupOnly: only})
+	if (f.Has("trim_start") || f.Has("emoji") || f.Has("icon") || f.Has("own_volume")) && m.Kind == store.KindSound {
+		m.Emoji, m.IconID, m.Volume = strings.TrimSpace(f.Get("emoji")), 0, 0
+		if !validEmoji(m.Emoji) {
+			s.fail(w, r, http.StatusBadRequest, "Use one emoji.")
+			return
+		}
+		if v := f.Get("icon"); v != "" && v != "0" {
+			m.IconID, _ = strconv.ParseInt(v, 10, 64)
+			img, err := s.store.Media(ctx, m.IconID)
+			if err != nil || img.Kind != store.KindImage {
+				s.fail(w, r, http.StatusBadRequest, "Pick an image from the media library.")
+				return
+			}
+			m.Emoji = ""
+		}
+		if f.Get("own_volume") == "on" {
+			v, err := strconv.Atoi(f.Get("volume"))
+			if err != nil || v < 1 || v > tasks.MaxVolume {
+				s.fail(w, r, http.StatusBadRequest, "The volume must be between 1 and 200 %.")
+				return
+			}
+			m.Volume = v
+		}
+		m.TrimStartMS, m.TrimEndMS = millis(f.Get("trim_start")), millis(f.Get("trim_end"))
+		if m.DurationMS > 0 && m.TrimEndMS >= m.DurationMS {
+			m.TrimEndMS = 0
+		}
+		if m.TrimStartMS < 0 || m.TrimEndMS < 0 || m.TrimEndMS > 0 && m.TrimEndMS <= m.TrimStartMS || m.DurationMS > 0 && m.TrimStartMS >= m.DurationMS {
+			s.fail(w, r, http.StatusBadRequest, "The start of the sound must be before its end.")
+			return
+		}
+	}
+	err := s.store.UpdateMedia(ctx, m)
 	if errors.Is(err, store.ErrNameTaken) {
-		s.fail(w, r, http.StatusConflict, "A file named "+name+" exists already.")
+		s.fail(w, r, http.StatusConflict, "A file named "+m.Name+" exists already.")
 		return
 	}
 	if err != nil {
 		s.storeErr(w, r, err)
 		return
 	}
-	s.audit(r, "media.update", name, "tags="+strings.Join(tags, ",")+", server group "+groupDetail(s.groupName(group), only))
-	redirect(w, r, safeNext(r.PostForm.Get("next"), "/media"), "saved")
+	s.audit(r, "media.update", m.Name, "tags="+strings.Join(m.Tags, ",")+", server group "+groupDetail(s.groupName(m.GuildID), m.GroupOnly))
+	redirect(w, r, safeNext(f.Get("next"), "/media"), "saved")
 }
 
 // tagMedia adds tags to the files selected on the media page, or to all files of an upload.

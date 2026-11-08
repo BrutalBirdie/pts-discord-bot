@@ -455,7 +455,7 @@ func TestPagesForApprovedDiscordUser(t *testing.T) {
 			[]string{`<option value="">No server</option>`, `<option value="1">PTS Gaming</option>`, `name="group_only"`}, nil},
 		{sess, "messages", messagesData{Rows: []messageRow{{Message: msg, Guild: "PTS Gaming", UsedElse: 1}}, Groups: guilds}, []string{"PTS Gaming", "1 task in other servers", `server=1"`}, nil},
 		{sess, "message", messageEditor{Message: msg, Groups: guilds, ByID: map[int64]store.Media{}, Limits: map[string]int{"content": 2000, "embeds": 10, "embedTotal": 6000}},
-			[]string{`<select name="guild" data-reload`, `<option value="1" selected>PTS Gaming</option>`, `<option value="">No server</option>`, `name="group_only"`}, []string{"Shared, for Cloudron users only", "/move"}},
+			[]string{`<select name="guild" class="grow" data-reload`, `<option value="1" selected>PTS Gaming</option>`, `<option value="">No server</option>`, `name="group_only"`}, []string{"Shared, for Cloudron users only", "/move"}},
 		{sess, "trash", trashData{Counts: map[string]int{}}, []string{"Only admins can delete items for good"}, []string{"/purge", "/trash/empty"}},
 	} {
 		body := renderAs(t, s, c.sess, c.page, c.data)

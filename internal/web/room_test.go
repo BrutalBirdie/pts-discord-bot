@@ -31,7 +31,7 @@ func TestSoundLookAndFavorite(t *testing.T) {
 		}
 		return f.do(cookie, "POST", path, v).Code
 	}
-	edit := fmt.Sprintf("/media/%d/sound", horn)
+	edit := fmt.Sprintf("/media/%d", horn)
 	if code := post(f.discord, edit, "name", "horn-"+f.tag+".ogg", "display_name", "Big Horn", "emoji", "🎺", "trim_start", "0.5", "trim_end", "1.25", "own_volume", "on", "volume", "150", "next", "/room/1"); code != http.StatusSeeOther {
 		t.Errorf("edit by a Discord user: %d", code)
 	}

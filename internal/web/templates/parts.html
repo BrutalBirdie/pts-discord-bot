@@ -1,10 +1,14 @@
+{{/* grouppick: Groups, Current, Only; Reload reloads the form when the group changes, Help replaces the help text */}}
 {{define "grouppick"}}
 <label class="field"><span>Server group</span>
-  <select name="guild">
-    <option value="">No server</option>
-    {{range .Groups}}<option value="{{.ID}}"{{if eq .ID $.Current}} selected{{end}}>{{.Name}}</option>{{end}}
-  </select>
-  <span class="help">Optional. Tasks and messages of this server list it first. Every server can use it.</span>
+  <span class="inline">
+    <select name="guild" class="grow"{{if .Reload}} data-reload{{end}}>
+      <option value="">No server</option>
+      {{range .Groups}}<option value="{{.ID}}"{{if eq .ID $.Current}} selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+    {{if .Reload}}<button type="submit" name="op" value="reload" class="ib no-js" aria-label="Reload with this server group" data-tip="Reload">{{icon "refresh-cw"}}</button>{{end}}
+  </span>
+  <span class="help">{{with .Help}}{{.}}{{else}}Optional. Tasks and messages of this server list it first. Every server can use it.{{end}}</span>
 </label>
 <label class="switch-row"><span>Do not suggest to other servers<small>Other servers find it only by its exact name. Needs a server group.</small></span><input type="checkbox" class="switch" name="group_only"{{if .Only}} checked{{end}}></label>
 {{end}}
@@ -138,12 +142,14 @@
 
 {{define "soundface"}}{{if .IconID}}<img class="face" src="/media/{{.IconID}}/file" alt="" width="28" height="28" loading="lazy">{{else if emojiURL .Emoji}}<img class="face" src="{{emojiURL .Emoji}}" alt="" width="28" height="28" loading="lazy" referrerpolicy="no-referrer">{{else if .Emoji}}<span class="face" aria-hidden="true">{{.Emoji}}</span>{{end}}{{end}}
 
-{{define "soundsheet"}}{{$m := .M}}
-<div popover id="sheet-sound" class="sheet" aria-labelledby="sheet-sound-title" data-edit-sheet>
-  {{template "sheethead" (dict "ID" "sheet-sound" "Icon" "pencil" "Title" "Edit sound" "Name" $m.Label)}}
-  <form method="post" action="/media/{{$m.ID}}/sound" class="sheet-body form"{{if not .Review}} data-fetch data-done="Saved {{$m.Label}}."{{end}}>
+{{/* mediasheet: the one Edit sheet of a file. M the file, Groups its server group choices, Next, CSRF, Review; for sounds Emojis and Images */}}
+{{define "mediasheet"}}{{$m := .M}}{{$sound := eq $m.Kind "sound"}}
+<div popover id="sheet-edit" class="sheet" aria-labelledby="sheet-edit-title" data-edit-sheet>
+  {{template "sheethead" (dict "ID" "sheet-edit" "Icon" "pencil" "Title" "Edit" "Name" $m.Label)}}
+  <form method="post" action="/media/{{$m.ID}}" class="sheet-body form"{{if not .Review}} data-fetch data-done="Saved {{$m.Label}}."{{end}}>
     <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="next" value="{{.Next}}">
     {{with .Review}}{{template "reviewpos" .}}{{end}}
+    {{if $sound}}
     <section>
       <span class="eyebrow">Preview and length</span>
       <div class="wave js-only" data-wave="/media/{{$m.ID}}/file" data-duration="{{$m.DurationMS}}">
@@ -156,23 +162,31 @@
       </div>
       <p class="hint">Drag the edges in the preview to cut the sound. The file stays as it is, only the selected part plays.</p>
     </section>
+    {{else if or (eq $m.Kind "image") (eq $m.Kind "video")}}<div class="sheet-media">{{if eq $m.Kind "image"}}<img src="/media/{{$m.ID}}/file" alt="" loading="lazy">{{else}}<video src="/media/{{$m.ID}}/file" controls preload="none"></video>{{end}}</div>{{end}}
     <section>
       <label class="field"><span>Display name</span><input type="text" name="display_name" value="{{$m.DisplayName}}" maxlength="80" placeholder="{{$m.Name}}"><span class="help">Optional. Shown on the soundboard, in pickers and in /play instead of the file name.</span></label>
-      <label class="field"><span>File name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="200" required></label>
+      <label class="field"><span>File name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="200" required><span class="help">Also the file name in Discord messages.</span></label>
       {{template "tokens" (tagTokens $m)}}
+    </section>
+    <section>
+      {{template "grouppick" (dict "Groups" .Groups "Current" $m.GuildID "Only" $m.GroupOnly)}}
+    </section>
+    {{if $sound}}
+    <section>
       <div class="field"><span id="emoji-label">Emoji</span>
         <input type="text" name="emoji" value="{{$m.Emoji}}" maxlength="64" autocomplete="off" aria-labelledby="emoji-label" data-emoji-picker="{{json .Emojis}}">
       </div>
-      <label class="field"><span>Or an image from Media</span><select name="icon"><option value="0">No image</option>{{range .Images}}<option value="{{.ID}}"{{if eq .ID $m.IconID}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+      <label class="field"><span>Or an image from Media</span><select name="icon"><option value="0">No image</option>{{range .Images}}<option value="{{.ID}}"{{if eq .ID $m.IconID}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
     </section>
     <section class="reveal">
       <label class="switch-row"><span>Own volume<small>Plays this sound at this volume everywhere, also in tasks, instead of the soundboard or step volume.</small></span><input type="checkbox" class="switch" name="own_volume"{{if $m.Volume}} checked{{end}}></label>
       <label class="field when-checked"><span>Volume</span><span class="inline"><input type="range" name="volume" min="1" max="200" value="{{if $m.Volume}}{{$m.Volume}}{{else}}100{{end}}" class="grow" data-out><output>{{if $m.Volume}}{{$m.Volume}}{{else}}100{{end}}%</output></span></label>
     </section>
-    {{if .Review}}{{template "reviewbtns" (dict "R" .Review "Sheet" "sheet-sound")}}{{else}}
+    {{end}}
+    {{if .Review}}{{template "reviewbtns" (dict "R" .Review "Sheet" "sheet-edit")}}{{else}}
     <div class="btns">
       <button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button>
-      <button type="button" class="ib with-label" popovertarget="sheet-sound" popovertargetaction="hide"><span class="lbl">Never mind</span></button>
+      <button type="button" class="ib with-label" popovertarget="sheet-edit" popovertargetaction="hide"><span class="lbl">Never mind</span></button>
     </div>{{end}}
   </form>
 </div>
