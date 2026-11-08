@@ -1,4 +1,11 @@
 [0.5.0]
+* Every page sits in the Control Room: server rail, channel list and members, no top navigation; on phones the servers and channels open from the side
+* Home shows the overview with the tasks that need attention, and the Trash; Tasks, Messages and Media open per server, its own items first
+* Settings open full window from the user panel, with the Admin pages for admins; server settings open from the server name
+* One Edit sheet for every media file, with server group, and for sounds the waveform, emoji or image and own volume
+* The media page filters by several tags with their icons, uploads with one button or a drop anywhere on the page
+* Images are picked from thumbnails, message button emoji with the emoji picker
+* Quick and direct messages have the mention picker and the Discord preview
 * Control Room: the server like in Discord, with channels, who is in voice, members by role with status and activity, right-click menus, and task controls
 * Soundboard with favorites, emoji or image per sound, preview, per-user play volume and an Upload new tile; a new sound cuts short the one before
 * Edit sound: display name, tags, own volume and the part to play, cut on a waveform
