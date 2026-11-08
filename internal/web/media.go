@@ -31,6 +31,10 @@ type voiceGroup struct {
 }
 
 type mediaData struct {
+	Guild        string // the open server, its files come first
+	Base         string // the media page of the open server
+	GuildName    string
+	Split        int // the first item of another server, -1 when all are of the open one
 	Items        []store.Media
 	Kind         string
 	Tag          string
@@ -135,14 +139,39 @@ func (s *Server) voiceGroups(r *http.Request) []voiceGroup {
 	return out
 }
 
+// mediaPage shows the media library of a server. /media opens the server of
+// ?server, else the user's first, and lists all files when there is none.
 func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
-	s.showMedia(w, r, r.URL.Query(), nil)
+	id := r.PathValue("id")
+	if id == "" {
+		if g, ok := s.serverOf(r); ok {
+			q := r.URL.Query()
+			q.Del("server")
+			http.Redirect(w, r, withQuery("/room/"+g.ID+"/media", q.Encode()), http.StatusSeeOther)
+			return
+		}
+	} else if _, ok := s.bot.Guild(id); !ok || !sessionFrom(r).CanGuild(id) {
+		s.notFound(w, r)
+		return
+	}
+	s.showMedia(w, r, id, r.URL.Query(), nil)
 }
 
-// showMedia shows the media library, with batch only the files of that
-// upload and the problems of the files it could not add.
-func (s *Server) showMedia(w http.ResponseWriter, r *http.Request, q url.Values, problems []string) {
+// mediaBase is the media page of a server, or /media without one.
+func mediaBase(guildID string) string {
+	if guildID == "" {
+		return "/media"
+	}
+	return "/room/" + guildID + "/media"
+}
+
+// showMedia shows the media library, the files of the server first, with
+// batch only the files of that upload and the problems of the files it could not add.
+func (s *Server) showMedia(w http.ResponseWriter, r *http.Request, guildID string, q url.Values, problems []string) {
 	ctx := r.Context()
+	if guildID != "" {
+		r = at(r, place{Guild: guildID, Section: "media", Members: true})
+	}
 	sess := sessionFrom(r)
 	sum, err := s.store.MediaSummary(ctx)
 	if err != nil {
@@ -154,7 +183,7 @@ func (s *Server) showMedia(w http.ResponseWriter, r *http.Request, q url.Values,
 		s.internalError(w, r, err)
 		return
 	}
-	d := mediaData{Kind: q.Get("kind"), Tag: q.Get("tag"), Group: q.Get("server"), Counts: sum.Counts, TotalBytes: sum.Bytes, Tags: sum.Tags, Voice: s.voiceGroups(r), MaxUploadMB: settings.MaxUploadMB, Paging: newPaging(r),
+	d := mediaData{Guild: guildID, Base: mediaBase(guildID), Kind: q.Get("kind"), Tag: q.Get("tag"), Group: q.Get("server"), Counts: sum.Counts, TotalBytes: sum.Bytes, Tags: sum.Tags, Voice: s.voiceGroups(r), MaxUploadMB: settings.MaxUploadMB, Paging: newPaging(r),
 		Names: map[string]string{}, Batch: q.Get("batch"), Problems: problems}
 	if d.Groups, err = s.groupChoices(ctx, r, ""); err != nil {
 		s.internalError(w, r, err)
@@ -165,6 +194,9 @@ func (s *Server) showMedia(w http.ResponseWriter, r *http.Request, q url.Values,
 	}
 	if sess.Discord() && len(d.Groups) > 0 {
 		d.DefaultGroup = d.Groups[0].ID
+	}
+	if guildID != "" {
+		d.DefaultGroup, d.Group = guildID, ""
 	}
 	d.Paging.Keep("kind", d.Kind)
 	d.Paging.Keep("tag", d.Tag)
@@ -179,13 +211,18 @@ func (s *Server) showMedia(w http.ResponseWriter, r *http.Request, q url.Values,
 		d.Tagged = done == "tagged"
 		d.Ask = q.Get("edit") == "" && (len(problems) > 0 || len(d.Uploaded) > 1 && (done == "uploaded" || d.Tagged))
 	}
-	items, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: sess.Scope(), Group: d.Group, Kind: d.Kind, Tag: d.Tag, Batch: d.Batch, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
+	items, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: sess.Scope(), Offer: guildID, Group: d.Group, Kind: d.Kind, Tag: d.Tag, Batch: d.Batch, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
 	d.Items = cut(&d.Paging, items)
 	d.Self = d.Paging.Self()
+	d.Split = -1
+	if guildID != "" {
+		d.Split = slices.IndexFunc(d.Items, func(m store.Media) bool { return m.GuildID != guildID })
+		d.GuildName = s.bot.GuildName(guildID)
+	}
 	if id, err := strconv.ParseInt(q.Get("edit"), 10, 64); err == nil {
 		if m, err := s.store.Media(ctx, id); err == nil {
 			d.Edit = &m
@@ -193,6 +230,9 @@ func (s *Server) showMedia(w http.ResponseWriter, r *http.Request, q url.Values,
 		}
 		if m := d.Edit; m != nil && m.Kind == store.KindSound {
 			guild := m.GuildID
+			if guild == "" {
+				guild = guildID
+			}
 			if guild == "" && len(d.Groups) > 0 {
 				guild = d.Groups[0].ID
 			}
@@ -217,7 +257,7 @@ func (d mediaData) reviewOf(id int64) *review {
 	if i < 0 || len(d.Uploaded) < 2 {
 		return nil
 	}
-	rv := &review{Pos: i + 1, Total: len(d.Uploaded), Next: "/media?batch=" + url.QueryEscape(d.Batch), Last: i == len(d.Uploaded)-1}
+	rv := &review{Pos: i + 1, Total: len(d.Uploaded), Next: d.Base + "?batch=" + url.QueryEscape(d.Batch), Last: i == len(d.Uploaded)-1}
 	if !rv.Last {
 		rv.Next += "&edit=" + strconv.FormatInt(d.Uploaded[i+1].ID, 10)
 	}
@@ -367,10 +407,10 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	// the files just uploaded, to tag them all at once or review them one by one
 	if len(problems) > 0 {
-		s.showMedia(w, r, url.Values{"batch": {want.Batch}}, problems)
+		s.showMedia(w, r, want.GuildID, url.Values{"batch": {want.Batch}}, problems)
 		return
 	}
-	target := "/media?batch=" + want.Batch
+	target := mediaBase(want.GuildID) + "?batch=" + want.Batch
 	if len(saved) == 1 {
 		target += "&edit=" + strconv.FormatInt(saved[0].ID, 10)
 	}
@@ -535,7 +575,7 @@ func (s *Server) fetchMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "media.upload", name, r.PostForm.Get("url"))
-	redirect(w, r, "/media", "uploaded")
+	redirect(w, r, mediaBase(group), "uploaded")
 }
 
 // ParseTags accepts "greeting, Funny  sounds" and returns lower case tags without duplicates.

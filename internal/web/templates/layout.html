@@ -9,45 +9,61 @@
 </head>
 <body data-preview-vol="{{.Prefs.PreviewVolume}}"{{if and .Session (not .Prefs.ConfirmActions)}} data-confirm="off"{{end}}>
 {{template "icons"}}
+{{with .Shell}}{{$sh := .}}
+<div class="app{{if .Members}} with-members{{end}}" id="app">
+  <aside class="app-side drawer" id="app-side" popover aria-label="Servers and channels">
+    <nav class="rail" aria-label="Servers">
+      <a href="/" class="rail-g home"{{if .Home}} aria-current="page"{{end}} aria-label="Home" data-tip="Home">{{icon "house"}}</a>
+      <span class="rail-sep" aria-hidden="true"></span>
+      <div class="rail-list" data-sortable="/servers/order">{{range .Guilds}}<a href="/room/{{.ID}}" data-sort-id="{{.ID}}" class="rail-g"{{if eq .ID $sh.Guild.ID}} aria-current="page"{{end}} aria-label="{{.Name}}" data-tip="{{.Name}}">{{if .Icon}}<img src="{{.Icon}}" alt="" width="48" height="48" referrerpolicy="no-referrer">{{else}}{{.Initials}}{{end}}</a>{{end}}</div>
+      <a href="/servers" class="rail-g add"{{if eq .Section "servers"}} aria-current="page"{{end}} aria-label="Add the bot to a server" data-tip="Add the bot to a server">{{icon "plus"}}</a>
+    </nav>
+    <div class="side-col">
+      <div class="room-resize js-only" data-resize="side" role="separator" aria-orientation="vertical" aria-label="Width of the channel list" tabindex="0"></div>
+      {{if .Home}}{{template "homeside" $}}{{else}}{{template "serverside" $}}{{end}}
+      <div class="side-foot">
+        <span class="avatar sm" aria-hidden="true">{{initials $.Session.DisplayName}}</span>
+        <span class="row-main"><strong>{{$.Session.DisplayName}}</strong><span class="row-sub">{{if $.Session.IsAdmin}}administrator{{else if $.Session.Discord}}Discord account{{else}}{{$.Session.Username}}{{end}}</span></span>
+        <button type="button" class="ib quiet" popovertarget="sheet-account" aria-label="Account and settings" data-tip="Account and settings">{{icon "settings"}}</button>
+      </div>
+    </div>
+  </aside>
+  <main class="app-main" id="main">
+    <div class="app-bar">
+      <button type="button" class="ib quiet" popovertarget="app-side" aria-label="Servers and channels">{{icon "menu"}}</button>
+      <span class="app-bar-title">{{if .Home}}Home{{else}}{{.Guild.Name}}{{end}}</span>
+      {{if .Members}}<button type="button" class="ib quiet" popovertarget="app-members" aria-label="Members">{{icon "users"}}</button>{{end}}
+    </div>
+    <div class="contents" data-live="botstatus">{{if not $.Session.Discord}}{{if not $.Bot.Connected}}
+    <div class="callout warn">{{icon "triangle-alert"}}<span>The bot is not connected to Discord.{{with $.Bot.Error}} {{.}}{{end}}</span></div>
+    {{end}}{{end}}</div>
+    {{template "notice" $}}
+    {{template "content" $}}
+  </main>
+  {{if .Members}}{{template "members" $}}{{end}}
+</div>
+{{else}}
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="/"><img src="/static/logo.png" alt="" width="32" height="32"> PTS Discord Bot</a>
-    {{with .Session}}
-    <nav class="nav" aria-label="Main">{{template "navlinks" $}}</nav>
-    <button type="button" class="avatar" popovertarget="sheet-account" aria-label="Account of {{.DisplayName}}" data-tip="Account">{{initials .DisplayName}}</button>
-    {{end}}
+    {{with .Session}}<button type="button" class="avatar" popovertarget="sheet-account" aria-label="Account of {{.DisplayName}}" data-tip="Account">{{initials .DisplayName}}</button>{{end}}
   </div>
 </header>
-<main class="wrap{{if eq .Nav "room"}} wide{{end}}" id="main">
-<div class="contents"{{if and .Session (not .Session.NoAccess)}} data-live="botstatus"{{end}}>{{if and .Session (not .Session.Discord)}}{{if not .Bot.Connected}}
-<div class="callout warn">{{icon "triangle-alert"}}<span>The bot is not connected to Discord.{{with .Bot.Error}} {{.}}{{end}}</span></div>
-{{end}}{{end}}</div>
-{{with .Notice}}<div class="notice" role="status">{{icon "circle-check"}}<span>{{.}}</span>{{with $.Undo}}
-  <form method="post" action="/trash/{{.Kind}}/{{.ID}}/restore" class="undo">{{template "csrf" $}}<input type="hidden" name="next" value="{{$.Path}}">
-    <button type="submit" class="ib sm with-label">{{icon "rotate-ccw"}}<span class="lbl">Undo</span></button></form>{{end}}
-  <button type="button" class="ib sm quiet dismiss" aria-label="Dismiss" data-tip="Dismiss">{{icon "x"}}</button></div>{{end}}
+<main class="wrap" id="main">
+{{template "notice" .}}
 {{template "content" .}}
 </main>
+{{end}}
 {{with .Session}}
-<nav class="tabbar" aria-label="Main">
-  <a href="/"{{if eq $.Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Home</span></a>
-  {{if not .NoAccess}}<a href="/room"{{if eq $.Nav "room"}} aria-current="page"{{end}}>{{icon "radio"}}<span>Room</span></a>
-  <a href="/tasks"{{if eq $.Nav "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span>Tasks</span></a>
-  <a href="/media"{{if eq $.Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>{{end}}
-  <button type="button" popovertarget="sheet-account">{{icon "more"}}<span>More</span></button>
-</nav>
 <div popover id="sheet-account" class="sheet" aria-labelledby="sheet-account-title">
   {{template "sheethead" (dict "ID" "sheet-account" "Icon" "user" "Title" "Account")}}
   <div class="sheet-body">
     <section>
       <div class="profile"><span class="avatar">{{initials .DisplayName}}</span><span><strong>{{.DisplayName}}</strong><span class="small muted">{{if .Discord}}Discord account{{else}}{{.Username}}{{end}}{{if .IsAdmin}} · administrator{{end}}</span></span></div>
     </section>
-    {{if not .NoAccess}}<section>
-      <span class="eyebrow">Pages</span>
-      <a class="choice" href="/servers">{{icon "server"}}<span><strong>Servers</strong><small>Channels, permissions and tasks per server</small></span></a>
-      <a class="choice" href="/messages">{{icon "message-square"}}<span><strong>Messages</strong><small>Saved messages for tasks</small></span></a>
-      <a class="choice" href="/trash">{{icon "trash-2"}}<span><strong>Trash{{with $.Trash}} <span class="badge">{{.}}</span>{{end}}</strong><small>Deleted tasks, messages and media</small></span></a>
-      {{if .IsAdmin}}<a class="choice" href="/admin">{{icon "shield"}}<span><strong>Admin{{with $.Pending}} <span class="badge accent">{{.}}</span>{{end}}</strong><small>Discord connection, settings, access, audit log</small></span></a>{{end}}
+    {{if and .IsAdmin (not .NoAccess)}}<section>
+      <span class="eyebrow">Administration</span>
+      <a class="choice" href="/admin">{{icon "shield"}}<span><strong>Admin{{with $.Pending}} <span class="badge accent" aria-label="{{.}} open access requests">{{.}}</span>{{end}}</strong><small>Discord connection, settings, access, audit log</small></span></a>
     </section>{{end}}
     <form method="post" action="/account" class="form" data-autosave>
       <input type="hidden" name="csrf" value="{{.CSRFToken}}">
@@ -76,3 +92,7 @@
 <script src="/static/app.js"></script>
 </body>
 </html>
+{{define "notice"}}{{with .Notice}}<div class="notice" role="status">{{icon "circle-check"}}<span>{{.}}</span>{{with $.Undo}}
+  <form method="post" action="/trash/{{.Kind}}/{{.ID}}/restore" class="undo">{{template "csrf" $}}<input type="hidden" name="next" value="{{$.Path}}">
+    <button type="submit" class="ib sm with-label">{{icon "rotate-ccw"}}<span class="lbl">Undo</span></button></form>{{end}}
+  <button type="button" class="ib sm quiet dismiss" aria-label="Dismiss" data-tip="Dismiss">{{icon "x"}}</button></div>{{end}}{{end}}

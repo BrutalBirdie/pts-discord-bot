@@ -1,7 +1,7 @@
 {{define "content"}}
 {{$d := .Data}}
 <div class="page-head">
-  <div><span class="eyebrow">Discord</span><h1>Servers</h1></div>
+  <h1 class="with-icon">{{icon "server"}}Servers</h1>
   <div class="btns">
     {{if not .Session.Discord}}<form method="post" action="/servers/refresh" data-fetch data-done="Members requested from Discord.">{{template "csrf" .}}
       <button type="submit" class="ib" aria-label="Reload members from Discord" data-tip="Reload members from Discord">{{icon "refresh-cw"}}<span class="lbl">Reload members</span></button>
@@ -13,15 +13,23 @@
 <div class="callout warn">{{icon "triangle-alert"}}<span>Discord refused the Server Members intent, so member lists stay empty and tasks cannot follow members. Switch on <strong>Server Members Intent</strong> under Bot in the Discord Developer Portal, then restart the app.</span></div>
 {{end}}
 
+<section class="card stack" id="invite">
+  <div><span class="eyebrow">Add the bot</span><h2>Invite link</h2></div>
+  <p class="small muted">Opens Discord with the permissions the bot needs: View Channel, Send Messages, Embed Links, Attach Files, Connect and Speak. Only members with Manage Server can add it.</p>
+  {{with $d.InviteURL}}{{template "copybox" (dict "Text" . "Label" "Copy invite link")}}
+  <div class="btns"><a class="ib with-label" href="{{.}}" rel="noopener" target="_blank">{{icon "external-link"}}<span class="lbl">Open in Discord</span></a></div>
+  {{else}}<p class="muted">Shown when the bot is connected.</p>{{end}}
+</section>
+
 {{template "search" (dict "P" $d.Paging "Label" "Search servers" "Placeholder" "Server name or ID")}}
 <div class="contents" data-live="list" data-live-list>
 <section class="card">
-  {{if and (gt (len $d.Guilds) 1) (not $d.Paging.Query)}}<p class="hint">Drag the servers{{if gt (len $d.Guilds) 1}} or use the arrows{{end}} to put them in your order. The first one is your default, for new tasks and the Control Room.</p>{{end}}
+  {{if and (gt (len $d.Guilds) 1) (not $d.Paging.Query)}}<p class="hint">Drag the servers{{if gt (len $d.Guilds) 1}} or use the arrows{{end}} to put them in your order. The first one is your default. The rail on the left shows them in this order and can be dragged too.</p>{{end}}
   <ul class="list"{{if not $d.Paging.Query}} data-sortable="/servers/order"{{end}}>
     {{range $i, $g := $d.Guilds}}
     <li class="link-row sort-row" data-sort-id="{{.ID}}">
       {{if not $d.Paging.Query}}<span class="sort-handle js-only" aria-hidden="true">{{icon "grip-vertical"}}</span>{{end}}
-      <a class="rowlink with-lead" href="/servers/{{.ID}}">
+      <a class="rowlink with-lead" href="/room/{{.ID}}">
         <span class="guild">{{.Initials}}</span>
         <span class="row-main">
           <span class="row-title">{{.Name}}
@@ -50,12 +58,5 @@
 </section>
 </div>
 
-<section class="card stack">
-  <div><span class="eyebrow">Add the bot</span><h2>Invite link</h2></div>
-  <p class="small muted">Opens Discord with the permissions the bot needs: View Channel, Send Messages, Embed Links, Attach Files, Connect and Speak. Only members with Manage Server can add it.</p>
-  {{with $d.InviteURL}}{{template "copybox" (dict "Text" . "Label" "Copy invite link")}}
-  <div class="btns"><a class="ib with-label" href="{{.}}" rel="noopener" target="_blank">{{icon "external-link"}}<span class="lbl">Open in Discord</span></a></div>
-  {{else}}<p class="muted">Shown when the bot is connected.</p>{{end}}
-</section>
 <p class="hint">Servers, channels and members update live from Discord.</p>
 {{end}}

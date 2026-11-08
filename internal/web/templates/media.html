@@ -1,7 +1,7 @@
 {{define "content"}}
 {{$d := .Data}}{{$csrf := .Session.CSRFToken}}
 <div class="page-head">
-  <div><span class="eyebrow">Library</span><h1>Media</h1></div>
+  <h1 class="with-icon">{{icon "image"}}Media</h1>
   <div class="btns"><span class="chip">{{icon "hard-drive"}}{{bytes $d.TotalBytes}} in {{plural (index $d.Counts "") "file" "files"}}</span></div>
 </div>
 
@@ -37,7 +37,7 @@
   {{template "batchactions" (dict "D" $d "CSRF" $csrf "Where" "page")}}
 </section>
 {{else}}
-<p class="batch-line">{{icon "upload"}}<span>{{with len $d.Uploaded}}Showing the {{plural . "file" "files"}} of this upload.{{else}}Nothing left of this upload.{{end}}</span><a href="/media">Show all media</a></p>
+<p class="batch-line">{{icon "upload"}}<span>{{with len $d.Uploaded}}Showing the {{plural . "file" "files"}} of this upload.{{else}}Nothing left of this upload.{{end}}</span><a href="{{$d.Base}}">Show all media</a></p>
 {{end}}
 {{if $d.Ask}}
 <div popover id="sheet-upload" class="sheet" aria-labelledby="sheet-upload-title" data-open-now>
@@ -60,7 +60,7 @@
   <a href="{{$p.With "kind" "file"}}"{{if eq $d.Kind "file"}} aria-current="page"{{end}}>Files {{index $d.Counts "file"}}</a>
   {{range $d.Tags}}<a href="{{$p.With "tag" .}}"{{if eq . $d.Tag}} aria-current="page"{{end}}>{{icon "hash"}}{{.}}</a>{{end}}
 </div>
-{{template "groupfilter" (dict "P" $p "Groups" $d.Groups "Group" $d.Group)}}
+{{if not $d.Guild}}{{template "groupfilter" (dict "P" $p "Groups" $d.Groups "Group" $d.Group)}}{{end}}
 {{end}}
 
 <section class="card">
@@ -77,7 +77,9 @@
   {{end}}
   <ul class="list">
     {{with $d.Edit}}{{if eq .Kind "sound"}}{{template "soundsheet" (dict "M" . "Next" $d.EditNext "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf "Review" $d.Review)}}{{end}}{{end}}
-{{range $d.Items}}
+{{range $i, $_ := $d.Items}}
+    {{if and $d.Guild (eq $i 0) (ne $d.Split 0)}}<li class="list-head">{{icon "server"}}{{$d.GuildName}}</li>{{end}}
+    {{if and $d.Guild (eq $i $d.Split)}}<li class="list-head">{{icon "image"}}Other servers and no group</li>{{end}}
     <li>
       <div class="person">
         <input type="checkbox" class="pick" name="id" value="{{.ID}}" form="group-bulk" aria-label="Select {{.Name}}">
@@ -116,7 +118,7 @@
   <div class="sheet-body">
     <form method="post" action="/media/{{.ID}}/play" class="form" data-fetch data-done="Playing {{.Label}}.">
       <input type="hidden" name="csrf" value="{{$csrf}}">
-      <input type="hidden" name="next" value="/media">
+      <input type="hidden" name="next" value="{{$d.Self}}">
       {{if $d.Voice}}
       <label class="field"><span>Voice channel</span>
         <select name="channel">{{range $d.Voice}}<optgroup label="{{.Guild.Name}}">{{range .Voice}}<option value="{{.ID}}">{{.Name}}{{with .InVoice}} · {{len .}} connected{{end}}</option>{{end}}</optgroup>{{end}}</select>
@@ -159,7 +161,7 @@
   <span class="eyebrow">{{if $d.Tagged}}Done: tags added{{else}}Step 1, optional{{end}}</span>
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   <input type="hidden" name="batch" value="{{$d.Batch}}">
-  <input type="hidden" name="next" value="/media?batch={{$d.Batch}}">
+  <input type="hidden" name="next" value="{{$d.Base}}?batch={{$d.Batch}}">
   {{template "tokens" ($d.BatchTags .Where)}}
   <div class="btns"><button type="submit" class="ib{{if not $d.Tagged}} primary{{end}} with-label">{{icon "hash"}}<span class="lbl">{{if $d.Tagged}}Add more tags to all {{$n}}{{else}}Add tags to all {{$n}}{{end}}</span></button></div>
 </form>
@@ -167,8 +169,8 @@
 <div class="form batch-step">
   {{if gt $n 1}}<span class="eyebrow">{{if $d.Tagged}}Next{{else}}Step 2, optional{{end}}</span><p class="small muted">Display name, tags and, for sounds, emoji, volume and the part to play, file by file.</p>{{end}}
   <div class="btns">
-    {{with $d.Uploaded}}<a class="ib with-label{{if or (eq $n 1) $d.Tagged}} primary{{end}}" href="/media?batch={{$d.Batch}}&amp;edit={{(index . 0).ID}}">{{icon "pencil"}}<span class="lbl">{{if eq $n 1}}Edit {{(index . 0).Label}}{{else}}Review one by one{{end}}</span></a>{{end}}
-    {{if eq .Where "sheet"}}<button type="button" class="ib with-label" popovertarget="sheet-upload" popovertargetaction="hide"><span class="lbl">Later</span></button>{{else}}<a class="ib with-label" href="/media">{{icon "x"}}<span class="lbl">Done, show all media</span></a>{{end}}
+    {{with $d.Uploaded}}<a class="ib with-label{{if or (eq $n 1) $d.Tagged}} primary{{end}}" href="{{$d.Base}}?batch={{$d.Batch}}&amp;edit={{(index . 0).ID}}">{{icon "pencil"}}<span class="lbl">{{if eq $n 1}}Edit {{(index . 0).Label}}{{else}}Review one by one{{end}}</span></a>{{end}}
+    {{if eq .Where "sheet"}}<button type="button" class="ib with-label" popovertarget="sheet-upload" popovertargetaction="hide"><span class="lbl">Later</span></button>{{else}}<a class="ib with-label" href="{{$d.Base}}">{{icon "x"}}<span class="lbl">Done, show all media</span></a>{{end}}
   </div>
 </div>
 {{end}}

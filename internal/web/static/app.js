@@ -948,7 +948,7 @@
 
     // the channel and member lists of the Control Room can be made wider or narrower
     onPage(function (root) {
-        const room = root.querySelector('.room');
+        const room = root.matches && root.matches('#app') ? root : root.querySelector('#app');
         if (!room) return;
         const limits = { side: [180, 480], members: [180, 420] };
         const setWidth = function (which, px) {
@@ -1458,9 +1458,9 @@
     const outside = (url) => url.origin !== location.origin || /^\/(logout|login|auth|access|static|events)(\/|$)|^\/media\/\d+\/file/.test(url.pathname);
     function showPage(html, url, how) {
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        const main = doc.querySelector('main'), cur = document.querySelector('main');
+        const main = doc.getElementById('app'), cur = document.getElementById('app');
         // another layout, like the login page: load it for real
-        if (!main || !cur || !doc.querySelector('.topbar .nav') !== !document.querySelector('.topbar .nav')) {
+        if (!main || !cur) {
             location.href = url;
             return;
         }
@@ -1468,13 +1468,13 @@
         document.querySelectorAll(':popover-open').forEach((el) => el.hidePopover());
         if (how === 'push') history.pushState(null, '', url);
         else if (how === 'replace') history.replaceState(null, '', url);
+        const scroll = cur.querySelector('.side-body');
+        const sideTop = scroll ? scroll.scrollTop : 0;
         cur.className = main.className;
         cur.innerHTML = main.innerHTML;
         document.title = doc.title;
-        ['.topbar .nav', '.tabbar'].forEach(function (sel) {
-            const from = doc.querySelector(sel), to = document.querySelector(sel);
-            if (from && to) to.innerHTML = from.innerHTML;
-        });
+        const side = cur.querySelector('.side-body');
+        if (side) side.scrollTop = sideTop;
         pageSetups.forEach((fn) => fn(cur));
     }
     function scrollAfter(keep) {

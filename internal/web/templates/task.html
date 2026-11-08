@@ -1,6 +1,6 @@
 {{define "content"}}
 {{$e := .Data}}{{$t := $e.Task}}{{$csrf := .Session.CSRFToken}}
-<a class="back" href="/tasks">{{icon "arrow-left"}}Tasks</a>
+<a class="back" href="{{if $t.GuildID}}/room/{{$t.GuildID}}/tasks{{else}}/tasks{{end}}">{{icon "arrow-left"}}Tasks</a>
 <div class="page-head">
   <div><span class="eyebrow">{{if $e.New}}New task{{else}}Task{{end}}</span><h1>{{if $t.Name}}{{$t.Name}}{{else}}Untitled task{{end}}</h1></div>
   {{if not $e.New}}

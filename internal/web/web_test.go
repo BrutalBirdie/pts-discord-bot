@@ -30,14 +30,20 @@ func testServer(t *testing.T) *Server {
 }
 
 func room(view string, ch bot.Channel, more func(*roomData)) roomData {
-	mira := bot.Member{ID: "9", Name: "Mira", Username: "mira", VoiceID: "2", Voice: "Lounge", Status: "idle", Mobile: true, Color: "#1f8b4c", Group: "Herrscher"}
-	d := roomData{Guilds: []bot.Guild{{ID: "1", Name: "PTS Server"}}, Guild: bot.Guild{ID: "1", Name: "PTS Server", BotVoice: "Lounge", Self: bot.Member{Name: "PTS Bot"}},
-		Text:  []roomChannel{{Channel: bot.Channel{ID: "4", Name: "general", Usable: true}, Tasks: 1}},
-		Voice: []roomChannel{{Channel: bot.Channel{ID: "2", Name: "Lounge", Voice: true, Usable: true, HasBot: true, People: []bot.Member{mira}}, Tasks: 1}},
-		View:  view, Channel: ch, Self: "/room/1?c=" + ch.ID, MGroups: []memberGroup{{Name: "Herrscher", Members: []bot.Member{mira}}}, MPage: 1, Paging: paging{Page: 1},
-		Tasks: []tasks.Task{{ID: 3, Name: "Adhan", Trigger: tasks.Trigger{Kind: tasks.Manual}}}}
+	d := roomData{Guild: bot.Guild{ID: "1", Name: "PTS Server", BotVoice: "Lounge", Self: bot.Member{Name: "PTS Bot"}},
+		View: view, Channel: ch, Self: "/room/1?c=" + ch.ID, Paging: paging{Page: 1},
+		Tasks: []taskRow{{Task: tasks.Task{ID: 3, Name: "Adhan", Trigger: tasks.Trigger{Kind: tasks.Daily, Times: []string{"05:00"}}}}}}
 	more(&d)
 	return d
+}
+
+// roomShell is the frame the room page of the test gets, with the server's channels and members.
+func roomShell(d roomData) *shell {
+	mira := bot.Member{ID: "9", Name: "Mira", Username: "mira", VoiceID: "2", Voice: "Lounge", Status: "idle", Mobile: true, Color: "#1f8b4c", Group: "Herrscher"}
+	return &shell{Guilds: []bot.Guild{{ID: "1", Name: "PTS Server"}}, Guild: d.Guild, Path: d.Self, Channel: d.Channel.ID, Member: d.Member.ID,
+		Text:    []roomChannel{{Channel: bot.Channel{ID: "4", Name: "general", Usable: true}, Tasks: 1}},
+		Voice:   []roomChannel{{Channel: bot.Channel{ID: "2", Name: "Lounge", Voice: true, Usable: true, HasBot: true, People: []bot.Member{mira}}, Tasks: 1}},
+		Members: true, MGroups: []memberGroup{{Name: "Herrscher", Members: []bot.Member{mira}}}, MPage: 1}
 }
 
 func TestPagesRender(t *testing.T) {
@@ -71,11 +77,11 @@ func TestPagesRender(t *testing.T) {
 			Playing: []playingView{{P: bot.Playing{GuildID: "1", Name: "muezzin.ogg", Channel: "prayer", Started: now, Duration: time.Minute}, CSRF: "tok", Next: "/"}}},
 			[]string{"Adhan", "Missing Access", `action="/servers/1/stop"`, "muezzin.ogg", "of 2 runs"}},
 		{"servers", serversData{Guilds: []bot.Guild{{ID: "1", Name: "PTS Server", MemberCount: 12, Voice: 2, Text: 3, Problems: 1, Missing: []string{"Change Nickname"}}}, InviteURL: "https://discord.com/oauth2/authorize?client_id=1"},
-			[]string{`href="/servers/1"`, ">PS<", `data-sortable="/servers/order"`, `data-sort-id="1"`, `name="move" value="1"`, "1 channel without access", "client_id=1", "lacks Change Nickname"}},
-		{"server", serverData{Guild: bot.Guild{ID: "1", Name: "PTS", Missing: []string{"Speak", "Change Nickname"}}, Invite: "https://discord.com/oauth2/authorize?client_id=1", Tab: "channels", Voice: []bot.Channel{{ID: "2", Name: "prayer", Voice: true, Usable: true, HasBot: true, InVoice: []string{"Amira"}}},
-			Text: []bot.Channel{{ID: "4", Name: "rules", Problem: "The bot needs View Channel and Send Messages here."}}, Sounds: []store.Media{sound}},
-			[]string{`id="sheet-play-2"`, "Bot and Amira connected", "read only", `value="5"`, "The bot lacks these server permissions: Speak, Change Nickname.", "client_id=1"}},
-		{"tasks", tasksData{Rows: []taskRow{{Task: adhan, Guild: "PTS", What: "Join prayer", Next: &now, Last: &runs[0]}}, Counts: map[string]int{"": 1, "active": 1}},
+			[]string{`href="/room/1"`, ">PS<", `data-sortable="/servers/order"`, `data-sort-id="1"`, `name="move" value="1"`, "1 channel without access", "client_id=1", "lacks Change Nickname"}},
+		{"server", serverData{Guild: bot.Guild{ID: "1", Name: "PTS", Missing: []string{"Speak", "Change Nickname"}}, Invite: "https://discord.com/oauth2/authorize?client_id=1",
+			Locked: []bot.Channel{{ID: "4", Name: "rules", Problem: "The bot needs View Channel and Send Messages here."}}},
+			[]string{"rules", "The bot needs View Channel and Send Messages here.", "The bot lacks these server permissions: Speak, Change Nickname.", "client_id=1", `id="invite"`}},
+		{"tasks", tasksData{Guild: bot.Guild{ID: "1", Name: "PTS"}, Rows: []taskRow{{Task: adhan, Guild: "PTS", What: "Join prayer", Next: &now, Last: &runs[0]}}, Counts: map[string]int{"": 1, "active": 1}},
 			[]string{"Daily 05:00, 16:35", `action="/tasks/3/pause"`, "Active 1"}},
 		{"task", taskEditor{Task: adhan, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, TimesText: "05:00 16:35",
 			Voice: []bot.Channel{{ID: "2", Name: "prayer", Voice: true}}, Text: []bot.Channel{{ID: "44", Name: "general"}}, Labels: map[string]string{"9": "Amira (@amira)"},
@@ -106,14 +112,14 @@ func TestPagesRender(t *testing.T) {
 			`id="sheet-sound"`, `action="/media/5/sound"`, `href="/room/1?c=2" class="tag-back"`, `href="/room/1?c=2" aria-current="page" aria-label="fun, picked, 3 sounds" data-menu="menu-tag-0"`,
 			`<span class="tface" aria-hidden="true">🎉</span><span>fun</span><span class="badge">3</span>`, `href="/room/1?c=2&amp;tag=fun&amp;tag=loud" aria-label="loud, 1 sound with the picked tags"`, `id="sheet-tag"`, `action="/tags/look"`, `name="tag" value="fun"`, `data-tokens="tag"`, `name="trim_start" min="0" step="0.01" value="1.50"`, `name="trim_end" min="0" step="0.01" value="225.00"`, `name="own_volume" checked`,
 			`src="https://cdn.discordapp.com/emojis/123456789012345678.png?size=48"`, `data-emoji-picker="[{&#34;ID&#34;:&#34;123456789012345678&#34;`, `data-start="0" data-end="0"`,
-			`href="/tasks/new?guild=1&amp;join=2&amp;play=5"`, "Tasks in Lounge", `action="/tasks/3/run"`, `action="/tasks/3/resume"`, `data-preview-volume`, `data-play-volume`, `data-members="1" data-navigate="/room/1?m="`, "Herrscher — <span data-count>1</span>", `<span class="mava idle mobile" title="Away">`, `aria-label="Away on a phone"`, `data-color="#1f8b4c"`, `href="/room/1?c=2&amp;edit=5#sheet-sound"`}},
+			`href="/tasks/new?guild=1&amp;join=2&amp;play=5"`, "Tasks in Lounge", `action="/tasks/3/run"`, `action="/tasks/3/resume"`, `data-preview-volume`, `data-play-volume`, `data-members="1" data-navigate="/room/1?m="`, "Herrscher · <span data-count>1</span>", `<span class="mava idle mobile" title="Away">`, `aria-label="Away on a phone"`, `data-color="#1f8b4c"`, `href="/room/1?c=2&amp;edit=5#sheet-sound"`}},
 		{"room", room("text", bot.Channel{ID: "4", Name: "general", Usable: true}, func(d *roomData) {
 			d.Messages = []messages.Message{msg}
 		}), []string{`action="/room/1/send"`, `name="channel" value="4"`, `<option value="7">Friday</option>`, "Tasks that use #general", `href="/tasks/new?guild=1&amp;post=4"`}},
 		{"room", room("member", bot.Channel{}, func(d *roomData) {
 			d.Member = bot.Member{ID: "9", Name: "Mira", Username: "mira", VoiceID: "2", Voice: "Lounge"}
 			d.Greets = []tasks.Task{adhan, adhan}
-			d.Running = map[int64]int64{3: 77}
+			d.Tasks[0].Run = 77
 		}), []string{"@mira · in Lounge", "2 tasks start when Mira joins", `name="member" value="9"`, `href="/tasks/new?guild=1&amp;member=9"`, `action="/runs/77/stop"`, `<span class="chip accent">running</span>`, "Tasks that leave Mira out"}},
 		{"admin", adminData{Tab: "overview", Admins: []string{"ann"}, Groups: []string{"bot-admins"}}, []string{"BOT_ADMIN_GROUP", "bot-admins"}},
 		{"admin", adminData{Tab: "settings", Settings: store.DefaultSettings, Timezones: commonTimezones}, []string{`name="max_play_minutes" value="10"`, `value="Europe/Berlin"`}},
@@ -123,7 +129,11 @@ func TestPagesRender(t *testing.T) {
 		req := httptest.NewRequest("GET", "/?done=saved", nil)
 		req = req.WithContext(context.WithValue(req.Context(), ctxKey{}, admin))
 		rec := httptest.NewRecorder()
-		s.render(rec, req, http.StatusOK, p.name, p.data)
+		if d, ok := p.data.(roomData); ok && d.Guild.ID != "" {
+			s.execute(rec, req, http.StatusOK, p.name, pageData{Session: admin, Prefs: store.DefaultPrefs, Notice: "Saved.", Data: d, Shell: roomShell(d)})
+		} else {
+			s.render(rec, req, http.StatusOK, p.name, p.data)
+		}
 		body := rec.Body.String()
 		if !strings.Contains(body, "</html>") {
 			t.Errorf("%s: incomplete page:\n%s", p.name, body)
@@ -669,9 +679,9 @@ func TestListSearchAndPager(t *testing.T) {
 		{"media", "/media?q=nope", mediaData{Counts: map[string]int{}, Paging: paged("/media?q=nope")}, []string{`Nothing matches "nope".`}},
 		{"messages", "/messages?page=2", messagesData{Paging: paged("/messages?page=2")}, []string{`aria-label="Search messages"`, `href="/messages" rel="prev"`, "No saved messages yet."}},
 		{"messages", "/messages?q=fri", messagesData{Paging: paged("/messages?q=fri")}, []string{`Nothing matches "fri".`}},
-		{"tasks", "/tasks?filter=manual", tasksData{Filter: "manual", Counts: map[string]int{}, Rows: []taskRow{{Task: task}}, Paging: more(paged("/tasks?filter=manual", "filter", "manual"))},
+		{"tasks", "/tasks?filter=manual", tasksData{Guild: bot.Guild{ID: "1", Name: "PTS"}, Filter: "manual", Counts: map[string]int{}, Rows: []taskRow{{Task: task}}, Paging: more(paged("/tasks?filter=manual", "filter", "manual"))},
 			[]string{`<input type="hidden" name="filter" value="manual">`, `href="/tasks?filter=manual&amp;page=2" rel="next"`, `href="/tasks?filter=paused"`, `>Next<`}},
-		{"tasks", "/tasks?q=zz", tasksData{Counts: map[string]int{}, Paging: paged("/tasks?q=zz")}, []string{`Nothing matches "zz".`}},
+		{"tasks", "/tasks?q=zz", tasksData{Guild: bot.Guild{ID: "1", Name: "PTS"}, Counts: map[string]int{}, Paging: paged("/tasks?q=zz")}, []string{`Nothing matches "zz".`}},
 		{"trash", "/trash?kind=task&q=ann&page=2", trashData{Kind: "task", Counts: map[string]int{}, Paging: func() paging {
 			p := paged("/trash?kind=task&q=ann&page=2", "kind", "task")
 			p.Dated = true
@@ -680,8 +690,6 @@ func TestListSearchAndPager(t *testing.T) {
 			[]string{`aria-label="Search the trash"`, `<input type="hidden" name="kind" value="task">`, `href="/trash?kind=task&amp;q=ann" rel="prev"`, `>Newer<`, `Nothing matches "ann".`}},
 		{"servers", "/servers?q=pts", serversData{Guilds: []bot.Guild{{ID: "1", Name: "PTS"}}, Paging: more(paged("/servers?q=pts"))},
 			[]string{`aria-label="Search servers"`, `href="/servers?page=2&amp;q=pts" rel="next"`}},
-		{"server", "/servers/1?tab=tasks&page=2", serverData{Guild: bot.Guild{ID: "1", Name: "PTS"}, Tab: "tasks", Tasks: []tasks.Task{task}, Paging: paged("/servers/1?tab=tasks&page=2", "tab", "tasks")},
-			[]string{`<input type="hidden" name="tab" value="tasks">`, `href="/servers/1?tab=tasks" rel="prev"`, `href="/tasks/3"`}},
 		{"dashboard", "/", dashboardData{Upcoming: []upcoming{{Task: task}}, MoreSoon: true}, []string{`href="/tasks?filter=active">Show all active tasks`}},
 	}
 	for _, c := range cases {

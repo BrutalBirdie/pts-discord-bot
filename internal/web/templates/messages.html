@@ -1,15 +1,17 @@
 {{define "content"}}
 {{$d := .Data}}
 <div class="page-head">
-  <div><span class="eyebrow">Content</span><h1>Messages</h1></div>
-  <div class="btns"><a class="ib primary with-label" href="/messages/new">{{icon "plus"}}<span class="lbl">New message</span></a></div>
+  <h1 class="with-icon">{{icon "message-square"}}Messages</h1>
+  <div class="btns"><a class="ib primary with-label" href="/messages/new{{with $d.Guild.ID}}?guild={{.}}{{end}}">{{icon "plus"}}<span class="lbl">New message</span></a></div>
 </div>
 {{template "search" (dict "P" $d.Paging "Label" "Search messages" "Placeholder" "Name or text")}}
 <div class="contents" data-live="list" data-live-list>
-{{template "groupfilter" (dict "P" $d.Paging "Groups" $d.Groups "Group" $d.Group)}}
+{{if not $d.Guild.ID}}{{template "groupfilter" (dict "P" $d.Paging "Groups" $d.Groups "Group" $d.Group)}}{{end}}
 <section class="card">
   <ul class="list">
-    {{range $d.Rows}}{{$m := .Message}}
+    {{range $i, $_ := $d.Rows}}{{$m := .Message}}
+    {{if and $d.Guild.ID (eq $i 0) (ne $d.Split 0)}}<li class="list-head">{{icon "server"}}{{$d.Guild.Name}}</li>{{end}}
+    {{if and $d.Guild.ID (eq $i $d.Split)}}<li class="list-head">{{icon "message-square"}}Other servers and no group</li>{{end}}
     <li class="link-row">
       <a class="rowlink with-lead" href="/messages/{{$m.ID}}">
         {{icon "message-square"}}

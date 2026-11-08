@@ -1,6 +1,6 @@
 {{define "content"}}
 {{$e := .Data}}{{$m := $e.Message}}{{$csrf := .Session.CSRFToken}}
-<a class="back" href="/messages">{{icon "arrow-left"}}Messages</a>
+<a class="back" href="{{$e.Back}}">{{icon "arrow-left"}}Messages</a>
 <div class="page-head">
   <div><span class="eyebrow">{{if $e.New}}New message{{else}}Saved message{{end}}</span><h1>{{if $m.Name}}{{$m.Name}}{{else}}Untitled message{{end}}</h1></div>
   {{if not $e.New}}

@@ -37,6 +37,7 @@ type dashboardData struct {
 	Failed24h int
 	Runs24h   int
 	Playing   []playingView
+	Attention []taskRow // tasks paused after an error
 }
 
 func (s *Server) playingViews(r *http.Request) []playingView {
@@ -71,7 +72,11 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		d.Members += g.Cached
 	}
 	now := time.Now()
+	var broken []tasks.Task
 	for _, t := range list {
+		if t.PausedReason != "" {
+			broken = append(broken, t)
+		}
 		if !t.Enabled {
 			d.Paused++
 			continue
@@ -102,6 +107,10 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	day.Status = store.RunFailed
 	if d.Failed24h, err = s.store.CountRuns(ctx, day); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	if d.Attention, err = s.taskRows(r, broken, true); err != nil {
 		s.internalError(w, r, err)
 		return
 	}

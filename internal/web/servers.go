@@ -10,9 +10,7 @@ import (
 	"time"
 
 	"github.com/BrutalBirdie/pts-discord-bot/internal/bot"
-	"github.com/BrutalBirdie/pts-discord-bot/internal/media"
 	"github.com/BrutalBirdie/pts-discord-bot/internal/store"
-	"github.com/BrutalBirdie/pts-discord-bot/internal/tasks"
 )
 
 type serversData struct {
@@ -53,18 +51,12 @@ func (s *Server) refreshServers(w http.ResponseWriter, r *http.Request) {
 }
 
 type serverData struct {
-	Guild    bot.Guild
-	Tab      string
-	Channels []bot.Channel
-	Text     []bot.Channel
-	Voice    []bot.Channel
-	Tasks    []tasks.Task
-	Sounds   []store.Media
-	Playing  []playingView
-	Paging   paging // of the tasks tab
-	Invite   string
+	Guild  bot.Guild
+	Locked []bot.Channel // channels the bot cannot use
+	Invite string
 }
 
+// server shows the settings of a server: missing permissions, channels the bot cannot use and the invite link.
 func (s *Server) server(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r)
 	g, ok := s.bot.Guild(r.PathValue("id"))
@@ -72,47 +64,17 @@ func (s *Server) server(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	d := serverData{Guild: g, Tab: r.URL.Query().Get("tab"), Paging: newPaging(r), Invite: s.bot.InviteURL()}
-	for _, p := range s.playingViews(r) {
-		if p.P.GuildID == g.ID {
-			d.Playing = append(d.Playing, p)
+	if r.URL.Query().Get("tab") == "tasks" {
+		http.Redirect(w, r, "/room/"+g.ID+"/tasks", http.StatusSeeOther)
+		return
+	}
+	d := serverData{Guild: g, Invite: s.bot.InviteURL()}
+	for _, c := range s.bot.Channels(g.ID) {
+		if !c.Usable {
+			d.Locked = append(d.Locked, c)
 		}
 	}
-	switch d.Tab {
-	case "tasks":
-		list, err := s.store.ListTasks(r.Context(), store.GuildScope(g.ID))
-		if err != nil {
-			s.internalError(w, r, err)
-			return
-		}
-		d.Paging.Keep("tab", d.Tab)
-		for _, t := range list {
-			if t.GuildID == g.ID && d.Paging.Matches(t.Name) {
-				d.Tasks = append(d.Tasks, t)
-			}
-		}
-		d.Tasks = window(&d.Paging, d.Tasks)
-	default:
-		d.Tab = "channels"
-		for _, c := range s.bot.Channels(g.ID) {
-			if c.Voice {
-				d.Voice = append(d.Voice, c)
-			} else {
-				d.Text = append(d.Text, c)
-			}
-		}
-		sounds, err := s.store.ListMedia(r.Context(), g.ID, "")
-		if err != nil {
-			s.internalError(w, r, err)
-			return
-		}
-		for _, m := range sounds {
-			if media.HasAudio(m) {
-				d.Sounds = append(d.Sounds, m)
-			}
-		}
-	}
-	s.render(w, r, http.StatusOK, "server", d)
+	s.render(w, at(r, place{Guild: g.ID, Section: "settings"}), http.StatusOK, "server", d)
 }
 
 type memberHit struct {

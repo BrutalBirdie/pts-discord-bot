@@ -1,12 +1,13 @@
 {{define "content"}}
 {{$d := .Data}}{{$csrf := .Session.CSRFToken}}
 <div class="page-head">
-  <div><span class="eyebrow">Automation</span><h1>Tasks</h1></div>
-  <div class="btns"><a class="ib primary with-label" href="/tasks/new">{{icon "plus"}}<span class="lbl">New task</span></a></div>
+  <h1 class="with-icon">{{icon "calendar"}}Tasks</h1>
+  {{if $d.Guild.ID}}<div class="btns"><a class="ib primary with-label" href="/tasks/new?guild={{$d.Guild.ID}}">{{icon "plus"}}<span class="lbl">New task</span></a></div>{{end}}
 </div>
 
 {{$p := $d.Paging}}
-{{template "search" (dict "P" $p "Label" "Search tasks" "Placeholder" "Task name")}}
+{{if $d.Guild.ID}}
+{{template "search" (dict "P" $p "Label" (print "Search the tasks of " $d.Guild.Name) "Placeholder" "Task name")}}
 <div class="contents" data-live="list" data-live-list>
 <div class="pills">
   <a href="{{$p.With "" ""}}"{{if not $d.Filter}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
@@ -17,40 +18,16 @@
 
 <section class="card">
   <ul class="list">
-    {{range $d.Rows}}{{$t := .Task}}
-    <li>
-      <div class="row-main">
-        <div class="row-title"><a href="/tasks/{{$t.ID}}">{{$t.Name}}</a>
-          {{if $t.Enabled}}{{if eq $t.Trigger.Kind "manual"}}<span class="chip">manual only</span>{{else}}<span class="chip ok">active</span>{{end}}{{else if $t.PausedReason}}<span class="chip danger">{{icon "circle-x"}}paused after error</span>{{else}}<span class="chip">paused</span>{{end}}</div>
-        <div class="meta">
-          {{if ne $t.Trigger.Kind "manual"}}<span class="chip">{{icon "clock"}}{{$t.Trigger.Summary}}</span>{{end}}
-          <span class="chip">{{if $t.UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}{{.Guild}}</span>
-          {{if $t.Slash}}<span class="chip accent">/task</span>{{end}}
-        </div>
-        <div class="row-sub">{{.What}}{{with .Next}} · next {{when .}}{{end}}{{with .Last}} · last run {{when .StartedAt}} {{template "runchip" .}}{{else}} · never ran{{end}}</div>
-        {{with $t.PausedReason}}<div class="callout danger">{{icon "circle-x"}}<span>{{.}} Fix it and save the task, or resume it.</span></div>{{end}}
-      </div>
-      <div class="btns">
-        <form method="post" action="/tasks/{{$t.ID}}/run" data-fetch data-done="Started {{$t.Name}}."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
-          {{if $t.NeedsMember}}<button type="button" class="ib" aria-disabled="true" aria-label="Run {{$t.Name}} now, not possible: a step uses the member who started the run" data-tip="Only its event or /task can start it">{{icon "play"}}<span class="lbl">Run now</span></button>
-          {{else}}<button type="submit" class="ib" aria-label="Run {{$t.Name}} now" data-tip="Run now">{{icon "play"}}<span class="lbl">Run now</span></button>{{end}}</form>
-        {{if ne $t.Trigger.Kind "manual"}}
-        {{if $t.Enabled}}
-        <form method="post" action="/tasks/{{$t.ID}}/pause" data-fetch data-done="Paused {{$t.Name}}."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
-          <button type="submit" class="ib" aria-label="Pause {{$t.Name}}" data-tip="Pause">{{icon "pause"}}<span class="lbl">Pause</span></button></form>
-        {{else}}
-        <form method="post" action="/tasks/{{$t.ID}}/resume" data-fetch data-done="{{$t.Name}} is active again."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="/tasks">
-          <button type="submit" class="ib" aria-label="Resume {{$t.Name}}" data-tip="Resume">{{icon "clock"}}<span class="lbl">Resume</span></button></form>
-        {{end}}{{end}}
-        <a class="ib" href="/tasks/{{$t.ID}}" aria-label="Edit {{$t.Name}}" data-tip="Edit">{{icon "pencil"}}<span class="lbl">Edit</span></a>
-      </div>
-    </li>
+    {{range $d.Rows}}{{template "taskrow" (dict "R" . "CSRF" $csrf "Next" $p.Self)}}
     {{else}}
-    <li>{{if $p.Query}}{{template "nomatch" $p.Query}}{{else}}<span class="muted">{{if $d.Filter}}No tasks match.{{else}}No tasks yet. A task joins a voice channel, plays sounds or sends messages, on a schedule or when you start it.{{end}}</span>{{end}}</li>
+    <li>{{if $p.Query}}{{template "nomatch" $p.Query}}{{else}}<span class="muted">{{if $d.Filter}}No tasks match.{{else}}No tasks in {{$d.Guild.Name}} yet. A task joins a voice channel, plays sounds or sends messages, on a schedule or when you start it.{{end}}</span>{{end}}</li>
     {{end}}
   </ul>
   {{template "pager" $p}}
 </section>
 </div>
 <p class="hint">Times are in each task's timezone. Runs missed while the app was down are not repeated, they show up as skipped.</p>
+{{else}}
+<section class="card stack"><p>Tasks belong to a server. <a href="/servers">Add the bot to a server</a> first.</p></section>
+{{end}}
 {{end}}

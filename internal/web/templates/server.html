@@ -1,105 +1,36 @@
 {{define "content"}}
-{{$d := .Data}}{{$g := $d.Guild}}{{$csrf := .Session.CSRFToken}}
-<a class="back" href="/servers">{{icon "arrow-left"}}Servers</a>
+{{$d := .Data}}{{$g := $d.Guild}}
 <div class="contents" data-live="shead">
 <div class="page-head">
   <div class="person">
-    <span class="guild big">{{$g.Initials}}</span>
-    <div><h1>{{$g.Name}}</h1><span class="small muted mono">{{$g.ID}}</span></div>
+    <span class="rail-g big" aria-hidden="true">{{if $g.Icon}}<img src="{{$g.Icon}}" alt="" width="64" height="64" referrerpolicy="no-referrer">{{else}}{{$g.Initials}}{{end}}</span>
+    <div><span class="eyebrow">Server settings</span><h1>{{$g.Name}}</h1><span class="small muted mono">{{$g.ID}}</span></div>
   </div>
-  <div class="btns">
-    {{if $g.BotVoice}}
-    <form method="post" action="/servers/{{$g.ID}}/leave" data-fetch data-done="Leaving the voice channel.">{{template "csrf" $}}
-      <button type="submit" class="ib" aria-label="Leave {{$g.BotVoice}}" data-tip="Leave {{$g.BotVoice}}">{{icon "log-out"}}<span class="lbl">Leave voice</span></button>
-    </form>
-    {{end}}
-    <a class="ib primary with-label" href="/tasks/new?guild={{$g.ID}}">{{icon "calendar"}}<span class="lbl">New task here</span></a>
-  </div>
+  <div class="btns"><a class="ib with-label" href="/room/{{$g.ID}}">{{icon "x"}}<span class="lbl">Close</span></a></div>
 </div>
 <div class="meta">
   {{if $g.BotVoice}}<span class="chip accent">{{icon "volume-2"}}bot in {{$g.BotVoice}}</span>{{end}}
   <span class="chip">{{icon "users"}}{{$g.MemberCount}} members</span>
 </div>
-{{with $g.Missing}}<div class="callout warn">{{icon "triangle-alert"}}<div><span>The bot lacks these server permissions: {{join . ", "}}. Steps that need them fail.{{if $g.MissingNick}} Change Nickname is needed by Change profile steps that set a nickname.{{end}} Give the bot's role these permissions in the server settings, or add the bot again with the invite link, which asks for all of them.</span>
-  {{with $d.Invite}}<div class="mt">{{template "copybox" (dict "Text" . "Label" "Copy invite link")}}</div>{{end}}</div></div>{{end}}
-{{range $d.Playing}}{{template "playing" .}}{{end}}
+{{with $g.Missing}}<div class="callout warn">{{icon "triangle-alert"}}<span>The bot lacks these server permissions: {{join . ", "}}. Steps that need them fail.{{if $g.MissingNick}} Change Nickname is needed by Change profile steps that set a nickname.{{end}} Give the bot's role these permissions in the server settings in Discord, or add the bot again with the invite link below, which asks for all of them.</span></div>{{end}}
 </div>
 
-<nav class="tabs" aria-label="Server">
-  <a class="tab" href="/servers/{{$g.ID}}"{{if eq $d.Tab "channels"}} aria-current="page"{{end}}>{{icon "hash"}}Channels</a>
-  <a class="tab" href="/servers/{{$g.ID}}?tab=tasks"{{if eq $d.Tab "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}Tasks</a>
-</nav>
-
-{{if eq $d.Tab "channels"}}
-<div class="contents" data-live="schannels">
-<div class="cols2">
-  <section class="card">
-    <div class="sec-head"><h2 class="with-icon">{{icon "volume-2"}}Voice channels</h2><span class="chip">{{len $d.Voice}}</span></div>
-    <ul class="list">
-      {{range $d.Voice}}
-      <li><div class="row-main"><span class="ch">{{if .Usable}}{{icon "volume-2"}}{{else}}{{icon "lock"}}{{end}}{{.Name}}</span>
-          <span class="row-sub">{{with .Category}}{{.}} · {{end}}{{if .Problem}}{{.Problem}}{{else if or .HasBot .InVoice}}{{if .HasBot}}Bot{{if .InVoice}} and {{end}}{{end}}{{with .InVoice}}{{join . ", "}}{{end}} connected{{else}}empty{{end}}</span></div>
-        <div class="btns">
-          {{if .Usable}}<button type="button" class="ib" popovertarget="sheet-play-{{.ID}}" aria-label="Play a sound in {{.Name}}" data-tip="Play a sound in {{.Name}}">{{icon "play"}}<span class="lbl">Play</span></button>
-          {{if not .HasBot}}<form method="post" action="/servers/{{$g.ID}}/join" data-fetch data-done="Joining."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{.ID}}">
-            <button type="submit" class="ib" aria-label="Join {{.Name}}" data-tip="Join {{.Name}}">{{icon "log-in"}}<span class="lbl">Join</span></button></form>{{end}}
-          {{else}}<span class="chip warn">no access</span>{{end}}
-          <button type="button" class="ib quiet copy" data-copy="{{.ID}}" aria-label="Copy channel ID" data-tip="Copy channel ID" hidden>{{icon "copy"}}</button>
-        </div>
-      </li>
-      {{else}}<li><span class="muted">No voice channels.</span></li>{{end}}
-    </ul>
-  </section>
-  <section class="card">
-    <div class="sec-head"><h2 class="with-icon">{{icon "hash"}}Text channels</h2><span class="chip">{{len $d.Text}}</span></div>
-    <ul class="list">
-      {{range $d.Text}}
-      <li><div class="row-main"><span class="ch">{{if .Usable}}{{icon "hash"}}{{else}}{{icon "lock"}}{{end}}{{.Name}}</span>
-          <span class="row-sub">{{with .Category}}{{.}}{{end}}{{if .Problem}}{{if .Category}} · {{end}}{{.Problem}}{{end}}</span></div>
-        <div class="btns">
-          {{if not .Usable}}<span class="chip warn">read only</span>{{end}}
-          <button type="button" class="ib quiet copy" data-copy="{{.ID}}" aria-label="Copy channel ID" data-tip="Copy channel ID" hidden>{{icon "copy"}}</button>
-        </div>
-      </li>
-      {{else}}<li><span class="muted">No text channels.</span></li>{{end}}
-    </ul>
-  </section>
-</div>
-</div>
-{{range $d.Voice}}{{if .Usable}}
-<div popover id="sheet-play-{{.ID}}" class="sheet" aria-labelledby="sheet-play-{{.ID}}-title">
-  {{template "sheethead" (dict "ID" (print "sheet-play-" .ID) "Icon" "volume-2" "Title" "Play in" "Name" .Name)}}
-  <div class="sheet-body">
-    <form method="post" action="/servers/{{$g.ID}}/play" class="form" data-fetch data-done="Playing.">
-      <input type="hidden" name="csrf" value="{{$csrf}}">
-      <input type="hidden" name="channel" value="{{.ID}}">
-      <input type="hidden" name="next" value="/servers/{{$g.ID}}">
-      {{if $d.Sounds}}
-      <label class="field"><span>Sound</span><select name="media">{{range $d.Sounds}}<option value="{{.ID}}">{{.Name}}{{if .DurationMS}} · {{clock .DurationMS}}{{end}}</option>{{end}}</select></label>
-      <label class="switch-row"><span>Leave when finished<small>Off keeps the bot in the channel.</small></span><input type="checkbox" class="switch" name="leave" checked></label>
-      <div class="btns"><button type="submit" class="ib primary with-label">{{icon "play"}}<span class="lbl">Play now</span></button></div>
-      {{else}}
-      <p>No sounds yet. <a href="/media">Upload one</a> first.</p>
-      {{end}}
-    </form>
-  </div>
-</div>
-{{end}}{{end}}
-{{end}}
-
-{{if eq $d.Tab "tasks"}}
-{{template "search" (dict "P" $d.Paging "Label" "Search the tasks of this server" "Placeholder" "Task name")}}
-<div class="contents" data-live="list" data-live-list>
-<section class="card">
+<section class="card" aria-labelledby="locked-title">
+  <div class="sec-head"><h2 id="locked-title">Channels the bot cannot use</h2><span class="chip{{if $d.Locked}} warn{{end}}">{{len $d.Locked}}</span></div>
   <ul class="list">
-    {{range $d.Tasks}}
-    <li class="link-row"><a class="rowlink with-lead" href="/tasks/{{.ID}}">{{if .UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}<span class="row-main"><span class="row-title">{{.Name}} {{if .Enabled}}<span class="chip ok">active</span>{{else if .PausedReason}}<span class="chip danger">paused after error</span>{{else}}<span class="chip">paused</span>{{end}}</span><span class="row-sub">{{.Trigger.Summary}}</span></span><span class="go" aria-hidden="true">{{icon "chevron-right"}}</span></a></li>
-    {{else}}
-    <li>{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}<span class="muted">No tasks for this server. <a href="/tasks/new?guild={{$g.ID}}">Create one</a>.</span>{{end}}</li>
-    {{end}}
+    {{range $d.Locked}}
+    <li><div class="row-main"><span class="ch">{{icon "lock"}}{{.Name}}</span><span class="row-sub">{{with .Category}}{{.}} · {{end}}{{.Problem}}</span></div>
+      <div class="btns"><span class="chip">{{if .Voice}}voice{{else}}text{{end}}</span><button type="button" class="ib quiet copy" data-copy="{{.ID}}" aria-label="Copy channel ID" data-tip="Copy channel ID" hidden>{{icon "copy"}}</button></div></li>
+    {{else}}<li><span class="muted">The bot can use every channel.</span></li>{{end}}
   </ul>
-  {{template "pager" $d.Paging}}
+  {{with $d.Locked}}<p class="hint mt">They are folded under "No access" in the channel list. Give the bot's role access in the channel settings in Discord.</p>{{end}}
 </section>
-</div>
-{{end}}
+
+<section class="card stack" id="invite" aria-labelledby="invite-title">
+  <h2 id="invite-title">Invite link</h2>
+  <p class="small muted">Opens Discord with the permissions the bot needs. Only members with Manage Server can add it. The + on the left shows the same link for a new server.</p>
+  {{with $d.Invite}}{{template "copybox" (dict "Text" . "Label" "Copy invite link")}}
+  <div class="btns"><a class="ib with-label" href="{{.}}" rel="noopener" target="_blank">{{icon "external-link"}}<span class="lbl">Open in Discord</span></a></div>
+  {{else}}<p class="muted">Shown when the bot is connected.</p>{{end}}
+</section>
 {{end}}

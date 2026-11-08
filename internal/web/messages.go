@@ -20,14 +20,35 @@ type messageRow struct {
 }
 
 type messagesData struct {
+	Guild  bot.Guild // the open server, its messages come first
+	Split  int       // the first row of another server, -1 when all are of the open one
 	Rows   []messageRow
 	Groups []bot.Guild
 	Group  string // list filter: a server, store.NoGroup or "" for all
 	Paging paging
 }
 
+// messagesList lists the saved messages of a server first, then the others.
+// /messages opens the server of ?server, else the user's first.
 func (s *Server) messagesList(w http.ResponseWriter, r *http.Request) {
-	d := messagesData{Paging: newPaging(r), Group: r.URL.Query().Get("server")}
+	d := messagesData{Paging: newPaging(r), Group: r.URL.Query().Get("server"), Split: -1}
+	if id := r.PathValue("id"); id == "" {
+		if g, ok := s.serverOf(r); ok {
+			q := r.URL.Query()
+			q.Del("server")
+			http.Redirect(w, r, withQuery("/room/"+g.ID+"/messages", q.Encode()), http.StatusSeeOther)
+			return
+		}
+		r = at(r, place{Section: "messages"})
+	} else {
+		g, ok := s.bot.Guild(id)
+		if !ok || !sessionFrom(r).CanGuild(id) {
+			s.notFound(w, r)
+			return
+		}
+		d.Guild, d.Group = g, ""
+		r = at(r, place{Guild: g.ID, Section: "messages", Members: true})
+	}
 	d.Paging.Keep("server", d.Group)
 	sc := sessionFrom(r).Scope()
 	var err error
@@ -35,7 +56,7 @@ func (s *Server) messagesList(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	list, err := s.store.FindMessages(r.Context(), store.MessageQuery{Group: d.Group, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
+	list, err := s.store.FindMessages(r.Context(), store.MessageQuery{Offer: d.Guild.ID, Group: d.Group, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -45,6 +66,9 @@ func (s *Server) messagesList(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.internalError(w, r, err)
 			return
+		}
+		if d.Guild.ID != "" && d.Split < 0 && m.GuildID != d.Guild.ID {
+			d.Split = len(d.Rows)
 		}
 		d.Rows = append(d.Rows, messageRow{Message: m, Guild: s.ownerName(m.GuildID), UsedBy: used, UsedElse: others})
 	}
@@ -60,6 +84,7 @@ type guildChannels struct {
 }
 
 type messageEditor struct {
+	Back       string // the list of messages of the open server
 	Message    messages.Message
 	New        bool
 	Problems   []string
@@ -214,13 +239,23 @@ func (s *Server) renderMessage(w http.ResponseWriter, r *http.Request, status in
 		return
 	}
 	e.Problems, e.Unsaved, e.SendError = problems, unsaved, sendErr
-	s.render(w, r, status, "message", e)
+	pl := place{Section: "messages"}
+	if _, ok := s.bot.Guild(m.GuildID); ok && sessionFrom(r).CanGuild(m.GuildID) {
+		pl.Guild = m.GuildID
+	} else if g, ok := s.serverOf(r); ok {
+		pl.Guild = g.ID
+	}
+	e.Back = "/messages"
+	if pl.Guild != "" {
+		e.Back = "/room/" + pl.Guild + "/messages"
+	}
+	s.render(w, at(r, pl), status, "message", e)
 }
 
 func (s *Server) newMessage(w http.ResponseWriter, r *http.Request) {
 	m := messages.Message{Embeds: []messages.Embed{}}
-	if sessionFrom(r).Discord() {
-		m.GuildID = s.defaultGuild(r, r.URL.Query().Get("guild"))
+	if want := r.URL.Query().Get("guild"); want != "" || sessionFrom(r).Discord() {
+		m.GuildID = s.defaultGuild(r, want)
 	}
 	s.renderMessage(w, r, http.StatusOK, m, true, nil, false, "")
 }

@@ -1,0 +1,156 @@
+{{define "homeside"}}{{$sh := .Shell}}
+<div class="side-head"><h2 id="side-title">Home</h2><button type="button" class="ib quiet drawer-close" popovertarget="app-side" popovertargetaction="hide" aria-label="Close" data-tip="Close">{{icon "x"}}</button></div>
+<div class="side-body">
+  <ul class="chs">
+    <li class="chrow"><a href="/"{{if eq $sh.Section "overview"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span class="nm">Overview</span></a></li>
+    {{if not $sh.Guilds}}
+    <li class="chrow"><a href="/messages"{{if eq $sh.Section "messages"}} aria-current="page"{{end}}>{{icon "message-square"}}<span class="nm">Messages</span></a></li>
+    <li class="chrow"><a href="/media"{{if eq $sh.Section "media"}} aria-current="page"{{end}}>{{icon "image"}}<span class="nm">Media</span></a></li>
+    {{end}}
+    <li class="chrow"><a href="/trash"{{if eq $sh.Section "trash"}} aria-current="page"{{end}}>{{icon "trash-2"}}<span class="nm">Trash</span>{{with $.Trash}}<span class="badge" aria-label="{{.}} items">{{.}}</span>{{end}}</a></li>
+  </ul>
+  <p class="hint">{{if $sh.Guilds}}Your servers are on the left. Open one for its channels, tasks, messages and media.{{else}}The bot is in no server you may manage yet. The + on the left adds it to one.{{end}}</p>
+</div>
+{{end}}
+
+{{define "serverside"}}{{$sh := .Shell}}{{$g := $sh.Guild}}{{$csrf := .Session.CSRFToken}}
+<div class="side-head">
+  <button type="button" class="server-menu" popovertarget="menu-server" aria-label="{{$g.Name}}, server menu"><h2 id="side-title" title="{{$g.Name}}">{{$g.Name}}</h2>{{icon "chevron-down"}}</button>
+  <button type="button" class="ib quiet drawer-close" popovertarget="app-side" popovertargetaction="hide" aria-label="Close" data-tip="Close">{{icon "x"}}</button>
+  <div popover id="menu-server" class="menu" role="menu" aria-label="{{$g.Name}}">
+    <span class="menu-title">{{$g.Name}}</span>
+    <a role="menuitem" href="/servers/{{$g.ID}}">{{icon "settings"}}Server settings</a>
+    <a role="menuitem" href="/servers/{{$g.ID}}#invite">{{icon "user-plus"}}Invite the bot</a>
+    <a role="menuitem" href="/tasks/new?guild={{$g.ID}}">{{icon "plus"}}Create task</a>
+    {{if not $.Session.Discord}}<form method="post" action="/servers/refresh" data-fetch data-done="Members requested from Discord."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$sh.Path}}">
+      <button type="submit" role="menuitem">{{icon "refresh-cw"}}Reload members</button></form>{{end}}
+    <hr>
+    <button type="button" role="menuitem" class="copy" data-copy="{{$g.ID}}" hidden>{{icon "copy"}}Copy server ID</button>
+  </div>
+</div>
+<div class="side-body" data-live="channels">
+  <ul class="chs">
+    <li class="chrow"><a href="{{$sh.In "tasks"}}"{{if eq $sh.Section "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span class="nm">Tasks</span>{{with $sh.TaskCount}}<span class="badge" aria-label="{{.}} tasks">{{.}}</span>{{end}}</a></li>
+    <li class="chrow"><a href="{{$sh.In "messages"}}"{{if eq $sh.Section "messages"}} aria-current="page"{{end}}>{{icon "message-square"}}<span class="nm">Messages</span></a></li>
+    <li class="chrow"><a href="{{$sh.In "media"}}"{{if eq $sh.Section "media"}} aria-current="page"{{end}}>{{icon "image"}}<span class="nm">Media</span></a></li>
+  </ul>
+  {{with $sh.Text}}<span class="eyebrow">Text channels</span>
+  <ul class="chs">
+    {{range .}}
+    <li class="chrow" data-menu="menu-c{{.ID}}">
+      <a href="{{$sh.URL "c" .ID}}"{{if .Current}} aria-current="page"{{end}}>{{if .Usable}}{{icon "hash"}}{{else}}{{icon "lock"}}{{end}}<span class="nm">{{.Name}}</span>{{with .Tasks}}<span class="badge" aria-label="{{.}} tasks">{{.}}</span>{{end}}</a>
+      <button type="button" class="more" popovertarget="menu-c{{.ID}}" aria-label="More for #{{.Name}}">{{icon "more"}}</button>
+      <div popover id="menu-c{{.ID}}" class="menu" role="menu" aria-label="#{{.Name}}">
+        <span class="menu-title">#{{.Name}}</span>
+        <a role="menuitem" href="{{$sh.URL "c" .ID}}">{{icon "send"}}Send a quick message</a>
+        <a role="menuitem" href="{{$sh.URL "c" .ID}}#tasks">{{icon "calendar"}}Show tasks ({{.Tasks}})</a>
+        <a role="menuitem" href="/tasks/new?guild={{$g.ID}}&amp;post={{.ID}}">{{icon "plus"}}Create message task here</a>
+        <hr>
+        <button type="button" role="menuitem" class="copy" data-copy="{{.ID}}" hidden>{{icon "copy"}}Copy channel ID</button>
+      </div>
+    </li>
+    {{end}}
+  </ul>{{end}}
+  {{with $sh.Voice}}<span class="eyebrow">Voice channels</span>
+  <ul class="chs">
+    {{range .}}
+    <li class="chrow" data-menu="menu-c{{.ID}}">
+      <a href="{{$sh.URL "c" .ID}}"{{if .Current}} aria-current="page"{{end}}>{{if .Usable}}{{icon "volume-2"}}{{else}}{{icon "lock"}}{{end}}<span class="nm">{{.Name}}</span>{{with .Tasks}}<span class="badge" aria-label="{{.}} tasks">{{.}}</span>{{end}}</a>
+      <button type="button" class="more" popovertarget="menu-c{{.ID}}" aria-label="More for {{.Name}}">{{icon "more"}}</button>
+      <div popover id="menu-c{{.ID}}" class="menu" role="menu" aria-label="{{.Name}}">
+        <span class="menu-title">{{.Name}}</span>
+        {{if .Usable}}{{template "joinleave" (dict "G" $g.ID "C" . "CSRF" $csrf "Next" $sh.Path "Menu" true)}}{{end}}
+        <a role="menuitem" href="{{$sh.URL "c" .ID}}">{{icon "music"}}Open soundboard</a>
+        <a role="menuitem" href="{{$sh.URL "c" .ID}}#tasks">{{icon "calendar"}}Show tasks ({{.Tasks}})</a>
+        <a role="menuitem" href="/tasks/new?guild={{$g.ID}}&amp;join={{.ID}}">{{icon "plus"}}Create task in {{.Name}}</a>
+        <hr>
+        <button type="button" role="menuitem" class="copy" data-copy="{{.ID}}" hidden>{{icon "copy"}}Copy channel ID</button>
+      </div>
+      {{if or .People .HasBot}}
+      <ul class="people">
+        {{range .People}}<li class="chrow person-row" data-menu="menu-v{{.ID}}">
+          <a href="{{$sh.URL "m" .ID}}">{{template "roomava" .}}<span class="nm">{{.Name}}</span></a>
+          {{template "membermenu" (dict "ID" (print "menu-v" .ID) "M" . "D" $sh)}}
+        </li>{{end}}
+        {{if .HasBot}}<li class="chrow person-row"><span class="botrow">{{template "roomava" $g.Self}}<span class="nm">{{with $g.Self.Name}}{{.}}{{else}}PTS Bot{{end}}</span><span class="dtag">APP</span></span></li>{{end}}
+      </ul>
+      {{end}}
+    </li>
+    {{end}}
+  </ul>{{end}}
+  {{with $sh.Locked}}
+  <details class="locked" id="locked">
+    <summary>{{icon "chevron-right"}}{{icon "lock"}}<span>No access · {{len .}}</span></summary>
+    <ul class="chs">{{range .}}<li class="chrow"><a href="{{$sh.URL "c" .ID}}" title="{{.Problem}}">{{if .Voice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}<span class="nm">{{.Name}}</span></a></li>{{end}}</ul>
+    <p class="hint">The bot cannot see or use these channels. Give its role access in the channel settings.</p>
+  </details>
+  {{end}}
+  <p class="hint hint-mouse">Right-click a channel, member or sound for more.</p>
+  <p class="hint hint-touch">The … buttons open more for a channel, member or sound.</p>
+</div>
+<div class="side-voice" data-live="botfoot">{{if $g.BotVoice}}
+  {{icon "volume-2"}}<span class="row-main"><strong>Bot in voice</strong><span class="row-sub">{{$g.BotVoice}}</span></span>
+  <form method="post" action="/servers/{{$g.ID}}/leave" data-fetch data-done="Leaving the voice channel."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$sh.Path}}">
+    <button type="submit" class="ib quiet danger" aria-label="Leave {{$g.BotVoice}}" data-tip="Leave {{$g.BotVoice}}">{{icon "log-out"}}</button></form>
+{{end}}</div>
+{{end}}
+
+{{define "members"}}{{$sh := .Shell}}
+<aside class="app-members sheet" id="app-members" popover aria-labelledby="app-members-title">
+  <div class="room-resize js-only" data-resize="members" role="separator" aria-orientation="vertical" aria-label="Width of the member list" tabindex="0"></div>
+  <div class="side-head">
+    <h2 id="app-members-title">Members</h2>
+    <button type="button" class="ib quiet drawer-close" popovertarget="app-members" popovertargetaction="hide" aria-label="Close" data-tip="Close">{{icon "x"}}</button>
+  </div>
+  <div class="side-body">
+    <form class="search" method="get" action="{{$sh.MAction}}">
+      {{range $k, $v := $sh.MKeep}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
+      <span class="picker"><input type="search" name="mq" value="{{$sh.MQuery}}" placeholder="Search members" aria-label="Search members" autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other" data-members="{{$sh.Guild.ID}}" data-navigate="/room/{{$sh.Guild.ID}}?m="></span>
+    </form>
+    <div class="contents" data-live="members">
+    <div class="mgroups" data-fit-members>
+    {{range $sh.MGroups}}
+    <div class="mgroup">
+    <span class="eyebrow">{{.Name}} · <span data-count>{{len .Members}}</span></span>
+    <ul class="chs">{{range .Members}}<li class="chrow person-row" data-menu="menu-m{{.ID}}">
+      <a href="{{$sh.URL "m" .ID}}"{{if eq .ID $sh.Member}} aria-current="page"{{end}}{{if eq .Status "offline"}} class="off"{{end}}>{{template "memberava" .}}<span class="nm"><span class="who"{{with .Color}} data-color="{{.}}"{{end}}>{{.Name}}</span>{{if .VoiceID}}<small>{{icon "volume-2"}}{{.Voice}}</small>{{else if .Activity}}<small>{{if eq .Doing "playing"}}Playing {{else if eq .Doing "watching"}}Watching {{else if eq .Doing "competing"}}Competing in {{else if eq .Doing "streaming"}}Streaming {{else if eq .Doing "listening"}}{{icon "music"}}{{end}}{{.Activity}}</small>{{end}}</span></a>
+      {{template "membermenu" (dict "ID" (print "menu-m" .ID) "M" . "D" $sh)}}</li>{{end}}</ul>
+    </div>
+    {{else}}<p class="hint">{{if $sh.MQuery}}{{template "nomatch" $sh.MQuery}}{{else if $sh.Presence}}Nobody else is online.{{else}}No members known yet.{{end}}</p>{{end}}
+    </div>
+    <p class="hint" data-more="{{$sh.MHidden}}"{{if not $sh.MHidden}} hidden{{end}}>{{plural $sh.MHidden "more member" "more members"}}, search to find them.</p>
+    </div>
+    {{if or (gt $sh.MPage 1) $sh.MMore}}<nav class="pager" aria-label="Member pages">
+      {{if gt $sh.MPage 1}}<a class="ib sm" href="{{$sh.MPrev}}" aria-label="Previous members" data-tip="Previous">{{icon "chevron-left"}}</a>{{else}}<span></span>{{end}}
+      <span class="hint">Page {{$sh.MPage}}</span>
+      {{if $sh.MMore}}<a class="ib sm" href="{{$sh.MNext}}" aria-label="More members" data-tip="Next">{{icon "chevron-right"}}</a>{{else}}<span></span>{{end}}
+    </nav>{{end}}
+  </div>
+</aside>
+{{end}}
+
+{{define "memberava"}}<span class="mava{{with .Status}} {{.}}{{end}}{{if .Mobile}} mobile{{end}}"{{with .Status}} title="{{statusLabel .}}"{{end}}>{{template "roomava" .}}{{if .Status}}<span class="dot" aria-label="{{statusLabel .Status}}{{if .Mobile}} on a phone{{end}}"></span>{{end}}</span>{{end}}
+
+{{define "roomava"}}{{if .Avatar}}<img class="pava" src="{{.Avatar}}" alt="" width="24" height="24" loading="lazy" referrerpolicy="no-referrer">{{else}}<span class="pava" aria-hidden="true">{{initial .Name}}</span>{{end}}{{end}}
+
+{{define "membermenu"}}{{$m := .M}}{{$d := .D}}
+<button type="button" class="more" popovertarget="{{.ID}}" aria-label="More for {{$m.Name}}">{{icon "more"}}</button>
+<div popover id="{{.ID}}" class="menu" role="menu" aria-label="{{$m.Name}}">
+  <span class="menu-title">{{$m.Name}}</span>
+  <a role="menuitem" href="{{$d.URL "m" $m.ID}}">{{icon "calendar"}}Show tasks for {{$m.Name}}</a>
+  <a role="menuitem" href="/tasks/new?guild={{$d.Guild.ID}}&amp;member={{$m.ID}}">{{icon "plus"}}Create task for {{$m.Name}}</a>
+  {{with $m.VoiceID}}<a role="menuitem" href="{{$d.URL "c" .}}">{{icon "music"}}Play a sound for {{$m.Name}}</a>{{end}}
+  <a role="menuitem" href="{{$d.URL "m" $m.ID}}#dm">{{icon "mail"}}Send a direct message</a>
+  <hr>
+  <button type="button" role="menuitem" class="copy" data-copy="{{$m.ID}}" hidden>{{icon "copy"}}Copy member ID</button>
+</div>
+{{end}}
+
+{{/* joinleave: G server, C channel, CSRF, Next; Menu for a menu item, Label for a labelled button */}}
+{{define "joinleave"}}{{$c := .C}}{{if $c.HasBot}}
+<form method="post" action="/servers/{{.G}}/leave" data-fetch data-done="Leaving the voice channel."><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="next" value="{{.Next}}">
+  {{if .Menu}}<button type="submit" role="menuitem">{{icon "log-out"}}Leave {{$c.Name}}</button>{{else}}<button type="submit" class="ib with-label">{{icon "log-out"}}<span class="lbl">Leave</span></button>{{end}}</form>
+{{else}}
+<form method="post" action="/servers/{{.G}}/join" data-fetch data-done="Joining."><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="channel" value="{{$c.ID}}"><input type="hidden" name="next" value="{{.Next}}">
+  {{if .Menu}}<button type="submit" role="menuitem">{{icon "log-in"}}Join {{$c.Name}}</button>{{else}}<button type="submit" class="ib primary with-label">{{icon "log-in"}}<span class="lbl">Join {{$c.Name}}</span></button>{{end}}</form>
+{{end}}{{end}}

@@ -39,26 +39,13 @@ type soundTile struct {
 }
 
 type roomData struct {
-	Guilds  []bot.Guild
 	Guild   bot.Guild
-	Text    []roomChannel
-	Voice   []roomChannel
-	Locked  []roomChannel // channels the bot cannot use
-	View    string        // voice, text, member or "" for the overview
+	View    string // voice, text, member or "" for the overview
 	Channel bot.Channel
 	Member  bot.Member
 	Self    string // this page, for the next field of forms
-	query   url.Values
 
-	MGroups  []memberGroup
-	Running  map[int64]int64 // run in progress per task
-	MQuery   string
-	MPage    int
-	MMore    bool
-	MHidden  int  // members left out of the list without a search
-	Presence bool // online status is known
-	Playing  []playingView
-	Settings store.Settings
+	Playing []playingView
 
 	Favorites []soundTile
 	Own       []soundTile // sounds of this server's group
@@ -74,8 +61,8 @@ type roomData struct {
 	Messages []messages.Message
 	Author   bot.Member        // the bot in this server, for the message preview
 	Names    map[string]string // member names for mentions in the preview
-	Tasks    []tasks.Task      // of the channel, or for the member
-	Except   []tasks.Task      // that leave the member out
+	Tasks    []taskRow         // of the channel, or for the member
+	Except   []taskRow         // that leave the member out
 	Greets   []tasks.Task      // event tasks that start when the member joins voice
 }
 
@@ -114,19 +101,6 @@ func (d roomData) URL(key, value string) string {
 	return "/room/" + d.Guild.ID + "?" + v.Encode()
 }
 
-// MPrev and MNext page through the members that are not in voice.
-func (d roomData) MPrev() string { return d.mlink(d.MPage - 1) }
-func (d roomData) MNext() string { return d.mlink(d.MPage + 1) }
-
-func (d roomData) mlink(page int) string {
-	v := url.Values{}
-	for k, vs := range d.query {
-		v[k] = vs
-	}
-	v.Set("mp", strconv.Itoa(page))
-	return "/room/" + d.Guild.ID + "?" + v.Encode()
-}
-
 func (s *Server) roomHome(w http.ResponseWriter, r *http.Request) {
 	gs := s.guilds(r)
 	if len(gs) == 0 {
@@ -144,9 +118,10 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
+	r = at(r, place{Guild: g.ID, Members: true})
 	q := r.URL.Query()
 	q.Del("done")
-	d := roomData{Guilds: s.guilds(r), Guild: g, Self: r.URL.Path, query: q, Paging: newPaging(r)}
+	d := roomData{Guild: g, Self: r.URL.Path, Paging: newPaging(r)}
 	if len(q) > 0 {
 		d.Self += "?" + q.Encode()
 	}
@@ -163,17 +138,7 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	all = slices.DeleteFunc(all, func(t tasks.Task) bool { return t.GuildID != g.ID })
-	last, err := s.store.LastRuns(ctx)
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	d.Running = map[int64]int64{}
-	for id, run := range last {
-		if run.Status == store.RunRunning {
-			d.Running[id] = run.ID
-		}
-	}
+	var mine, left []tasks.Task
 
 	if c := q.Get("c"); c != "" {
 		ch, chGuild, ok := s.bot.Channel(c)
@@ -190,29 +155,6 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 			d.Member, d.View = members[i], "member"
 		}
 	}
-	for _, c := range s.bot.Channels(g.ID) {
-		rc := roomChannel{Channel: c, Current: d.View != "member" && c.ID == d.Channel.ID}
-		for _, t := range all {
-			if usesChannel(t, c.ID) {
-				rc.Tasks++
-			}
-		}
-		switch {
-		case !c.Usable && !rc.Current:
-			d.Locked = append(d.Locked, rc)
-		case c.Voice:
-			d.Voice = append(d.Voice, rc)
-		default:
-			d.Text = append(d.Text, rc)
-		}
-	}
-
-	d.MQuery = strings.TrimSpace(q.Get("mq"))
-	d.MPage, _ = strconv.Atoi(q.Get("mp"))
-	d.MPage = max(d.MPage, 1)
-	d.Presence = s.bot.Status().PresenceIntent
-	d.MGroups, d.MHidden, d.MMore = memberList(members, d.MQuery, d.MPage, d.Presence)
-
 	switch d.View {
 	case "voice":
 		if err := s.roomSounds(r, &d); err != nil {
@@ -223,7 +165,7 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 	case "text":
 		for _, t := range all {
 			if usesChannel(t, d.Channel.ID) {
-				d.Tasks = append(d.Tasks, t)
+				mine = append(mine, t)
 			}
 		}
 		if d.View == "text" {
@@ -240,15 +182,23 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 		for _, t := range all {
 			only, except := memberTasks(t, d.Member.ID)
 			if only {
-				d.Tasks = append(d.Tasks, t)
+				mine = append(mine, t)
 			}
 			if except {
-				d.Except = append(d.Except, t)
+				left = append(left, t)
 			}
 			if t.Enabled && t.Trigger.Kind == tasks.Event && t.Trigger.Event == tasks.VoiceJoin && startsFor(t.Trigger, d.Member.ID) {
 				d.Greets = append(d.Greets, t)
 			}
 		}
+	}
+	if d.Tasks, err = s.taskRows(r, mine, false); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	if d.Except, err = s.taskRows(r, left, false); err != nil {
+		s.internalError(w, r, err)
+		return
 	}
 	s.render(w, r, http.StatusOK, "room", d)
 }

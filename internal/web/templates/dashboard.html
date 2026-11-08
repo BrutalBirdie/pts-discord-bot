@@ -1,8 +1,8 @@
 {{define "content"}}
 {{$d := .Data}}
 <div class="page-head">
-  <div><span class="eyebrow">Overview</span><h1>Dashboard</h1></div>
-  <div class="btns"><a class="ib with-label" href="/tasks/new">{{icon "plus"}}<span class="lbl">New task</span></a></div>
+  <h1 class="with-icon">{{icon "layout-dashboard"}}Overview</h1>
+  <span class="chip">{{tz}}</span>
 </div>
 
 <div class="tiles" data-live="tiles">
@@ -22,6 +22,13 @@
 <div class="stack" data-live="playing">
 {{range $d.Playing}}{{template "playing" .}}{{end}}
 </div>
+
+<div class="contents" data-live="attention">{{with $d.Attention}}
+<section class="card" aria-labelledby="attn-title">
+  <div class="sec-head"><h2 id="attn-title">Needs attention</h2><span class="chip danger">{{len .}}</span></div>
+  <ul class="list">{{range .}}{{template "taskrow" (dict "R" . "CSRF" $.Session.CSRFToken "Next" "/" "Compact" true)}}{{end}}</ul>
+</section>
+{{end}}</div>
 
 <div class="cols2">
   <section class="card">

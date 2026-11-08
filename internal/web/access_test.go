@@ -446,8 +446,8 @@ func TestPagesForApprovedDiscordUser(t *testing.T) {
 		want    []string
 		without []string
 	}{
-		{sess, "dashboard", dashboardData{}, []string{`href="/tasks"`, `href="/messages"`, `href="/media"`, `href="/trash"`, `href="/servers"`, "Dashboard"}, []string{`href="/admin"`, "administrator"}},
-		{sess, "servers", serversData{Guilds: guilds}, []string{`href="/servers/1"`}, []string{"/servers/refresh", "Open in Discord"}},
+		{sess, "dashboard", dashboardData{}, []string{`href="/tasks"`, `href="/messages"`, `href="/media"`, `href="/trash"`, `href="/servers"`, "Overview"}, []string{`href="/admin"`, "administrator"}},
+		{sess, "servers", serversData{Guilds: guilds}, []string{`href="/room/1"`}, []string{"/servers/refresh", "Open in Discord"}},
 		{sess, "media", mediaData{Items: []store.Media{sound}, Counts: map[string]int{"": 1}, Groups: guilds, DefaultGroup: "1", Names: map[string]string{"1": "PTS Gaming"}},
 			[]string{`<option value="1" selected>PTS Gaming</option>`, "used by task Intro, 2 tasks in other servers", `aria-label="Delete a.ogg" data-tip="Delete" disabled`, "PTS Gaming", "only this server", `action="/media/group"`},
 			[]string{"Shared, for Cloudron users only", "/move"}},

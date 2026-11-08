@@ -7,284 +7,142 @@
 </section>
 {{else}}
 {{$g := $d.Guild}}
-<div class="room">
-  <nav class="room-rail" aria-label="Servers" data-sortable="/servers/order">
-    {{range $d.Guilds}}<a href="/room/{{.ID}}" data-sort-id="{{.ID}}" class="rail-g"{{if eq .ID $g.ID}} aria-current="page"{{end}} aria-label="{{.Name}}" data-tip="{{.Name}}">{{if .Icon}}<img src="{{.Icon}}" alt="" width="48" height="48" referrerpolicy="no-referrer">{{else}}{{.Initials}}{{end}}</a>{{end}}
-  </nav>
+<div class="contents" data-live="playing">{{range $d.Playing}}{{template "playing" .}}{{end}}</div>
 
-  <aside class="room-side sheet" id="room-side" popover aria-labelledby="room-side-title">
-    <div class="room-resize js-only" data-resize="side" role="separator" aria-orientation="vertical" aria-label="Width of the channel list" tabindex="0"></div>
-    <div class="side-head">
-      <h2 id="room-side-title" title="{{$g.Name}}"><a href="/room/{{$g.ID}}">{{$g.Name}}</a></h2>
-      <button type="button" class="ib quiet room-close" popovertarget="room-side" popovertargetaction="hide" aria-label="Close" data-tip="Close">{{icon "x"}}</button>
+{{if eq $d.View "voice"}}{{$ch := $d.Channel}}
+<div class="page-head" data-live="vhead">
+  <h1 class="with-icon">{{icon "volume-2"}}{{$ch.Name}}</h1>
+  <div class="btns">
+    {{if $ch.Usable}}{{template "joinleave" (dict "G" $g.ID "C" $ch "CSRF" $csrf "Next" $d.Self)}}{{end}}
+    <a class="ib with-label" href="/tasks/new?guild={{$g.ID}}&amp;join={{$ch.ID}}">{{icon "plus"}}<span class="lbl">Create task here</span></a>
+  </div>
+</div>
+{{if not $ch.Usable}}<div class="callout warn">{{icon "triangle-alert"}}<span>{{$ch.Problem}}</span></div>{{end}}
+
+<section class="card stack" aria-labelledby="sb-title">
+  <div class="sec-head">
+    <h2 id="sb-title">Soundboard</h2>
+    <div class="vols">
+      <label class="pvol js-only">{{icon "radio"}}<span>Play volume</span><input type="range" min="1" max="200" value="{{$.Prefs.PlayVolume}}" data-play-volume aria-describedby="vol-help"><output>{{$.Prefs.PlayVolume}}%</output></label>
+      <label class="pvol js-only">{{icon "volume-2"}}<span>Your preview</span><input type="range" min="0" max="100" value="{{$.Prefs.PreviewVolume}}" data-preview-volume aria-describedby="vol-help"><output>{{$.Prefs.PreviewVolume}}%</output></label>
     </div>
-    <div class="side-body" data-live="channels">
-      {{with $d.Text}}<span class="eyebrow">Text channels</span>
-      <ul class="chs">
-        {{range .}}
-        <li class="chrow" data-menu="menu-c{{.ID}}">
-          <a href="{{$d.URL "c" .ID}}"{{if .Current}} aria-current="page"{{end}}>{{if .Usable}}{{icon "hash"}}{{else}}{{icon "lock"}}{{end}}<span class="nm">{{.Name}}</span>{{with .Tasks}}<span class="badge" aria-label="{{.}} tasks">{{.}}</span>{{end}}</a>
-          <button type="button" class="more" popovertarget="menu-c{{.ID}}" aria-label="More for #{{.Name}}">{{icon "more"}}</button>
-          <div popover id="menu-c{{.ID}}" class="menu" role="menu" aria-label="#{{.Name}}">
-            <span class="menu-title">#{{.Name}}</span>
-            <a role="menuitem" href="{{$d.URL "c" .ID}}">{{icon "send"}}Send a quick message</a>
-            <a role="menuitem" href="{{$d.URL "c" .ID}}#tasks">{{icon "calendar"}}Show tasks ({{.Tasks}})</a>
-            <a role="menuitem" href="/tasks/new?guild={{$g.ID}}&amp;post={{.ID}}">{{icon "plus"}}Create message task here</a>
-            <hr>
-            <button type="button" role="menuitem" class="copy" data-copy="{{.ID}}" hidden>{{icon "copy"}}Copy channel ID</button>
+  </div>
+  <span id="vol-help" class="vh">Play volume is how loud the bot plays a sound in the channel, unless the sound has its own volume. Only you hear previews.</span>
+  {{template "search" (dict "P" $d.Paging "Label" "Search sounds" "Placeholder" "Search sounds")}}
+  <div class="contents" data-live="sounds" data-live-list>
+  {{with $d.SoundTags}}
+  <div class="pills tagbar" role="navigation" aria-label="Sounds by tag">
+    {{if $d.Tags}}<a href="{{$d.AllURL}}" class="tag-back">{{icon "arrow-left"}}All sounds</a>{{else}}<a href="{{$d.AllURL}}" aria-current="page">All sounds</a>{{end}}
+    {{range $i, $t := .}}<a href="{{$d.ToggleURL .Name}}"{{if $d.TagOn .Name}} aria-current="page" aria-label="{{.Name}}, picked, {{plural .Count "sound" "sounds"}}"{{else}} aria-label="{{.Name}}, {{plural .Count "sound" "sounds"}}{{if $d.Tags}} with the picked tags{{end}}"{{end}} data-menu="menu-tag-{{$i}}">{{template "tagface" .}}<span>{{.Name}}</span><span class="badge">{{.Count}}</span>{{if $d.TagOn .Name}}{{icon "x"}}{{end}}</a>{{end}}
+  </div>
+  {{range $i, $t := .}}
+  <div popover id="menu-tag-{{$i}}" class="menu" role="menu" aria-label="Tag {{.Name}}">
+    <span class="menu-title">#{{.Name}} · {{plural .Count "sound" "sounds"}}</span>
+    <a role="menuitem" href="{{$d.OnlyURL .Name}}">{{icon "music"}}Show only the sounds tagged {{.Name}}</a>
+    <a role="menuitem" href="{{$d.HereURL}}&amp;tagedit={{.Name}}#sheet-tag">{{icon "smile"}}Set icon</a>
+    <a role="menuitem" href="/media?tag={{.Name}}">{{icon "image"}}Show in Media</a>
+  </div>
+  {{end}}
+  {{end}}
+
+  {{if $d.Favorites}}{{template "soundgroup" (dict "Title" "Favorites" "Icon" "star" "Sounds" $d.Favorites "D" $d "CSRF" $csrf)}}{{end}}
+  {{if $d.Own}}{{template "soundgroup" (dict "Title" $g.Name "Icon" "server" "Sounds" $d.Own "D" $d "CSRF" $csrf "Upload" (not $d.Rest))}}{{end}}
+  {{if $d.Rest}}{{template "soundgroup" (dict "Title" "Other sounds" "Icon" "music" "Sounds" $d.Rest "D" $d "CSRF" $csrf "Upload" true)}}{{end}}
+  {{if not (or $d.Own $d.Rest)}}<ul class="sounds">{{template "uploadtile" (dict "D" $d "CSRF" $csrf)}}</ul>{{end}}
+  {{if not (or $d.Own $d.Rest)}}<p class="muted">{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}No sounds yet. <a href="/media">Upload some</a>.{{end}}</p>{{end}}
+  {{template "pager" $d.Paging}}
+  </div>
+  <p class="hint">A click plays the sound in {{$ch.Name}}, the bot joins first and stays. The speaker previews it for you only, the star keeps it under Favorites. Sounds that another server keeps to itself are not listed.</p>
+</section>
+{{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks in " $ch.Name) "Tasks" $d.Tasks "Empty" "No task uses this channel yet.")}}
+{{with $d.TagEdit}}
+<div popover id="sheet-tag" class="sheet" aria-labelledby="sheet-tag-title">
+  {{template "sheethead" (dict "ID" "sheet-tag" "Icon" "hash" "Title" "Icon for the tag" "Name" .Name)}}
+  <form method="post" action="/tags/look" class="sheet-body form" data-fetch data-done="Saved the icon of {{.Name}}.">
+    <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="tag" value="{{.Name}}"><input type="hidden" name="next" value="{{$d.HereURL}}">
+    <div class="field"><span id="tag-emoji-label">Emoji</span>
+      <input type="text" name="emoji" value="{{.Emoji}}" maxlength="64" autocomplete="off" aria-labelledby="tag-emoji-label" data-emoji-picker="{{json $d.Emojis}}">
+    </div>
+    <label class="field"><span>Or an image from Media</span><select name="icon"><option value="0">No image</option>{{range $d.Images}}<option value="{{.ID}}"{{if eq .ID $d.TagEdit.IconID}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+    <p class="hint">The icon shows in the tag list of the soundboard, for every server.</p>
+    <div class="btns">
+      <button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button>
+      <button type="button" class="ib with-label" popovertarget="sheet-tag" popovertargetaction="hide"><span class="lbl">Never mind</span></button>
+    </div>
+  </form>
+</div>
+{{end}}
+{{with $d.Edit}}{{template "soundsheet" (dict "M" . "Next" ($d.URL "c" $d.Channel.ID) "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf)}}{{end}}
+
+{{else if eq $d.View "text"}}{{$ch := $d.Channel}}
+<div class="page-head">
+  <h1 class="with-icon">{{icon "hash"}}{{$ch.Name}}</h1>
+  <div class="btns"><a class="ib with-label" href="/tasks/new?guild={{$g.ID}}&amp;post={{$ch.ID}}">{{icon "plus"}}<span class="lbl">Create message task here</span></a></div>
+</div>
+{{if not $ch.Usable}}<div class="callout warn">{{icon "triangle-alert"}}<span>{{$ch.Problem}}</span></div>{{end}}
+<div class="cols2">
+  <section class="card stack" aria-labelledby="qm-title">
+    <h2 id="qm-title">Quick message</h2>
+    <form method="post" action="/room/{{$g.ID}}/send" class="form" data-preview-form>
+      <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
+      <label class="field"><span>Text <span class="counter" data-count="qm" data-max="2000">0 / 2000</span></span><textarea name="text" rows="5" maxlength="2000" class="prose" required data-preview="qm"></textarea></label>
+      <div class="sec-head"><span class="eyebrow">Preview</span>{{template "mdhelp"}}</div>
+      <div class="dpv" data-names="{{json $d.Names}}">
+        <div class="dmsg">
+          {{template "dava" $d.Author}}
+          <div class="minw0">
+            <div class="dhead"><strong>{{$d.Author.Name}}</strong><span class="dtag">APP</span><span class="dtime">{{when nowTime}}</span></div>
+            <div class="dtext" data-preview-target="qm" data-md=""></div>
           </div>
-        </li>
-        {{end}}
-      </ul>{{end}}
-      {{with $d.Voice}}<span class="eyebrow">Voice channels</span>
-      <ul class="chs">
-        {{range .}}{{$ch := .}}
-        <li class="chrow" data-menu="menu-c{{.ID}}">
-          <a href="{{$d.URL "c" .ID}}"{{if .Current}} aria-current="page"{{end}}>{{if .Usable}}{{icon "volume-2"}}{{else}}{{icon "lock"}}{{end}}<span class="nm">{{.Name}}</span>{{with .Tasks}}<span class="badge" aria-label="{{.}} tasks">{{.}}</span>{{end}}</a>
-          <button type="button" class="more" popovertarget="menu-c{{.ID}}" aria-label="More for {{.Name}}">{{icon "more"}}</button>
-          <div popover id="menu-c{{.ID}}" class="menu" role="menu" aria-label="{{.Name}}">
-            <span class="menu-title">{{.Name}}</span>
-            {{if .Usable}}{{if .HasBot}}
-            <form method="post" action="/servers/{{$g.ID}}/leave" data-fetch data-done="Leaving the voice channel."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
-              <button type="submit" role="menuitem">{{icon "log-out"}}Leave {{.Name}}</button></form>
-            {{else}}
-            <form method="post" action="/servers/{{$g.ID}}/join" data-fetch data-done="Joining."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{.ID}}"><input type="hidden" name="next" value="{{$d.URL "c" .ID}}">
-              <button type="submit" role="menuitem">{{icon "log-in"}}Join {{.Name}}</button></form>
-            {{end}}{{end}}
-            <a role="menuitem" href="{{$d.URL "c" .ID}}">{{icon "music"}}Open soundboard</a>
-            <a role="menuitem" href="{{$d.URL "c" .ID}}#tasks">{{icon "calendar"}}Show tasks ({{.Tasks}})</a>
-            <a role="menuitem" href="/tasks/new?guild={{$g.ID}}&amp;join={{.ID}}">{{icon "plus"}}Create task in {{.Name}}</a>
-            <hr>
-            <button type="button" role="menuitem" class="copy" data-copy="{{.ID}}" hidden>{{icon "copy"}}Copy channel ID</button>
-          </div>
-          {{if or .People .HasBot}}
-          <ul class="people">
-            {{range .People}}<li class="chrow person-row" data-menu="menu-v{{.ID}}">
-              <a href="{{$d.URL "m" .ID}}">{{template "roomava" .}}<span class="nm">{{.Name}}</span></a>
-              {{template "membermenu" (dict "ID" (print "menu-v" .ID) "M" . "D" $d)}}
-            </li>{{end}}
-            {{if .HasBot}}<li class="chrow person-row"><span class="botrow">{{template "roomava" $g.Self}}<span class="nm">{{with $g.Self.Name}}{{.}}{{else}}PTS Bot{{end}}</span><span class="dtag">APP</span></span></li>{{end}}
-          </ul>
-          {{end}}
-        </li>
-        {{end}}
-      </ul>{{end}}
-      {{with $d.Locked}}
-      <details class="locked" id="locked">
-        <summary>{{icon "chevron-right"}}{{icon "lock"}}<span>No access · {{len .}}</span></summary>
-        <ul class="chs">{{range .}}<li class="chrow"><a href="{{$d.URL "c" .ID}}" title="{{.Problem}}">{{if .Voice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}<span class="nm">{{.Name}}</span></a></li>{{end}}</ul>
-        <p class="hint">The bot cannot see or use these channels. Give its role access in the channel settings.</p>
-      </details>
-      {{end}}
-      <p class="hint hint-mouse">Right-click a channel, member or sound for more.</p>
-      <p class="hint hint-touch">The … buttons open more for a channel, member or sound.</p>
-    </div>
-    <div class="side-foot" data-live="botfoot">
-      {{template "roomava" $g.Self}}
-      <span class="row-main"><strong>{{with $g.Self.Name}}{{.}}{{else}}PTS Bot{{end}}</strong><span class="row-sub">{{if $g.BotVoice}}In {{$g.BotVoice}}{{else}}Not in voice{{end}}</span></span>
-      {{if $g.BotVoice}}<form method="post" action="/servers/{{$g.ID}}/leave" data-fetch data-done="Leaving the voice channel."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
-        <button type="submit" class="ib danger" aria-label="Leave {{$g.BotVoice}}" data-tip="Leave {{$g.BotVoice}}">{{icon "log-out"}}</button></form>{{end}}
-    </div>
-  </aside>
-
-  <section class="room-main" aria-label="{{if eq $d.View "member"}}{{$d.Member.Name}}{{else if $d.View}}{{$d.Channel.Name}}{{else}}{{$g.Name}}{{end}}">
-    <div class="room-bar">
-      <button type="button" class="ib with-label" popovertarget="room-side">{{icon "hash"}}<span class="lbl">Channels</span></button>
-      <button type="button" class="ib with-label" popovertarget="room-members">{{icon "users"}}<span class="lbl">Members</span></button>
-    </div>
-    <div class="contents" data-live="playing">{{range $d.Playing}}{{template "playing" .}}{{end}}</div>
-
-    {{if eq $d.View "voice"}}{{$ch := $d.Channel}}
-    <div class="page-head" data-live="vhead">
-      <h1 class="with-icon">{{icon "volume-2"}}{{$ch.Name}}</h1>
-      <div class="btns">
-        {{if $ch.Usable}}{{if $ch.HasBot}}
-        <form method="post" action="/servers/{{$g.ID}}/leave" data-fetch data-done="Leaving the voice channel."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
-          <button type="submit" class="ib with-label">{{icon "log-out"}}<span class="lbl">Leave</span></button></form>
-        {{else}}
-        <form method="post" action="/servers/{{$g.ID}}/join" data-fetch data-done="Joining."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
-          <button type="submit" class="ib primary with-label">{{icon "log-in"}}<span class="lbl">Join {{$ch.Name}}</span></button></form>
-        {{end}}{{end}}
-        <a class="ib with-label" href="/tasks/new?guild={{$g.ID}}&amp;join={{$ch.ID}}">{{icon "plus"}}<span class="lbl">Create task here</span></a>
-      </div>
-    </div>
-    {{if not $ch.Usable}}<div class="callout warn">{{icon "triangle-alert"}}<span>{{$ch.Problem}}</span></div>{{end}}
-
-    <section class="card stack" aria-labelledby="sb-title">
-      <div class="sec-head">
-        <h2 id="sb-title">Soundboard</h2>
-        <div class="vols">
-          <label class="pvol js-only">{{icon "radio"}}<span>Play volume</span><input type="range" min="1" max="200" value="{{$.Prefs.PlayVolume}}" data-play-volume aria-describedby="vol-help"><output>{{$.Prefs.PlayVolume}}%</output></label>
-          <label class="pvol js-only">{{icon "volume-2"}}<span>Your preview</span><input type="range" min="0" max="100" value="{{$.Prefs.PreviewVolume}}" data-preview-volume aria-describedby="vol-help"><output>{{$.Prefs.PreviewVolume}}%</output></label>
         </div>
       </div>
-      <span id="vol-help" class="vh">Play volume is how loud the bot plays a sound in the channel, unless the sound has its own volume. Only you hear previews.</span>
-      {{template "search" (dict "P" $d.Paging "Label" "Search sounds" "Placeholder" "Search sounds")}}
-      <div class="contents" data-live="sounds" data-live-list>
-      {{with $d.SoundTags}}
-      <div class="pills tagbar" role="navigation" aria-label="Sounds by tag">
-        {{if $d.Tags}}<a href="{{$d.AllURL}}" class="tag-back">{{icon "arrow-left"}}All sounds</a>{{else}}<a href="{{$d.AllURL}}" aria-current="page">All sounds</a>{{end}}
-        {{range $i, $t := .}}<a href="{{$d.ToggleURL .Name}}"{{if $d.TagOn .Name}} aria-current="page" aria-label="{{.Name}}, picked, {{plural .Count "sound" "sounds"}}"{{else}} aria-label="{{.Name}}, {{plural .Count "sound" "sounds"}}{{if $d.Tags}} with the picked tags{{end}}"{{end}} data-menu="menu-tag-{{$i}}">{{template "tagface" .}}<span>{{.Name}}</span><span class="badge">{{.Count}}</span>{{if $d.TagOn .Name}}{{icon "x"}}{{end}}</a>{{end}}
-      </div>
-      {{range $i, $t := .}}
-      <div popover id="menu-tag-{{$i}}" class="menu" role="menu" aria-label="Tag {{.Name}}">
-        <span class="menu-title">#{{.Name}} · {{plural .Count "sound" "sounds"}}</span>
-        <a role="menuitem" href="{{$d.OnlyURL .Name}}">{{icon "music"}}Show only the sounds tagged {{.Name}}</a>
-        <a role="menuitem" href="{{$d.HereURL}}&amp;tagedit={{.Name}}#sheet-tag">{{icon "smile"}}Set icon</a>
-        <a role="menuitem" href="/media?tag={{.Name}}">{{icon "image"}}Show in Media</a>
-      </div>
-      {{end}}
-      {{end}}
-
-      {{if $d.Favorites}}{{template "soundgroup" (dict "Title" "Favorites" "Icon" "star" "Sounds" $d.Favorites "D" $d "CSRF" $csrf)}}{{end}}
-      {{if $d.Own}}{{template "soundgroup" (dict "Title" $g.Name "Icon" "server" "Sounds" $d.Own "D" $d "CSRF" $csrf "Upload" (not $d.Rest))}}{{end}}
-      {{if $d.Rest}}{{template "soundgroup" (dict "Title" "Other sounds" "Icon" "music" "Sounds" $d.Rest "D" $d "CSRF" $csrf "Upload" true)}}{{end}}
-      {{if not (or $d.Own $d.Rest)}}<ul class="sounds">{{template "uploadtile" (dict "D" $d "CSRF" $csrf)}}</ul>{{end}}
-      {{if not (or $d.Own $d.Rest)}}<p class="muted">{{if $d.Paging.Query}}{{template "nomatch" $d.Paging.Query}}{{else}}No sounds yet. <a href="/media">Upload some</a>.{{end}}</p>{{end}}
-      {{template "pager" $d.Paging}}
-      </div>
-      <p class="hint">A click plays the sound in {{$ch.Name}}, the bot joins first and stays. The speaker previews it for you only, the star keeps it under Favorites. Sounds that another server keeps to itself are not listed.</p>
-    </section>
-    {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks in " $ch.Name) "Tasks" $d.Tasks "Empty" "No task uses this channel yet.")}}
-    {{with $d.TagEdit}}
-    <div popover id="sheet-tag" class="sheet" aria-labelledby="sheet-tag-title">
-      {{template "sheethead" (dict "ID" "sheet-tag" "Icon" "hash" "Title" "Icon for the tag" "Name" .Name)}}
-      <form method="post" action="/tags/look" class="sheet-body form" data-fetch data-done="Saved the icon of {{.Name}}.">
-        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="tag" value="{{.Name}}"><input type="hidden" name="next" value="{{$d.HereURL}}">
-        <div class="field"><span id="tag-emoji-label">Emoji</span>
-          <input type="text" name="emoji" value="{{.Emoji}}" maxlength="64" autocomplete="off" aria-labelledby="tag-emoji-label" data-emoji-picker="{{json $d.Emojis}}">
-        </div>
-        <label class="field"><span>Or an image from Media</span><select name="icon"><option value="0">No image</option>{{range $d.Images}}<option value="{{.ID}}"{{if eq .ID $d.TagEdit.IconID}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
-        <p class="hint">The icon shows in the tag list of the soundboard, for every server.</p>
-        <div class="btns">
-          <button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button>
-          <button type="button" class="ib with-label" popovertarget="sheet-tag" popovertargetaction="hide"><span class="lbl">Never mind</span></button>
-        </div>
-      </form>
-    </div>
-    {{end}}
-    {{with $d.Edit}}{{template "soundsheet" (dict "M" . "Next" ($d.URL "c" $d.Channel.ID) "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf)}}{{end}}
-
-    {{else if eq $d.View "text"}}{{$ch := $d.Channel}}
-    <div class="page-head">
-      <h1 class="with-icon">{{icon "hash"}}{{$ch.Name}}</h1>
-      <div class="btns"><a class="ib with-label" href="/tasks/new?guild={{$g.ID}}&amp;post={{$ch.ID}}">{{icon "plus"}}<span class="lbl">Create message task here</span></a></div>
-    </div>
-    {{if not $ch.Usable}}<div class="callout warn">{{icon "triangle-alert"}}<span>{{$ch.Problem}}</span></div>{{end}}
-    <div class="cols2">
-      <section class="card stack" aria-labelledby="qm-title">
-        <h2 id="qm-title">Quick message</h2>
-        <form method="post" action="/room/{{$g.ID}}/send" class="form" data-preview-form>
-          <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
-          <label class="field"><span>Text <span class="counter" data-count="qm" data-max="2000">0 / 2000</span></span><textarea name="text" rows="5" maxlength="2000" class="prose" required data-preview="qm"></textarea></label>
-          <div class="sec-head"><span class="eyebrow">Preview</span>{{template "mdhelp"}}</div>
-          <div class="dpv" data-names="{{json $d.Names}}">
-            <div class="dmsg">
-              {{template "dava" $d.Author}}
-              <div class="minw0">
-                <div class="dhead"><strong>{{$d.Author.Name}}</strong><span class="dtag">APP</span><span class="dtime">{{when nowTime}}</span></div>
-                <div class="dtext" data-preview-target="qm" data-md=""></div>
-              </div>
-            </div>
-          </div>
-          <div class="btns"><button type="submit" class="ib primary with-label">{{icon "send"}}<span class="lbl">Send to #{{$ch.Name}}</span></button></div>
-        </form>
-        {{if $d.Messages}}
-        <form method="post" action="/room/{{$g.ID}}/send" class="form">
-          <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
-          <label class="field"><span>Or a saved message</span><select name="message">{{range $d.Messages}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
-          <div class="btns"><button type="submit" class="ib with-label">{{icon "send"}}<span class="lbl">Send saved message</span></button></div>
-        </form>
-        {{end}}
-      </section>
-      {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks that use #" $ch.Name) "Tasks" $d.Tasks "Empty" "No task posts here yet.")}}
-    </div>
-
-    {{else if eq $d.View "member"}}{{$m := $d.Member}}
-    <div class="contents" data-live="mhead">
-    <div class="page-head">
-      <div class="person">{{if $m.Avatar}}<img class="pava big" src="{{$m.Avatar}}" alt="" width="64" height="64" referrerpolicy="no-referrer">{{else}}<span class="pava big" aria-hidden="true">{{initial $m.Name}}</span>{{end}}
-        <div><h1>{{$m.Name}}</h1><span class="row-sub">@{{$m.Username}} · {{with $m.Voice}}in {{.}}{{else}}not in voice{{end}}</span></div></div>
-      <div class="btns">
-        <a class="ib primary with-label" href="/tasks/new?guild={{$g.ID}}&amp;member={{$m.ID}}">{{icon "plus"}}<span class="lbl">Create task for {{$m.Name}}</span></a>
-        {{with $m.VoiceID}}<a class="ib with-label" href="{{$d.URL "c" .}}">{{icon "music"}}<span class="lbl">Play a sound for {{$m.Name}}</span></a>{{end}}
-      </div>
-    </div>
-    {{if gt (len $d.Greets) 1}}<div class="callout warn">{{icon "triangle-alert"}}<span>{{len $d.Greets}} tasks start when {{$m.Name}} joins a voice channel: {{range $i, $t := $d.Greets}}{{if $i}}, {{end}}<a href="/tasks/{{$t.ID}}">{{$t.Name}}</a>{{end}}. Open one and leave {{$m.Name}} out there if that is too much.</span></div>{{end}}
-    </div>
-    <div class="cols2">
-      {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks for " $m.Name) "Tasks" $d.Tasks "Empty" "No task names this member.")}}
-      {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "except" "Title" (print "Tasks that leave " $m.Name " out") "Tasks" $d.Except "Empty" "None.")}}
-    </div>
-    <section class="card stack" id="dm" aria-labelledby="dm-title">
-      <h2 id="dm-title">Direct message to {{$m.Name}}</h2>
-      <form method="post" action="/room/{{$g.ID}}/send" class="form">
-        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="member" value="{{$m.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
-        <label class="field"><span>Text</span><textarea name="text" rows="3" maxlength="2000" class="prose" required></textarea></label>
-        <div class="btns"><button type="submit" class="ib primary with-label">{{icon "mail"}}<span class="lbl">Send</span></button></div>
-      </form>
-    </section>
-
-    {{else}}
-    <div class="page-head"><div class="person"><span class="rail-g big" aria-hidden="true">{{if $g.Icon}}<img src="{{$g.Icon}}" alt="" width="64" height="64" referrerpolicy="no-referrer">{{else}}{{$g.Initials}}{{end}}</span>
-      <div><h1>{{$g.Name}}</h1><span class="row-sub">{{$g.MemberCount}} members{{with $g.BotVoice}} · bot in {{.}}{{end}}</span></div></div></div>
-    {{with $g.Missing}}<div class="callout warn">{{icon "triangle-alert"}}<span>The bot lacks these server permissions: {{join . ", "}}. See <a href="/servers/{{$g.ID}}">the server page</a>.</span></div>{{end}}
-    <section class="card stack">
-      <p>Pick a voice channel for its soundboard, a text channel for a quick message, or a member for their tasks. Right-click any of them for more.</p>
-    </section>
+      <div class="btns"><button type="submit" class="ib primary with-label">{{icon "send"}}<span class="lbl">Send to #{{$ch.Name}}</span></button></div>
+    </form>
+    {{if $d.Messages}}
+    <form method="post" action="/room/{{$g.ID}}/send" class="form">
+      <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
+      <label class="field"><span>Or a saved message</span><select name="message">{{range $d.Messages}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+      <div class="btns"><button type="submit" class="ib with-label">{{icon "send"}}<span class="lbl">Send saved message</span></button></div>
+    </form>
     {{end}}
   </section>
-
-  <aside class="room-members sheet" id="room-members" popover aria-labelledby="room-members-title">
-    <div class="room-resize js-only" data-resize="members" role="separator" aria-orientation="vertical" aria-label="Width of the member list" tabindex="0"></div>
-    <div class="side-head">
-      <h2 id="room-members-title">Members</h2>
-      <button type="button" class="ib quiet room-close" popovertarget="room-members" popovertargetaction="hide" aria-label="Close" data-tip="Close">{{icon "x"}}</button>
-    </div>
-    <div class="side-body">
-      <form class="search" method="get" action="/room/{{$g.ID}}">
-        {{if eq $d.View "member"}}<input type="hidden" name="m" value="{{$d.Member.ID}}">{{else if $d.View}}<input type="hidden" name="c" value="{{$d.Channel.ID}}">{{end}}
-        <span class="picker"><input type="search" name="mq" value="{{$d.MQuery}}" placeholder="Search members" aria-label="Search members" autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other" data-members="{{$g.ID}}" data-navigate="/room/{{$g.ID}}?m="></span>
-      </form>
-      <div class="contents" data-live="members">
-      <div class="mgroups" data-fit-members>
-      {{range $d.MGroups}}
-      <div class="mgroup">
-      <span class="eyebrow">{{.Name}} — <span data-count>{{len .Members}}</span></span>
-      <ul class="chs">{{range .Members}}<li class="chrow person-row" data-menu="menu-m{{.ID}}">
-        <a href="{{$d.URL "m" .ID}}"{{if eq .ID $d.Member.ID}} aria-current="page"{{end}}{{if eq .Status "offline"}} class="off"{{end}}>{{template "memberava" .}}<span class="nm"><span class="who"{{with .Color}} data-color="{{.}}"{{end}}>{{.Name}}</span>{{if .VoiceID}}<small>{{icon "volume-2"}}{{.Voice}}</small>{{else if .Activity}}<small>{{if eq .Doing "playing"}}Playing {{else if eq .Doing "watching"}}Watching {{else if eq .Doing "competing"}}Competing in {{else if eq .Doing "streaming"}}Streaming {{else if eq .Doing "listening"}}{{icon "music"}}{{end}}{{.Activity}}</small>{{end}}</span></a>
-        {{template "membermenu" (dict "ID" (print "menu-m" .ID) "M" . "D" $d)}}</li>{{end}}</ul>
-      </div>
-      {{else}}<p class="hint">{{if $d.MQuery}}{{template "nomatch" $d.MQuery}}{{else if $d.Presence}}Nobody else is online.{{else}}No members known yet.{{end}}</p>{{end}}
-      </div>
-      <p class="hint" data-more="{{$d.MHidden}}"{{if not $d.MHidden}} hidden{{end}}>{{plural $d.MHidden "more member" "more members"}}, search to find them.</p>
-      </div>
-      {{if or (gt $d.MPage 1) $d.MMore}}<nav class="pager" aria-label="Member pages">
-        {{if gt $d.MPage 1}}<a class="ib sm" href="{{$d.MPrev}}" aria-label="Previous members" data-tip="Previous">{{icon "chevron-left"}}</a>{{else}}<span></span>{{end}}
-        <span class="hint">Page {{$d.MPage}}</span>
-        {{if $d.MMore}}<a class="ib sm" href="{{$d.MNext}}" aria-label="More members" data-tip="Next">{{icon "chevron-right"}}</a>{{else}}<span></span>{{end}}
-      </nav>{{end}}
-    </div>
-  </aside>
+  {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks that use #" $ch.Name) "Tasks" $d.Tasks "Empty" "No task posts here yet.")}}
 </div>
+
+{{else if eq $d.View "member"}}{{$m := $d.Member}}
+<div class="contents" data-live="mhead">
+<div class="page-head">
+  <div class="person">{{if $m.Avatar}}<img class="pava big" src="{{$m.Avatar}}" alt="" width="64" height="64" referrerpolicy="no-referrer">{{else}}<span class="pava big" aria-hidden="true">{{initial $m.Name}}</span>{{end}}
+    <div><h1>{{$m.Name}}</h1><span class="row-sub">@{{$m.Username}} · {{with $m.Voice}}in {{.}}{{else}}not in voice{{end}}</span></div></div>
+  <div class="btns">
+    <a class="ib primary with-label" href="/tasks/new?guild={{$g.ID}}&amp;member={{$m.ID}}">{{icon "plus"}}<span class="lbl">Create task for {{$m.Name}}</span></a>
+    {{with $m.VoiceID}}<a class="ib with-label" href="{{$d.URL "c" .}}">{{icon "music"}}<span class="lbl">Play a sound for {{$m.Name}}</span></a>{{end}}
+  </div>
+</div>
+{{if gt (len $d.Greets) 1}}<div class="callout warn">{{icon "triangle-alert"}}<span>{{len $d.Greets}} tasks start when {{$m.Name}} joins a voice channel: {{range $i, $t := $d.Greets}}{{if $i}}, {{end}}<a href="/tasks/{{$t.ID}}">{{$t.Name}}</a>{{end}}. Open one and leave {{$m.Name}} out there if that is too much.</span></div>{{end}}
+</div>
+<div class="cols2">
+  {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "tasks" "Title" (print "Tasks for " $m.Name) "Tasks" $d.Tasks "Empty" "No task names this member.")}}
+  {{template "roomtasks" (dict "D" $d "CSRF" $csrf "ID" "except" "Title" (print "Tasks that leave " $m.Name " out") "Tasks" $d.Except "Empty" "None.")}}
+</div>
+<section class="card stack" id="dm" aria-labelledby="dm-title">
+  <h2 id="dm-title">Direct message to {{$m.Name}}</h2>
+  <form method="post" action="/room/{{$g.ID}}/send" class="form">
+    <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="member" value="{{$m.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
+    <label class="field"><span>Text</span><textarea name="text" rows="3" maxlength="2000" class="prose" required></textarea></label>
+    <div class="btns"><button type="submit" class="ib primary with-label">{{icon "mail"}}<span class="lbl">Send</span></button></div>
+  </form>
+</section>
+
+{{else}}
+<div class="page-head"><div class="person"><span class="rail-g big" aria-hidden="true">{{if $g.Icon}}<img src="{{$g.Icon}}" alt="" width="64" height="64" referrerpolicy="no-referrer">{{else}}{{$g.Initials}}{{end}}</span>
+  <div><h1>{{$g.Name}}</h1><span class="row-sub">{{$g.MemberCount}} members{{with $g.BotVoice}} · bot in {{.}}{{end}}</span></div></div></div>
+{{with $g.Missing}}<div class="callout warn">{{icon "triangle-alert"}}<span>The bot lacks these server permissions: {{join . ", "}}. See <a href="/servers/{{$g.ID}}">the server page</a>.</span></div>{{end}}
+<section class="card stack">
+  <p>Pick a voice channel for its soundboard, a text channel for a quick message, or a member for their tasks. Right-click any of them for more.</p>
+</section>
 {{end}}
 {{end}}
-
-{{define "memberava"}}<span class="mava{{with .Status}} {{.}}{{end}}{{if .Mobile}} mobile{{end}}"{{with .Status}} title="{{statusLabel .}}"{{end}}>{{template "roomava" .}}{{if .Status}}<span class="dot" aria-label="{{statusLabel .Status}}{{if .Mobile}} on a phone{{end}}"></span>{{end}}</span>{{end}}
-
-{{define "roomava"}}{{if .Avatar}}<img class="pava" src="{{.Avatar}}" alt="" width="24" height="24" loading="lazy" referrerpolicy="no-referrer">{{else}}<span class="pava" aria-hidden="true">{{initial .Name}}</span>{{end}}{{end}}
-
-{{define "membermenu"}}{{$m := .M}}{{$d := .D}}
-<button type="button" class="more" popovertarget="{{.ID}}" aria-label="More for {{$m.Name}}">{{icon "more"}}</button>
-<div popover id="{{.ID}}" class="menu" role="menu" aria-label="{{$m.Name}}">
-  <span class="menu-title">{{$m.Name}}</span>
-  <a role="menuitem" href="{{$d.URL "m" $m.ID}}">{{icon "calendar"}}Show tasks for {{$m.Name}}</a>
-  <a role="menuitem" href="/tasks/new?guild={{$d.Guild.ID}}&amp;member={{$m.ID}}">{{icon "plus"}}Create task for {{$m.Name}}</a>
-  {{with $m.VoiceID}}<a role="menuitem" href="{{$d.URL "c" .}}">{{icon "music"}}Play a sound for {{$m.Name}}</a>{{end}}
-  <a role="menuitem" href="{{$d.URL "m" $m.ID}}#dm">{{icon "mail"}}Send a direct message</a>
-  <hr>
-  <button type="button" role="menuitem" class="copy" data-copy="{{$m.ID}}" hidden>{{icon "copy"}}Copy member ID</button>
-</div>
 {{end}}
 
 {{define "soundgroup"}}{{$d := .D}}{{$g := $d.Guild}}{{$ch := $d.Channel}}{{$csrf := .CSRF}}
@@ -323,30 +181,13 @@
 <section class="card" id="{{.ID}}" aria-label="{{.Title}}" data-live="{{.ID}}">
   <div class="sec-head"><h2>{{.Title}}</h2><span class="chip">{{len .Tasks}}</span></div>
   <ul class="list">
-    {{range .Tasks}}{{$run := index $d.Running .ID}}
-    <li class="task-row">
-      <a class="rowlink with-lead" href="/tasks/{{.ID}}">{{if .UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}<span class="row-main"><span class="row-title">{{.Name}} {{if $run}}<span class="chip accent">running</span>{{else if .Enabled}}<span class="chip ok">active</span>{{else if .PausedReason}}<span class="chip danger">paused after error</span>{{else}}<span class="chip">paused</span>{{end}}</span><span class="row-sub">{{.Trigger.Summary}}</span></span></a>
-      <div class="btns">
-        {{if $run}}<form method="post" action="/runs/{{$run}}/stop" data-fetch data-done="Stopped."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
-          <button type="submit" class="ib danger" aria-label="Stop {{.Name}}" data-tip="Stop">{{icon "square"}}<span class="lbl">Stop</span></button></form>
-        {{else if .NeedsMember}}<button type="button" class="ib" aria-disabled="true" aria-label="Run {{.Name}} now" data-tip="Starts only for a member, by an event, /task or a button">{{icon "play"}}<span class="lbl">Run now</span></button>
-        {{else}}<form method="post" action="/tasks/{{.ID}}/run" data-fetch data-done="Started {{.Name}}."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
-          <button type="submit" class="ib" aria-label="Run {{.Name}} now" data-tip="Run now">{{icon "play"}}<span class="lbl">Run now</span></button></form>{{end}}
-        {{if .Enabled}}<form method="post" action="/tasks/{{.ID}}/pause" data-fetch data-done="Paused {{.Name}}."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
-          <button type="submit" class="ib" aria-label="Pause {{.Name}}" data-tip="Pause">{{icon "pause"}}<span class="lbl">Pause</span></button></form>
-        {{else}}<form method="post" action="/tasks/{{.ID}}/resume" data-fetch data-done="{{.Name}} is active again."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$d.Self}}">
-          <button type="submit" class="ib" aria-label="Resume {{.Name}}" data-tip="Resume">{{icon "rotate-ccw"}}<span class="lbl">Resume</span></button></form>{{end}}
-        <a class="ib quiet" href="/tasks/{{.ID}}" aria-label="Edit {{.Name}}" data-tip="Edit">{{icon "pencil"}}<span class="lbl">Edit</span></a>
-      </div>
-    </li>
+    {{range .Tasks}}{{template "taskrow" (dict "R" . "CSRF" $csrf "Next" $d.Self "Compact" true)}}
     {{else}}
     <li><span class="muted">{{.Empty}}</span></li>
     {{end}}
   </ul>
 </section>
 {{end}}
-
-
 
 {{define "uploadtile"}}{{$d := .D}}
 <li class="snd snd-upload">

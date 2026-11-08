@@ -1,15 +1,3 @@
-{{define "navlinks"}}
-{{if .Session.NoAccess}}<a data-tip="Home" href="/"{{if eq .Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Home</span></a>{{else}}
-<a data-tip="Dashboard" href="/"{{if eq .Nav "home"}} aria-current="page"{{end}}>{{icon "layout-dashboard"}}<span>Dashboard</span></a>
-<a data-tip="Control Room" href="/room"{{if eq .Nav "room"}} aria-current="page"{{end}}>{{icon "radio"}}<span>Control Room</span></a>
-<a data-tip="Servers" href="/servers"{{if eq .Nav "servers"}} aria-current="page"{{end}}>{{icon "server"}}<span>Servers</span></a>
-<a data-tip="Tasks" href="/tasks"{{if eq .Nav "tasks"}} aria-current="page"{{end}}>{{icon "calendar"}}<span>Tasks</span></a>
-<a data-tip="Messages" href="/messages"{{if eq .Nav "messages"}} aria-current="page"{{end}}>{{icon "message-square"}}<span>Messages</span></a>
-<a data-tip="Media" href="/media"{{if eq .Nav "media"}} aria-current="page"{{end}}>{{icon "image"}}<span>Media</span></a>
-<a data-tip="Trash" href="/trash"{{if eq .Nav "trash"}} aria-current="page"{{end}}>{{icon "trash-2"}}<span>Trash</span>{{with .Trash}}<span class="badge">{{.}}</span>{{end}}</a>
-{{if .Session.IsAdmin}}<a data-tip="Admin" href="/admin"{{if eq .Nav "admin"}} aria-current="page"{{end}}>{{icon "shield"}}<span>Admin</span>{{with .Pending}}<span class="badge accent" aria-label="{{.}} open access requests">{{.}}</span>{{end}}</a>{{end}}
-{{end}}{{end}}
-
 {{define "grouppick"}}
 <label class="field"><span>Server group</span>
   <select name="guild">
@@ -203,3 +191,33 @@
 {{end}}
 
 {{define "tagface"}}{{if .IconID}}<img class="tface" src="/media/{{.IconID}}/file" alt="" width="20" height="20" loading="lazy">{{else if emojiURL .Emoji}}<img class="tface" src="{{emojiURL .Emoji}}" alt="" width="20" height="20" loading="lazy" referrerpolicy="no-referrer">{{else if .Emoji}}<span class="tface" aria-hidden="true">{{.Emoji}}</span>{{else}}{{icon "hash"}}{{end}}{{end}}
+
+{{/* taskrow: R a taskRow, CSRF, Next the page to come back to, Compact leaves out the runs line */}}
+{{define "taskrow"}}{{$t := .R.Task}}{{$csrf := .CSRF}}{{$next := .Next}}
+<li class="task-row">
+  <div class="row-main">
+    <div class="row-title"><a href="/tasks/{{$t.ID}}">{{$t.Name}}</a> {{template "taskstatus" .R}}</div>
+    <div class="meta">
+      {{if ne $t.Trigger.Kind "manual"}}<span class="chip">{{icon "clock"}}{{$t.Trigger.Summary}}</span>{{end}}
+      {{with .R.Guild}}<span class="chip">{{if $t.UsesVoice}}{{icon "volume-2"}}{{else}}{{icon "hash"}}{{end}}{{.}}</span>{{end}}
+      {{if $t.Slash}}<span class="chip accent">/task</span>{{end}}
+    </div>
+    {{if not .Compact}}<div class="row-sub">{{.R.What}}{{with .R.Next}} · next {{when .}}{{end}}{{with .R.Last}} · last run {{when .StartedAt}} {{template "runchip" .}}{{else}} · never ran{{end}}</div>{{end}}
+    {{with $t.PausedReason}}<div class="callout danger">{{icon "circle-x"}}<span>{{.}} Fix it and save the task, or resume it.</span></div>{{end}}
+  </div>
+  <div class="btns">
+    {{if .R.Run}}<form method="post" action="/runs/{{.R.Run}}/stop" data-fetch data-done="Stopped."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$next}}">
+      <button type="submit" class="ib danger" aria-label="Stop {{$t.Name}}" data-tip="Stop">{{icon "square"}}<span class="lbl">Stop</span></button></form>
+    {{else if $t.NeedsMember}}<button type="button" class="ib" aria-disabled="true" aria-label="Run {{$t.Name}} now, not possible: a step uses the member who started the run" data-tip="Only its event, /task or a button can start it">{{icon "play"}}<span class="lbl">Run now</span></button>
+    {{else}}<form method="post" action="/tasks/{{$t.ID}}/run" data-fetch data-done="Started {{$t.Name}}."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$next}}">
+      <button type="submit" class="ib" aria-label="Run {{$t.Name}} now" data-tip="Run now">{{icon "play"}}<span class="lbl">Run now</span></button></form>{{end}}
+    {{if ne $t.Trigger.Kind "manual"}}{{if $t.Enabled}}<form method="post" action="/tasks/{{$t.ID}}/pause" data-fetch data-done="Paused {{$t.Name}}."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$next}}">
+      <button type="submit" class="ib" aria-label="Pause {{$t.Name}}" data-tip="Pause">{{icon "pause"}}<span class="lbl">Pause</span></button></form>
+    {{else}}<form method="post" action="/tasks/{{$t.ID}}/resume" data-fetch data-done="{{$t.Name}} is active again."><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="next" value="{{$next}}">
+      <button type="submit" class="ib" aria-label="Resume {{$t.Name}}" data-tip="Resume">{{icon "rotate-ccw"}}<span class="lbl">Resume</span></button></form>{{end}}{{end}}
+    <a class="ib" href="/tasks/{{$t.ID}}" aria-label="Edit {{$t.Name}}" data-tip="Edit">{{icon "pencil"}}<span class="lbl">Edit</span></a>
+  </div>
+</li>
+{{end}}
+
+{{define "taskstatus"}}{{if .Run}}<span class="chip accent">running</span>{{else if .Task.PausedReason}}<span class="chip danger">{{icon "circle-x"}}paused after error</span>{{else if not .Task.Enabled}}<span class="chip">paused</span>{{else if eq .Task.Trigger.Kind "manual"}}<span class="chip">manual only</span>{{else}}<span class="chip ok">active</span>{{end}}{{end}}

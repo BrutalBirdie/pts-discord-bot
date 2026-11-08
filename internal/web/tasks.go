@@ -86,40 +86,83 @@ func (s *Server) describeSteps(t tasks.Task, mediaNames map[int64]string) string
 
 type taskRow struct {
 	Task  tasks.Task
-	Guild string
+	Guild string // the server's name, on lists across servers
 	What  string
 	Next  *time.Time
 	Last  *store.Run
+	Run   int64 // the run in progress
+}
+
+// taskRows adds what the task rows show: the steps in words, the next and the last run.
+func (s *Server) taskRows(r *http.Request, list []tasks.Task, guildNames bool) ([]taskRow, error) {
+	last, err := s.store.LastRuns(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	names, err := s.mediaNames(r)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	rows := make([]taskRow, 0, len(list))
+	for _, t := range list {
+		row := taskRow{Task: t, What: s.describeSteps(t, names)}
+		if guildNames {
+			row.Guild = s.bot.GuildName(t.GuildID)
+		}
+		if t.Enabled {
+			if next := t.Trigger.Next(now, 1); len(next) == 1 {
+				row.Next = &next[0]
+			}
+		}
+		if run, ok := last[t.ID]; ok {
+			row.Last = &run
+			if run.Status == store.RunRunning {
+				row.Run = run.ID
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
 }
 
 type tasksData struct {
+	Guild  bot.Guild // the open server, empty without one
 	Rows   []taskRow
 	Filter string
 	Counts map[string]int
 	Paging paging
 }
 
+// tasks lists the tasks of a server. /tasks opens the user's first server.
 func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	d := tasksData{Filter: r.URL.Query().Get("filter"), Counts: map[string]int{}, Paging: newPaging(r)}
+	if r.PathValue("id") == "" {
+		if g, ok := s.serverOf(r); ok {
+			http.Redirect(w, r, withQuery("/room/"+g.ID+"/tasks", r.URL.RawQuery), http.StatusSeeOther)
+			return
+		}
+	} else {
+		g, ok := s.bot.Guild(r.PathValue("id"))
+		if !ok || !sessionFrom(r).CanGuild(g.ID) {
+			s.notFound(w, r)
+			return
+		}
+		d.Guild = g
+		r = at(r, place{Guild: g.ID, Section: "tasks", Members: true})
+	}
 	list, err := s.store.ListTasks(ctx, sessionFrom(r).Scope())
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	last, err := s.store.LastRuns(ctx)
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	names, err := s.mediaNames(r)
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	d := tasksData{Filter: r.URL.Query().Get("filter"), Counts: map[string]int{}, Paging: newPaging(r)}
 	d.Paging.Keep("filter", d.Filter)
 	var shown []tasks.Task
 	for _, t := range list {
+		if t.GuildID != d.Guild.ID {
+			continue
+		}
 		state := "paused"
 		if t.Enabled {
 			state = "active"
@@ -136,20 +179,19 @@ func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
 			shown = append(shown, t)
 		}
 	}
-	now := time.Now()
-	for _, t := range window(&d.Paging, shown) {
-		row := taskRow{Task: t, Guild: s.bot.GuildName(t.GuildID), What: s.describeSteps(t, names)}
-		if t.Enabled {
-			if next := t.Trigger.Next(now, 1); len(next) == 1 {
-				row.Next = &next[0]
-			}
-		}
-		if run, ok := last[t.ID]; ok {
-			row.Last = &run
-		}
-		d.Rows = append(d.Rows, row)
+	if d.Rows, err = s.taskRows(r, window(&d.Paging, shown), false); err != nil {
+		s.internalError(w, r, err)
+		return
 	}
 	s.render(w, r, http.StatusOK, "tasks", d)
+}
+
+// withQuery adds a raw query to a path.
+func withQuery(path, query string) string {
+	if query == "" {
+		return path
+	}
+	return path + "?" + query
 }
 
 type taskEditor struct {
@@ -362,7 +404,7 @@ func (s *Server) renderEditor(w http.ResponseWriter, r *http.Request, status int
 		return
 	}
 	e.Problems, e.Unsaved = problems, unsaved
-	s.render(w, r, status, "task", e)
+	s.render(w, at(r, place{Guild: t.GuildID, Section: "tasks"}), status, "task", e)
 }
 
 // parseTask reads the editor form. Fields that do not parse are kept empty,

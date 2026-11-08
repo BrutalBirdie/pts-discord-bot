@@ -67,7 +67,7 @@ var pageNames = []string{"login", "error", "dashboard", "servers", "server", "ta
 func New(cfg Config, st *store.Store, b *bot.Bot, r *runner.Runner, log *slog.Logger) (*Server, error) {
 	s := &Server{cfg: cfg, store: st, bot: b, run: r, log: log, pages: map[string]*template.Template{}, live: newHub(), discord: httpDiscord{client: &http.Client{Timeout: 15 * time.Second}}}
 	for _, page := range pageNames {
-		t, err := template.New("layout.html").Funcs(viewFuncs).ParseFS(assets, "templates/layout.html", "templates/parts.html", "templates/icons.html", "templates/"+page+".html")
+		t, err := template.New("layout.html").Funcs(viewFuncs).ParseFS(assets, "templates/layout.html", "templates/parts.html", "templates/shell.html", "templates/icons.html", "templates/"+page+".html")
 		if err != nil {
 			return nil, err
 		}
@@ -112,6 +112,9 @@ func (s *Server) routes() *http.ServeMux {
 
 	mux.Handle("GET /room", s.requireLogin(s.roomHome))
 	mux.Handle("GET /room/{id}", s.requireLogin(s.room))
+	mux.Handle("GET /room/{id}/tasks", s.requireLogin(s.tasks))
+	mux.Handle("GET /room/{id}/messages", s.requireLogin(s.messagesList))
+	mux.Handle("GET /room/{id}/media", s.requireLogin(s.mediaPage))
 	mux.Handle("POST /room/{id}/send", s.requireLogin(s.roomSend))
 
 	mux.Handle("GET /tasks", s.requireLogin(s.tasks))
@@ -313,6 +316,8 @@ type pageData struct {
 	// DiscordLogin shows the Discord button on the login page
 	DiscordLogin bool
 	Data         any
+	// Shell is the Control Room frame around the page, nil without access
+	Shell *shell
 }
 
 var navOf = map[string]string{"dashboard": "home", "servers": "servers", "server": "servers", "tasks": "tasks", "task": "tasks",
@@ -393,15 +398,13 @@ func (s *Server) renderMsg(w http.ResponseWriter, r *http.Request, status int, p
 			notice = "Restored as " + as + ", the old name is taken."
 		}
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	err := s.pages[page].Execute(w, pageData{
-		Title:        "PTS Discord Bot",
+	var sh *shell
+	if sess != nil && !sess.NoAccess() && page != "access" {
+		sh = s.buildShell(r, page)
+	}
+	s.execute(w, r, status, page, pageData{
 		Session:      sess,
 		Prefs:        prefs,
-		Nav:          navOf[page],
-		Path:         r.URL.Path,
-		Bot:          s.bot.Status(),
 		Error:        msg,
 		Notice:       notice,
 		Undo:         undo,
@@ -410,7 +413,19 @@ func (s *Server) renderMsg(w http.ResponseWriter, r *http.Request, status int, p
 		Pending:      pending,
 		DiscordLogin: s.discordEnabled(),
 		Data:         data,
+		Shell:        sh,
 	})
+}
+
+// execute writes a page with the parts every page shares.
+func (s *Server) execute(w http.ResponseWriter, r *http.Request, status int, page string, pd pageData) {
+	pd.Title = "PTS Discord Bot"
+	pd.Nav = navOf[page]
+	pd.Path = r.URL.Path
+	pd.Bot = s.bot.Status()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	err := s.pages[page].Execute(w, pd)
 	if err != nil {
 		s.log.Error("render", "page", page, "err", err)
 	}
