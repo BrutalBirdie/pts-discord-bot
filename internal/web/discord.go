@@ -332,6 +332,7 @@ var discordRoutes = map[string]bool{
 	"POST /media/{id}/play":           true,
 	"POST /media/{id}/delete":         true,
 	"POST /media/group":               true,
+	"POST /media/tags":                true,
 	"POST /media/{id}/sound":          true,
 	"POST /media/{id}/favorite":       true,
 	"GET /trash":                      true,

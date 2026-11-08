@@ -355,7 +355,7 @@
     <input type="hidden" name="next" value="{{$d.URL "c" $d.Channel.ID}}">
     <input type="hidden" name="guild" value="{{$d.Guild.ID}}">
     {{range $d.Tags}}<input type="hidden" name="tag" value="{{.}}">{{end}}
-    <label class="snd-play">{{icon "plus"}}<span class="nm">Upload new</span><input type="file" name="file" accept="audio/*,video/*,.ogg,.opus,.mp3,.wav,.flac,.m4a,.webm" multiple class="vh"></label>
+    <label class="snd-play">{{icon "plus"}}<span class="nm">Upload new</span><input type="file" name="file" accept="audio/*,video/*,.ogg,.opus,.mp3,.wav,.flac,.m4a,.webm,.zip" multiple class="vh"></label>
     <button type="submit" class="ib sm no-js">{{icon "upload"}}<span class="lbl">Upload</span></button>
   </form>
 </li>

@@ -1,14 +1,20 @@
 package web
 
 import (
+	"archive/zip"
 	"cmp"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -38,10 +44,56 @@ type mediaData struct {
 	DefaultGroup string      // preselected for uploads: the server of a Discord user
 	Names        map[string]string
 	Paging       paging
-	Edit         *store.Media // the sound in the Edit sound sheet
+	Edit         *store.Media // the file in the Edit sheet, sounds get Edit sound
 	Emojis       []bot.Emoji
 	Images       []store.Media
 	Self         string
+	Batch        string        // the files of one upload
+	Uploaded     []store.Media // all of them
+	Problems     []string      // files of the upload that were not added
+	Review       *review       // Edit goes through the files of the upload
+	Ask          bool          // just uploaded or tagged: the Uploaded sheet opens and asks what next
+	Tagged       bool
+}
+
+// BatchTags is the tag picker for all files of the upload, in the sheet or on the page.
+func (d mediaData) BatchTags(where string) tokenField {
+	return tokenField{Field: "tag", Find: "tag_find", Label: "Tags for all of them", LabelID: "tags-batch-" + where, Placeholder: "Search or add tags", Empty: "No tags picked",
+		Help: "Added to the tags each file has.", Source: "/tags", Max: maxTags, Plain: true}
+}
+
+// review is the place of the file in the Edit sheet among the files of an upload.
+type review struct {
+	Pos, Total int
+	Next       string // the next file's sheet, or the upload's list after the last
+	Last       bool
+}
+
+// EditNext is where the Edit sheet goes after saving.
+func (d mediaData) EditNext() string {
+	if d.Review != nil {
+		return d.Review.Next
+	}
+	return d.Self
+}
+
+// UploadedKinds counts the files of the upload by kind, like "3 sounds, 1 image".
+func (d mediaData) UploadedKinds() string {
+	n := map[string]int{}
+	for _, m := range d.Uploaded {
+		n[m.Kind]++
+	}
+	var out []string
+	for _, k := range []struct{ kind, one, many string }{{store.KindSound, "sound", "sounds"}, {store.KindImage, "image", "images"}, {store.KindVideo, "video", "videos"}, {store.KindFile, "other file", "other files"}} {
+		switch n[k.kind] {
+		case 0:
+		case 1:
+			out = append(out, "1 "+k.one)
+		default:
+			out = append(out, fmt.Sprintf("%d %s", n[k.kind], k.many))
+		}
+	}
+	return strings.Join(out, ", ")
 }
 
 // GroupsWith are the group choices plus guildID, a file's current group.
@@ -84,6 +136,12 @@ func (s *Server) voiceGroups(r *http.Request) []voiceGroup {
 }
 
 func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
+	s.showMedia(w, r, r.URL.Query(), nil)
+}
+
+// showMedia shows the media library, with batch only the files of that
+// upload and the problems of the files it could not add.
+func (s *Server) showMedia(w http.ResponseWriter, r *http.Request, q url.Values, problems []string) {
 	ctx := r.Context()
 	sess := sessionFrom(r)
 	sum, err := s.store.MediaSummary(ctx)
@@ -96,9 +154,8 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	q := r.URL.Query()
 	d := mediaData{Kind: q.Get("kind"), Tag: q.Get("tag"), Group: q.Get("server"), Counts: sum.Counts, TotalBytes: sum.Bytes, Tags: sum.Tags, Voice: s.voiceGroups(r), MaxUploadMB: settings.MaxUploadMB, Paging: newPaging(r),
-		Names: map[string]string{}}
+		Names: map[string]string{}, Batch: q.Get("batch"), Problems: problems}
 	if d.Groups, err = s.groupChoices(ctx, r, ""); err != nil {
 		s.internalError(w, r, err)
 		return
@@ -112,7 +169,17 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 	d.Paging.Keep("kind", d.Kind)
 	d.Paging.Keep("tag", d.Tag)
 	d.Paging.Keep("server", d.Group)
-	items, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: sess.Scope(), Group: d.Group, Kind: d.Kind, Tag: d.Tag, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
+	d.Paging.Keep("batch", d.Batch)
+	if d.Batch != "" {
+		if d.Uploaded, err = s.store.FindMedia(ctx, store.MediaQuery{Scope: sess.Scope(), Batch: d.Batch}); err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+		done := q.Get("done")
+		d.Tagged = done == "tagged"
+		d.Ask = q.Get("edit") == "" && (len(problems) > 0 || len(d.Uploaded) > 1 && (done == "uploaded" || d.Tagged))
+	}
+	items, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: sess.Scope(), Group: d.Group, Kind: d.Kind, Tag: d.Tag, Batch: d.Batch, Search: d.Paging.Query, Limit: d.Paging.Limit(), Offset: d.Paging.Offset()})
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -120,8 +187,11 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 	d.Items = cut(&d.Paging, items)
 	d.Self = d.Paging.Self()
 	if id, err := strconv.ParseInt(q.Get("edit"), 10, 64); err == nil {
-		if m, err := s.store.Media(ctx, id); err == nil && m.Kind == store.KindSound {
+		if m, err := s.store.Media(ctx, id); err == nil {
 			d.Edit = &m
+			d.Review = d.reviewOf(m.ID)
+		}
+		if m := d.Edit; m != nil && m.Kind == store.KindSound {
 			guild := m.GuildID
 			if guild == "" && len(d.Groups) > 0 {
 				guild = d.Groups[0].ID
@@ -141,8 +211,21 @@ func (s *Server) mediaPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "media", d)
 }
 
-// upload streams the files of a multipart form into the media directory.
-// The csrf field must come before the files.
+// reviewOf places a file among the files of the upload, nil when it is not one of them.
+func (d mediaData) reviewOf(id int64) *review {
+	i := slices.IndexFunc(d.Uploaded, func(m store.Media) bool { return m.ID == id })
+	if i < 0 || len(d.Uploaded) < 2 {
+		return nil
+	}
+	rv := &review{Pos: i + 1, Total: len(d.Uploaded), Next: "/media?batch=" + url.QueryEscape(d.Batch), Last: i == len(d.Uploaded)-1}
+	if !rv.Last {
+		rv.Next += "&edit=" + strconv.FormatInt(d.Uploaded[i+1].ID, 10)
+	}
+	return rv
+}
+
+// upload streams the files of a multipart form into the media directory and
+// unpacks zip archives. The csrf field must come before the files.
 func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sess := sessionFrom(r)
@@ -159,9 +242,10 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	csrfOK := false
-	group, only, next := "", false, ""
+	want := store.Media{Batch: uploadBatch()}
+	next := ""
 	var tags []string
-	var added, problems []string
+	var problems []string
 	var saved []store.Media
 	for {
 		part, err := mr.NextPart()
@@ -177,29 +261,26 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 			}
 			break
 		}
-		if part.FormName() == "csrf" {
+		switch part.FormName() {
+		case "csrf":
 			token, _ := io.ReadAll(io.LimitReader(part, 256))
 			csrfOK = s.validCSRF(r, sess, string(token))
 			continue
-		}
-		if part.FormName() == "tag" {
+		case "tag":
 			v, _ := io.ReadAll(io.LimitReader(part, 64))
 			tags = ParseTags(strings.Join(append(tags, string(v)), ","))
 			continue
-		}
-		if part.FormName() == "next" {
+		case "next":
 			v, _ := io.ReadAll(io.LimitReader(part, 512))
 			next = safeNext(string(v), "")
 			continue
-		}
-		if part.FormName() == "guild" {
+		case "guild":
 			v, _ := io.ReadAll(io.LimitReader(part, 64))
-			group = string(v)
+			want.GuildID = string(v)
 			continue
-		}
-		if part.FormName() == "group_only" {
+		case "group_only":
 			v, _ := io.ReadAll(io.LimitReader(part, 8))
-			only = string(v) == "on"
+			want.GroupOnly = string(v) == "on"
 			continue
 		}
 		if part.FormName() != "file" || part.FileName() == "" {
@@ -209,7 +290,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, http.StatusForbidden, "The request could not be verified. Reload the page and try again.")
 			return
 		}
-		if !validGroup(sess, group, "") {
+		if !validGroup(sess, want.GuildID, "") {
 			s.fail(w, r, http.StatusBadRequest, "Pick one of your servers.")
 			return
 		}
@@ -218,41 +299,165 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 			problems = append(problems, part.FileName()+": "+err.Error()+".")
 			continue
 		}
-		m, err := s.saveUpload(r, part, store.Media{Name: name, GuildID: group, GroupOnly: only}, limit)
-		if err != nil {
-			problems = append(problems, name+": "+err.Error())
+		if strings.EqualFold(filepath.Ext(name), ".zip") {
+			got, bad := s.unpackZip(r, part, name, want, limit)
+			saved, problems = append(saved, got...), append(problems, bad...)
 			continue
 		}
-		if len(tags) > 0 {
-			m.Tags = tags
-			if err := s.store.UpdateMedia(r.Context(), m); err != nil {
-				s.log.Error("tagging an upload", "err", err)
-			}
+		want.Name = name
+		m, err := s.saveUpload(r, part, want, limit)
+		if err != nil {
+			problems = append(problems, name+": "+err.Error()+".")
+			continue
 		}
-		added = append(added, name)
 		saved = append(saved, m)
+	}
+	var added []string
+	ids := make([]int64, 0, len(saved))
+	for i := range saved {
+		added = append(added, saved[i].Name)
+		ids = append(ids, saved[i].ID)
+		if len(tags) > 0 {
+			saved[i].Tags = tags
+		}
+	}
+	if len(tags) > 0 && len(ids) > 0 {
+		if err := s.store.AddTags(ctx, ids, tags); err != nil {
+			s.log.Error("tagging an upload", "err", err)
+		}
 	}
 	if len(added) > 0 {
 		s.audit(r, "media.upload", strings.Join(added, ", "), "")
 	}
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		type file struct {
+			ID         int64  `json:"id"`
+			Name       string `json:"name"`
+			Kind       string `json:"kind"`
+			DurationMS int    `json:"duration_ms"`
+		}
+		out := struct {
+			Added    []file   `json:"added"`
+			Problems []string `json:"problems"`
+		}{Added: []file{}, Problems: problems}
+		for _, m := range saved {
+			out.Added = append(out.Added, file{ID: m.ID, Name: m.Label(), Kind: m.Kind, DurationMS: m.PlayMS()})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+		return
+	}
+	if len(saved) == 0 {
+		s.fail(w, r, http.StatusBadRequest, cmp.Or(strings.Join(problems, " "), "Pick the files to upload first."))
+		return
+	}
+	if next != "" {
+		if len(problems) > 0 {
+			s.fail(w, r, http.StatusBadRequest, "Uploaded "+strings.Join(added, ", ")+". "+strings.Join(problems, " "))
+			return
+		}
+		// a single new sound opens Edit sound, to cut it right away
+		if len(saved) == 1 && saved[0].Kind == store.KindSound {
+			sep := map[bool]string{true: "&", false: "?"}[strings.Contains(next, "?")]
+			http.Redirect(w, r, fmt.Sprintf("%s%sedit=%d&done=uploaded#sheet-sound", next, sep, saved[0].ID), http.StatusSeeOther)
+			return
+		}
+		redirect(w, r, next, "uploaded")
+		return
+	}
+	// the files just uploaded, to tag them all at once or review them one by one
 	if len(problems) > 0 {
-		msg := strings.Join(problems, " ")
-		if len(added) > 0 {
-			msg = "Uploaded " + strings.Join(added, ", ") + ". " + msg
-		}
-		s.fail(w, r, http.StatusBadRequest, msg)
+		s.showMedia(w, r, url.Values{"batch": {want.Batch}}, problems)
 		return
 	}
-	// a single new sound opens Edit sound, to cut it right away
-	if len(saved) == 1 && saved[0].Kind == store.KindSound {
-		back := "/media?"
-		if next != "" {
-			back = next + map[bool]string{true: "&", false: "?"}[strings.Contains(next, "?")]
-		}
-		http.Redirect(w, r, fmt.Sprintf("%sedit=%d&done=uploaded#sheet-sound", back, saved[0].ID), http.StatusSeeOther)
-		return
+	target := "/media?batch=" + want.Batch
+	if len(saved) == 1 {
+		target += "&edit=" + strconv.FormatInt(saved[0].ID, 10)
 	}
-	redirect(w, r, cmp.Or(next, "/media"), "uploaded")
+	redirect(w, r, target, "uploaded")
+}
+
+func uploadBatch() string {
+	b := make([]byte, 9)
+	rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+const maxZipFiles = 500
+
+// unpackZip adds the files of a zip archive, without its folders. All files
+// together may be four times the upload limit, each one the limit.
+func (s *Server) unpackZip(r *http.Request, src io.Reader, name string, want store.Media, limit int64) (saved []store.Media, problems []string) {
+	tmp, err := s.cfg.MediaDir.Temp()
+	if err != nil {
+		return nil, []string{name + ": " + err.Error() + "."}
+	}
+	defer os.Remove(tmp.Name())
+	n, err := io.Copy(tmp, io.LimitReader(src, limit+1))
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	var tooLarge *http.MaxBytesError
+	switch {
+	case errors.As(err, &tooLarge) || n > limit:
+		return nil, []string{fmt.Sprintf("%s: larger than %d MB.", name, limit>>20)}
+	case err != nil:
+		return nil, []string{name + ": " + err.Error() + "."}
+	}
+	zr, err := zip.OpenReader(tmp.Name())
+	// the names are cut to the file name, a path outside the archive does no harm
+	if err != nil && !errors.Is(err, zip.ErrInsecurePath) {
+		return nil, []string{name + ": not a zip archive the bot can read."}
+	}
+	defer zr.Close()
+	var total int64
+	count := 0
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		full := strings.ReplaceAll(f.Name, `\`, "/")
+		base := path.Base(full)
+		// macOS adds __MACOSX/ and .DS_Store to archives
+		if strings.HasPrefix(full, "__MACOSX/") || strings.HasPrefix(base, ".") {
+			continue
+		}
+		if strings.EqualFold(path.Ext(base), ".zip") {
+			problems = append(problems, base+": archives inside "+name+" are not unpacked.")
+			continue
+		}
+		if count++; count > maxZipFiles {
+			problems = append(problems, fmt.Sprintf("Only the first %d files of %s were unpacked.", maxZipFiles, name))
+			break
+		}
+		if total > 4*limit {
+			problems = append(problems, fmt.Sprintf("%s unpacks to more than %d MB, the rest was not unpacked.", name, 4*limit>>20))
+			break
+		}
+		clean, err := media.CleanName(base)
+		if err != nil {
+			problems = append(problems, base+": "+err.Error()+".")
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			problems = append(problems, clean+": "+err.Error()+".")
+			continue
+		}
+		want.Name = clean
+		m, err := s.saveUpload(r, rc, want, limit)
+		rc.Close()
+		if err != nil {
+			problems = append(problems, clean+": "+err.Error()+".")
+			continue
+		}
+		total += m.SizeBytes
+		saved = append(saved, m)
+	}
+	if len(saved) == 0 && len(problems) == 0 {
+		problems = append(problems, name+": the archive has no files.")
+	}
+	return saved, problems
 }
 
 // saveUpload adds a file with the name and server group of want. Names are unique.
@@ -284,7 +489,7 @@ func (s *Server) saveUpload(r *http.Request, src io.Reader, want store.Media, li
 	if err != nil {
 		return store.Media{}, err
 	}
-	m.UploadedBy, m.GuildID, m.GroupOnly = sessionFrom(r).Username, want.GuildID, want.GroupOnly
+	m.UploadedBy, m.GuildID, m.GroupOnly, m.Batch = sessionFrom(r).Username, want.GuildID, want.GroupOnly, want.Batch
 	id, err := s.store.AddMedia(ctx, m)
 	if errors.Is(err, store.ErrNameTaken) {
 		return store.Media{}, errors.New("a file with this name exists, delete it first or rename the upload")
@@ -424,7 +629,57 @@ func (s *Server) updateMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "media.update", name, "tags="+strings.Join(tags, ",")+", server group "+groupDetail(s.groupName(group), only))
-	redirect(w, r, "/media", "saved")
+	redirect(w, r, safeNext(r.PostForm.Get("next"), "/media"), "saved")
+}
+
+// tagMedia adds tags to the files selected on the media page, or to all files of an upload.
+func (s *Server) tagMedia(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tags := ParseTags(strings.Join(append(r.PostForm["tag"], r.PostForm.Get("tag_find"), r.PostForm.Get("tags")), ","))
+	if len(tags) == 0 {
+		s.fail(w, r, http.StatusBadRequest, "Pick the tags to add first.")
+		return
+	}
+	ids := formIDs(r.PostForm["id"])
+	if batch := r.PostForm.Get("batch"); batch != "" {
+		list, err := s.store.FindMedia(ctx, store.MediaQuery{Scope: sessionFrom(r).Scope(), Batch: batch})
+		if err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+		for _, m := range list {
+			if !slices.Contains(ids, m.ID) {
+				ids = append(ids, m.ID)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		s.fail(w, r, http.StatusBadRequest, "Select the files first.")
+		return
+	}
+	list, err := s.store.MediaByIDs(ctx, ids)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	if len(list) != len(ids) {
+		s.notFound(w, r)
+		return
+	}
+	names := make([]string, 0, len(list))
+	for _, m := range list {
+		if n := len(ParseTags(strings.Join(append(m.Tags, tags...), ","))); n > maxTags {
+			s.fail(w, r, http.StatusBadRequest, fmt.Sprintf("%s would have %d tags, at most %d fit.", m.Name, n, maxTags))
+			return
+		}
+		names = append(names, m.Name)
+	}
+	if err := s.store.AddTags(ctx, ids, tags); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	s.audit(r, "media.tag", strings.Join(names, ", "), "added tags="+strings.Join(tags, ","))
+	redirect(w, r, safeNext(r.PostForm.Get("next"), "/media"), "tagged")
 }
 
 func (s *Server) loadMedia(w http.ResponseWriter, r *http.Request) (store.Media, bool) {

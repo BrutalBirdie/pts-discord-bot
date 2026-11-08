@@ -64,14 +64,19 @@ func groupDetail(name string, only bool) string {
 	return name
 }
 
-// groupMedia sets the server group of the files selected on the media page.
-func (s *Server) groupMedia(w http.ResponseWriter, r *http.Request) {
+func formIDs(values []string) []int64 {
 	var ids []int64
-	for _, v := range r.PostForm["id"] {
+	for _, v := range values {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 && !slices.Contains(ids, id) {
 			ids = append(ids, id)
 		}
 	}
+	return ids
+}
+
+// groupMedia sets the server group of the files selected on the media page.
+func (s *Server) groupMedia(w http.ResponseWriter, r *http.Request) {
+	ids := formIDs(r.PostForm["id"])
 	if len(ids) == 0 {
 		s.fail(w, r, http.StatusBadRequest, "Select the files first.")
 		return

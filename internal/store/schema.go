@@ -155,6 +155,8 @@ ALTER TABLE media ADD COLUMN IF NOT EXISTS trim_end_ms integer NOT NULL DEFAULT 
 ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS play_volume integer NOT NULL DEFAULT 100 CHECK (play_volume BETWEEN 1 AND 200);
 ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS guild_order text[] NOT NULL DEFAULT '{}';
 ALTER TABLE media ADD COLUMN IF NOT EXISTS display_name text NOT NULL DEFAULT '';
+ALTER TABLE media ADD COLUMN IF NOT EXISTS upload_batch text NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS media_upload_batch ON media (upload_batch) WHERE upload_batch <> '';
 CREATE TABLE IF NOT EXISTS tag_looks (
     tag text PRIMARY KEY,
     emoji text NOT NULL DEFAULT '',

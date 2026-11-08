@@ -38,14 +38,15 @@ type Media struct {
 	Volume      int      // percent for every playback, 0 for the volume of the step or soundboard
 	TrimStartMS int      // playback starts here
 	TrimEndMS   int      // and ends here, 0 for the end of the file
+	Batch       string   // the files uploaded together share it, for reviewing them
 	UsedBy      []string // names of tasks and messages in scope that reference it, filled by FindMedia
 	UsedElse    int      // tasks and messages out of scope that reference it
 }
 
-const mediaCols = `id, name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, created_at, tags, coalesce(guild_id, ''), group_only, emoji, coalesce(icon_media_id, 0), volume, trim_start_ms, trim_end_ms, display_name`
+const mediaCols = `id, name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, created_at, tags, coalesce(guild_id, ''), group_only, emoji, coalesce(icon_media_id, 0), volume, trim_start_ms, trim_end_ms, display_name, upload_batch`
 
 func (m *Media) fields() []any {
-	return []any{&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &m.GuildID, &m.GroupOnly, &m.Emoji, &m.IconID, &m.Volume, &m.TrimStartMS, &m.TrimEndMS, &m.DisplayName}
+	return []any{&m.ID, &m.Name, &m.Kind, &m.ContentType, &m.SizeBytes, &m.DurationMS, &m.Width, &m.Height, &m.UploadedBy, &m.CreatedAt, &m.Tags, &m.GuildID, &m.GroupOnly, &m.Emoji, &m.IconID, &m.Volume, &m.TrimStartMS, &m.TrimEndMS, &m.DisplayName, &m.Batch}
 }
 
 func scanMedia(r pgx.Row) (Media, error) {
@@ -226,8 +227,8 @@ ORDER BY random() LIMIT 1`, tag, guildID))
 
 func (s *Store) AddMedia(ctx context.Context, m Media) (int64, error) {
 	var id int64
-	err := s.pool.QueryRow(ctx, `INSERT INTO media (name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, guild_id, group_only)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`, m.Name, m.Kind, m.ContentType, m.SizeBytes, m.DurationMS, m.Width, m.Height, m.UploadedBy, nullable(m.GuildID), m.GroupOnly && m.GuildID != "").Scan(&id)
+	err := s.pool.QueryRow(ctx, `INSERT INTO media (name, kind, content_type, size_bytes, duration_ms, width, height, uploaded_by, guild_id, group_only, upload_batch)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`, m.Name, m.Kind, m.ContentType, m.SizeBytes, m.DurationMS, m.Width, m.Height, m.UploadedBy, nullable(m.GuildID), m.GroupOnly && m.GuildID != "", m.Batch).Scan(&id)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return 0, ErrNameTaken
@@ -262,6 +263,7 @@ SELECT ` + mediaCols + `,
   ARRAY(SELECT u.name FROM users u WHERE u.media_id = m.id AND (u.open OR ` + inScope("u.owner", "6") + `) ORDER BY u.name),
   (SELECT count(*) FROM users u WHERE u.media_id = m.id AND NOT (u.open OR ` + inScope("u.owner", "6") + `))
 FROM media m WHERE m.deleted_at IS NULL AND ` + offered("m", "7") + ` AND ` + inGroup("m", "8") + ` AND ($1 = '' OR kind = $1) AND ($2 = '' OR $2 = ANY (tags)) AND ($9::text[] IS NULL OR tags @> $9)
+  AND ($10 = '' OR upload_batch = $10)
   AND ($3 = '' OR name ILIKE '%' || $3 || '%' OR display_name ILIKE '%' || $3 || '%' OR array_to_string(tags, ' ') ILIKE '%' || $3 || '%')
 ORDER BY ` + ownFirst("m", "7") + `, kind, lower(name), id LIMIT NULLIF($4, 0) OFFSET $5`
 
@@ -274,6 +276,7 @@ type MediaQuery struct {
 	Offer, Group      string
 	Kind, Tag, Search string
 	AllTags           []string // only files with all of these tags
+	Batch             string   // only the files of one upload
 	Limit, Offset     int
 }
 
@@ -284,7 +287,7 @@ func (s *Store) ListMedia(ctx context.Context, guildID, kind string) ([]Media, e
 }
 
 func (s *Store) FindMedia(ctx context.Context, q MediaQuery) ([]Media, error) {
-	rows, err := s.pool.Query(ctx, listMediaQuery, q.Kind, q.Tag, likeEscaper.Replace(q.Search), q.Limit, q.Offset, q.Scope.param(), q.Offer, q.Group, q.AllTags)
+	rows, err := s.pool.Query(ctx, listMediaQuery, q.Kind, q.Tag, likeEscaper.Replace(q.Search), q.Limit, q.Offset, q.Scope.param(), q.Offer, q.Group, q.AllTags, q.Batch)
 	if err != nil {
 		return nil, err
 	}
@@ -293,6 +296,13 @@ func (s *Store) FindMedia(ctx context.Context, q MediaQuery) ([]Media, error) {
 		err := r.Scan(append(m.fields(), &m.UsedBy, &m.UsedElse)...)
 		return m, err
 	})
+}
+
+// AddTags adds tags to files and keeps the tags they have.
+func (s *Store) AddTags(ctx context.Context, ids []int64, tags []string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE media SET tags = ARRAY(SELECT DISTINCT t FROM unnest(tags || $2::text[]) t ORDER BY t)
+WHERE id = ANY ($1) AND deleted_at IS NULL`, ids, tags)
+	return err
 }
 
 func (s *Store) DeleteMedia(ctx context.Context, id int64) error {

@@ -120,6 +120,7 @@
           {{else if eq $s.Type "play"}}
             {{$pv := $e.Play $i}}
             {{template "tokens" $pv.Tokens}}
+            <label class="ib sm with-label js-only pick-files" data-tip="Adds the sounds to Media and to this step. A .zip is unpacked.">{{icon "upload"}}<span class="lbl">Upload sounds</span><input type="file" class="vh" multiple accept="audio/*,video/*,.ogg,.opus,.mp3,.wav,.flac,.m4a,.webm,.zip" data-step-upload></label>
             <div class="presets" role="radiogroup" aria-label="Order of the sounds">
               <label><input type="radio" name="{{$p}}order" value="sequence"{{if ne $s.Order "random"}} checked{{end}}>Play in order</label>
               <label><input type="radio" name="{{$p}}order" value="random"{{if eq $s.Order "random"}} checked{{end}}>Pick one at random</label>

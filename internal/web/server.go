@@ -148,6 +148,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /media/{id}/play", s.requireLogin(s.playMedia))
 	mux.Handle("POST /media/{id}/delete", s.requireLogin(s.deleteMedia))
 	mux.Handle("POST /media/group", s.requireLogin(s.groupMedia))
+	mux.Handle("POST /media/tags", s.requireLogin(s.tagMedia))
 	mux.Handle("POST /media/{id}/sound", s.requireLogin(s.editSound))
 	mux.Handle("POST /media/{id}/favorite", s.requireLogin(s.setFavorite))
 
@@ -333,6 +334,7 @@ var notices = map[string]string{
 	"refreshed":     "Members requested from Discord. Large servers take a few seconds.",
 	"copied":        "Copy created.",
 	"grouped":       "Server group saved.",
+	"tagged":        "Tags added.",
 	"stopped-run":   "Run stopped.",
 	"trashed":       "Moved to the Trash.",
 	"restored":      "Restored.",

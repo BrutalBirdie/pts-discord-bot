@@ -4,6 +4,10 @@
 * Edit sound: display name, tags, own volume and the part to play, cut on a waveform
 * The soundboard lists the tags with an icon each; picking tags shows only the sounds with all of them, the counts follow, uploads there get the tags
 * Media files can have a display name
+* Media upload is one button or a drop, with progress; a .zip is unpacked into the library
+* After an upload: add tags to all its files at once, then review them one by one; a single file opens its Edit sheet
+* Tags can be added to the selected files of the media list
+* Play steps in the task editor can upload sounds and add them to the step
 * Discord login for server members, access approved by an admin per server
 * Media and messages are open to every user, with optional server groups
 * Saved messages can have buttons that start a task or open a link

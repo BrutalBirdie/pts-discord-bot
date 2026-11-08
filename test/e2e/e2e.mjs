@@ -43,6 +43,42 @@ const text = async (page) => { await settle(page); return page.locator('main').i
 // 1x1 PNG
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
+// a short 8 kHz mono WAV
+const wav = Buffer.alloc(44 + 8000);
+wav.write('RIFF', 0); wav.writeUInt32LE(36 + 8000, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20);
+wav.writeUInt16LE(1, 22); wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+wav.write('data', 36); wav.writeUInt32LE(8000, 40);
+
+// zipOf stores files in a zip archive without compression
+// https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
+const crcTable = Array.from({ length: 256 }, (_, n) => { for (let k = 0; k < 8; k++) n = n & 1 ? 0xedb88320 ^ (n >>> 1) : n >>> 1; return n >>> 0; });
+const crc32 = (buf) => { let c = 0xffffffff; for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function zipOf(files) {
+    const parts = [], central = [];
+    let offset = 0;
+    for (const [name, data] of Object.entries(files)) {
+        const n = Buffer.from(name), crc = crc32(data);
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4);
+        local.writeUInt32LE(crc, 14); local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(n.length, 26);
+        const cen = Buffer.alloc(46);
+        cen.writeUInt32LE(0x02014b50, 0); cen.writeUInt16LE(20, 4); cen.writeUInt16LE(20, 6);
+        cen.writeUInt32LE(crc, 16); cen.writeUInt32LE(data.length, 20); cen.writeUInt32LE(data.length, 24); cen.writeUInt16LE(n.length, 28); cen.writeUInt32LE(offset, 42);
+        parts.push(local, n, data);
+        central.push(cen, n);
+        offset += 30 + n.length + data.length;
+    }
+    const dir = Buffer.concat(central), end = Buffer.alloc(22), count = central.length / 2;
+    end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(count, 8); end.writeUInt16LE(count, 10); end.writeUInt32LE(dir.length, 12); end.writeUInt32LE(offset, 16);
+    return Buffer.concat([...parts, dir, end]);
+}
+
+// pickFiles uploads with the one button of the media page, which sends right after the pick
+async function pickFiles(page, files) {
+    await page.setInputFiles('form[data-upload] input[type=file]', files);
+    await page.waitForURL(/done=uploaded/);
+}
+
 // until polls a condition that a live update makes true
 async function until(fn, ms = 6000) {
     const end = Date.now() + ms;
@@ -97,10 +133,11 @@ const steps = {
         t = await text(page);
         check('imported sound listed', t.includes('beep.ogg') && /0:\d\d/.test(t), t.slice(0, 500));
         check('upload limit from settings', t.includes('up to 50 MB'));
-        await page.setInputFiles('input[type=file]', { name: 'friday card.png', mimeType: 'image/png', buffer: png });
-        await page.click('form[data-upload] button[type=submit]');
+        await pickFiles(page, { name: 'friday card.png', mimeType: 'image/png', buffer: png });
         t = await text(page);
         check('image uploaded', t.includes('Uploaded.') && t.includes('friday_card.png') && t.includes('1 × 1'), t.slice(0, 500));
+        check('a single upload opens its Edit sheet', await page.locator('[data-edit-sheet]').isVisible());
+        await page.goto(BASE + '/media');
         const img = await page.request.get(BASE + (await page.locator('img[src^="/media/"]').first().getAttribute('src')));
         check('image served inline', img.ok() && img.headers()['content-type'] === 'image/png');
         const tile = page.locator('button.preview-tile').first();
@@ -305,8 +342,7 @@ const steps = {
         const { page } = await session('ann');
         const long = 'openpgp4fpr_3EFABCB708412AEE165EDC6C7B17D5A1B2C3D4E5F60718293A4B5C6D7E8F90A1B2C3D4E5F6';
         await page.goto(BASE + '/media');
-        await page.setInputFiles('input[type=file]', { name: long + '.png', mimeType: 'image/png', buffer: png });
-        await page.click('form[data-upload] button[type=submit]');
+        await pickFiles(page, { name: long + '.png', mimeType: 'image/png', buffer: png });
         await page.goto(BASE + '/messages/new');
         await page.fill('input[name=name]', long);
         await page.fill('textarea[name=content]', long + long);
@@ -368,14 +404,9 @@ const steps = {
         await page.goto(BASE + '/tasks');
         check('restored task is paused', (await taskRow().innerText()).includes('paused'), await taskRow().innerText());
 
-        const wav = Buffer.alloc(44 + 8000);
-        wav.write('RIFF', 0); wav.writeUInt32LE(36 + 8000, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20);
-        wav.writeUInt16LE(1, 22); wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
-        wav.write('data', 36); wav.writeUInt32LE(8000, 40);
         const upload = async () => {
             await page.goto(BASE + '/media');
-            await page.setInputFiles('input[type=file]', { name: 'chime.wav', mimeType: 'audio/wav', buffer: wav });
-            await page.click('form[data-upload] button[type=submit]');
+            await pickFiles(page, { name: 'chime.wav', mimeType: 'audio/wav', buffer: wav });
             return (await text(page)).includes('Uploaded.');
         };
         const chimes = () => page.locator('main .list > li', { hasText: 'chime' });
@@ -425,11 +456,60 @@ const steps = {
         const tagged = await page.request.post(BASE + '/media', { multipart: { csrf, tag: 'Fresh', file: { name: 'tagged.wav', mimeType: 'audio/wav', buffer: wav } } });
         check('an upload from a tag of the soundboard gets the tag', tagged.ok() && (await page.request.get(BASE + '/sounds?q=tagged')).ok()
             && (await (await page.request.get(BASE + '/tags?q=fresh')).json()).some((h) => h.name === 'fresh' && !h.new));
-        check('an upload ignores a foreign next', evil.ok() && evil.url().startsWith(BASE + '/media?edit='), evil.url());
+        check('an upload ignores a foreign next', evil.ok() && /^http:\/\/localhost:8000\/media\?batch=[\w-]+&edit=\d+/.test(evil.url()), evil.url());
 
         await page.goto(BASE + '/admin/audit');
         t = await text(page);
         check('trash in the audit log', ['task.restore', 'media.restore', 'media.purge', 'trash.empty'].every((a) => t.includes(a)), t.slice(0, 500));
+    },
+
+    // a zip goes into the library, its files get tags at once and are reviewed one by one
+    async uploads() {
+        const { page } = await session('ann');
+        await page.goto(BASE + '/media');
+        await pickFiles(page, { name: 'pack.zip', mimeType: 'application/zip', buffer: zipOf({ 'pack/ding.wav': wav, 'pack/dong.wav': wav, 'pack/cover.png': png, '__MACOSX/pack/._ding.wav': Buffer.from('x') }) });
+        let t = await text(page);
+        check('zip unpacked into the library', t.includes('Uploaded 3 files') && t.includes('2 sounds, 1 image') && !t.includes('._ding'), t.slice(0, 400));
+        const rows = page.locator('main .list > li');
+        check('the list shows only the upload', await rows.count() === 3);
+        const ask = page.locator('#sheet-upload');
+        const box = page.locator('.review-batch');
+        check('the upload asks what next in a sheet, not on the page', await ask.isVisible() && await box.isHidden());
+        await ask.locator('input[aria-labelledby="tags-batch-sheet"]').fill('drums');
+        await ask.getByRole('button', { name: 'Add tags to all 3' }).click();
+        await page.waitForURL(/done=tagged/);
+        t = await text(page);
+        check('tags added to all files of the upload', t.includes('Tags added.') && await rows.locator('.chip.accent', { hasText: 'drums' }).count() === 3, t.slice(0, 400));
+        check('after tagging the sheet asks to review', await ask.isVisible() && await ask.locator('a.primary', { hasText: 'Review one by one' }).count() === 1);
+
+        await ask.getByRole('button', { name: 'Later' }).click();
+        check('closing the sheet leaves its actions on the page', await until(() => box.isVisible()));
+        await box.getByRole('link', { name: 'Review one by one' }).click();
+        await settle(page);
+        let sheet = page.locator('[data-edit-sheet]');
+        check('review opens the first file', await sheet.isVisible() && (await sheet.textContent()).includes('File 1 of 3') && (await sheet.innerText()).includes('cover.png'));
+        await sheet.locator('input[name=display_name]').fill('Cover art');
+        await sheet.getByRole('button', { name: 'Save and next' }).click();
+        await page.waitForURL(/done=saved/);
+        await settle(page);
+        sheet = page.locator('#sheet-sound');
+        check('Save and next opens Edit sound of the next file', await sheet.isVisible() && (await sheet.textContent()).includes('File 2 of 3'));
+        await sheet.getByRole('link', { name: 'Skip' }).click();
+        await settle(page);
+        check('Skip goes to the last file', await sheet.isVisible() && (await sheet.textContent()).includes('File 3 of 3') && await sheet.getByRole('button', { name: 'Save and finish' }).count() === 1);
+        await sheet.getByRole('button', { name: 'Save and finish' }).click();
+        await page.waitForURL((u) => !u.searchParams.has('edit'));
+        t = await text(page);
+        check('the review ends at the upload', t.includes('Saved.') && t.includes('Cover art') && !await page.locator('.sheet:popover-open').count(), t.slice(0, 300));
+        check('after the review only a line tells the list is the upload', await box.count() === 0 && (await page.locator('.batch-line').innerText()).includes('Showing the 3 files of this upload.'));
+
+        const ding = await rows.filter({ hasText: 'ding.wav' }).locator('[data-preview-media]').first().getAttribute('data-preview-media');
+        await page.goto(BASE + '/tasks/new?guild=1&play=' + ding);
+        const step = page.locator('.step', { has: page.locator('input[data-step-upload]') });
+        await step.locator('input[data-step-upload]').setInputFiles({ name: 'clap.wav', mimeType: 'audio/wav', buffer: wav });
+        check('a sound uploaded in the task editor joins the play step', await until(async () => await step.locator('.tok', { hasText: 'clap.wav' }).count() === 1)
+            && await step.locator('.tok input[type=hidden]').count() === 2);
+        check('the uploaded sound is in Media', (await (await page.request.get(BASE + '/sounds?q=clap')).json()).some((h) => h.name === 'clap.wav'));
     },
 
     async paging() {

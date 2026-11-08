@@ -151,10 +151,11 @@
 {{define "soundface"}}{{if .IconID}}<img class="face" src="/media/{{.IconID}}/file" alt="" width="28" height="28" loading="lazy">{{else if emojiURL .Emoji}}<img class="face" src="{{emojiURL .Emoji}}" alt="" width="28" height="28" loading="lazy" referrerpolicy="no-referrer">{{else if .Emoji}}<span class="face" aria-hidden="true">{{.Emoji}}</span>{{end}}{{end}}
 
 {{define "soundsheet"}}{{$m := .M}}
-<div popover id="sheet-sound" class="sheet" aria-labelledby="sheet-sound-title">
+<div popover id="sheet-sound" class="sheet" aria-labelledby="sheet-sound-title" data-edit-sheet>
   {{template "sheethead" (dict "ID" "sheet-sound" "Icon" "pencil" "Title" "Edit sound" "Name" $m.Label)}}
-  <form method="post" action="/media/{{$m.ID}}/sound" class="sheet-body form" data-fetch data-done="Saved {{$m.Label}}.">
+  <form method="post" action="/media/{{$m.ID}}/sound" class="sheet-body form"{{if not .Review}} data-fetch data-done="Saved {{$m.Label}}."{{end}}>
     <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="next" value="{{.Next}}">
+    {{with .Review}}{{template "reviewpos" .}}{{end}}
     <section>
       <span class="eyebrow">Preview and length</span>
       <div class="wave js-only" data-wave="/media/{{$m.ID}}/file" data-duration="{{$m.DurationMS}}">
@@ -180,11 +181,24 @@
       <label class="switch-row"><span>Own volume<small>Plays this sound at this volume everywhere, also in tasks, instead of the soundboard or step volume.</small></span><input type="checkbox" class="switch" name="own_volume"{{if $m.Volume}} checked{{end}}></label>
       <label class="field when-checked"><span>Volume</span><span class="inline"><input type="range" name="volume" min="1" max="200" value="{{if $m.Volume}}{{$m.Volume}}{{else}}100{{end}}" class="grow" data-out><output>{{if $m.Volume}}{{$m.Volume}}{{else}}100{{end}}%</output></span></label>
     </section>
+    {{if .Review}}{{template "reviewbtns" (dict "R" .Review "Sheet" "sheet-sound")}}{{else}}
     <div class="btns">
       <button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button>
       <button type="button" class="ib with-label" popovertarget="sheet-sound" popovertargetaction="hide"><span class="lbl">Never mind</span></button>
-    </div>
+    </div>{{end}}
   </form>
+</div>
+{{end}}
+
+{{define "reviewpos"}}
+<div class="review-pos"><span class="eyebrow">File {{.Pos}} of {{.Total}} from this upload</span><progress max="{{.Total}}" value="{{.Pos}}" class="meter" aria-hidden="true"></progress></div>
+{{end}}
+
+{{define "reviewbtns"}}
+<div class="btns">
+  <button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">{{if .R.Last}}Save and finish{{else}}Save and next{{end}}</span></button>
+  <a class="ib with-label" href="{{.R.Next}}">{{icon "chevron-right"}}<span class="lbl">{{if .R.Last}}Finish{{else}}Skip{{end}}</span></a>
+  <button type="button" class="ib with-label" popovertarget="{{.Sheet}}" popovertargetaction="hide"><span class="lbl">Stop reviewing</span></button>
 </div>
 {{end}}
 

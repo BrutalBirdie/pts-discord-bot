@@ -409,6 +409,7 @@
             input.focus();
         }
         if (tokens) {
+            tokens.addHit = addToken;
             tokens.addEventListener('click', function (event) {
                 const btn = event.target.closest('.tok button.rm');
                 if (btn) {
@@ -597,12 +598,21 @@
 
     // a link like /servers/1#sheet-play-2 opens that sheet
     onPage(function () {
-        // fetch drops the #fragment of a redirect, ?edit opens the Edit sound sheet as well
+        // fetch drops the #fragment of a redirect, ?edit opens the Edit sheet as well
         const target = location.hash.startsWith('#sheet-') && document.getElementById(location.hash.slice(1))
-            || new URLSearchParams(location.search).has('edit') && document.getElementById('sheet-sound')
-            || new URLSearchParams(location.search).has('tagedit') && document.getElementById('sheet-tag');
+            || new URLSearchParams(location.search).has('edit') && document.querySelector('[data-edit-sheet]')
+            || new URLSearchParams(location.search).has('tagedit') && document.getElementById('sheet-tag')
+            || document.querySelector('[data-open-now]');
         if (target && target.showPopover && !target.matches(':popover-open')) target.showPopover();
     });
+
+    // the Uploaded sheet closed without picking an action: its actions stay on the page, highlighted
+    onPage((root) => root.querySelectorAll('#sheet-upload').forEach(function (sheet) {
+        sheet.addEventListener('toggle', function (event) {
+            const box = document.querySelector('[data-upload-fallback]');
+            if (event.newState === 'closed' && box && sheet.isConnected) box.classList.add('shown');
+        });
+    }));
 
     // live parts of a page: the server says on /events that something changed, the page
     // fetches itself and swaps its [data-live] parts, without a reload
@@ -864,7 +874,9 @@
         const menu = form.closest('.menu[popover]');
         if (menu && menu.matches(':popover-open')) menu.hidePopover();
         const sheet = form.closest('.sheet[popover]');
-        fetch(form.action, { method: 'POST', body }).then(function (r) {
+        const done = event.submitter && event.submitter.dataset.done || form.dataset.done;
+        const action = event.submitter && event.submitter.getAttribute('formaction') || form.action;
+        fetch(action, { method: 'POST', body }).then(function (r) {
             if (!r.ok) {
                 return r.text().then(function (html) {
                     const msg = new DOMParser().parseFromString(html, 'text/html').querySelector('.callout.danger span');
@@ -873,7 +885,7 @@
             }
             if (sheet && sheet.matches(':popover-open')) sheet.hidePopover();
             scheduleLive(100);
-            if (form.dataset.done) toast(form.dataset.done);
+            if (done) toast(done);
             if (form.hasAttribute('data-toggle')) {
                 const on = form.querySelector('input[name=on]');
                 const btn = form.querySelector('[aria-pressed]');
@@ -1355,6 +1367,44 @@
 
     onPage((root) => root.querySelectorAll('input[type=range]').forEach(enhanceRange));
 
+    // a sound picker of a play step uploads sounds and adds them to the step, without leaving the editor
+    document.addEventListener('change', function (event) {
+        const input = event.target.closest('input[data-step-upload]');
+        if (!input || !input.files.length) return;
+        const tokens = input.closest('.step').querySelector('[data-tokens]');
+        const label = input.closest('label');
+        const text = label.querySelector('.lbl');
+        const was = text.textContent;
+        const data = new FormData();
+        // the server reads the csrf field before the files
+        data.append('csrf', input.form.elements.csrf.value);
+        if (tokens.dataset.guild) data.append('guild', tokens.dataset.guild);
+        Array.from(input.files).forEach((f) => data.append('file', f));
+        text.textContent = 'Uploading…';
+        label.classList.add('busy');
+        fetch('/media', { method: 'POST', body: data, headers: { Accept: 'application/json' } }).then(function (r) {
+            if (r.ok) return r.json();
+            return r.text().then(function (html) {
+                const msg = new DOMParser().parseFromString(html, 'text/html').querySelector('.callout.danger span');
+                throw new Error(msg ? msg.textContent : '');
+            });
+        }).then(function (res) {
+            const sounds = res.added.filter((h) => h.kind === 'sound' || h.kind === 'video');
+            const room = Math.max(0, Number(tokens.dataset.max) - tokens.querySelectorAll('.tok').length);
+            sounds.slice(0, room).forEach((h) => tokens.addHit(h));
+            const parts = [];
+            if (sounds.length) parts.push((sounds.length === 1 ? sounds[0].name + ' added' : sounds.length + ' sounds added') + (sounds.length > room ? ', ' + (sounds.length - room) + ' did not fit in the step' : '') + '.');
+            const other = res.added.length - sounds.length;
+            if (other) parts.push(other + (other === 1 ? ' other file is' : ' other files are') + ' in Media.');
+            if (res.problems.length) parts.push('Not added: ' + res.problems.join(' '));
+            toast(parts.join(' ') || 'Nothing uploaded.');
+        }).catch(function (err) { toast(err.message || 'Not uploaded, check your connection.'); }).finally(function () {
+            text.textContent = was;
+            label.classList.remove('busy');
+            input.value = '';
+        });
+    });
+
     // the soundboard's Upload new tile uploads right after the files are picked
     onPage((root) => root.querySelectorAll('form[data-upload-tile]').forEach(function (form) {
         const input = form.querySelector('input[type=file]');
@@ -1483,4 +1533,61 @@
         }).catch(() => toast('Not sent, check your connection')).finally(() => document.documentElement.classList.remove('loading'));
     });
     window.addEventListener('popstate', () => navigate(location.href, 'stay'));
+
+    // the media upload sends the files right after they are picked or dropped, with progress
+    function uploadFiles(form, files) {
+        const status = form.querySelector('[data-upload-status]');
+        const bar = form.querySelector('[data-upload-progress]');
+        const data = new FormData();
+        // the server reads the csrf field before the files
+        new FormData(form).forEach(function (v, k) { if (!(v instanceof File)) data.append(k, v); });
+        Array.from(files).forEach((f) => data.append('file', f));
+        const label = files.length === 1 ? files[0].name : files.length + ' files';
+        status.textContent = 'Uploading ' + label + '…';
+        bar.hidden = false;
+        bar.value = 0;
+        form.classList.add('busy');
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', form.action);
+        xhr.upload.addEventListener('progress', function (event) {
+            if (!event.lengthComputable) return;
+            bar.value = Math.round(event.loaded / event.total * 100);
+            if (event.loaded === event.total) status.textContent = 'Adding ' + label + ' to the library…';
+        });
+        xhr.addEventListener('load', function () {
+            form.classList.remove('busy');
+            const redirected = xhr.responseURL && xhr.responseURL !== form.action;
+            showPage(xhr.responseText, redirected ? xhr.responseURL : location.href, redirected ? 'push' : 'stay');
+            scrollAfter(false);
+        });
+        xhr.addEventListener('error', function () {
+            form.classList.remove('busy');
+            bar.hidden = true;
+            status.textContent = 'Not uploaded, check your connection.';
+        });
+        xhr.send(data);
+    }
+    onPage((root) => root.querySelectorAll('form[data-upload]').forEach(function (form) {
+        const input = form.querySelector('input[type=file]');
+        input.addEventListener('change', function () {
+            if (input.files.length) uploadFiles(form, input.files);
+        });
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            if (input.files.length) uploadFiles(form, input.files);
+        });
+        form.addEventListener('dragover', function (event) {
+            if (!event.dataTransfer.types.includes('Files')) return;
+            event.preventDefault();
+            form.classList.add('over');
+        });
+        form.addEventListener('dragleave', function (event) {
+            if (!form.contains(event.relatedTarget)) form.classList.remove('over');
+        });
+        form.addEventListener('drop', function (event) {
+            event.preventDefault();
+            form.classList.remove('over');
+            if (event.dataTransfer.files.length && !form.classList.contains('busy')) uploadFiles(form, event.dataTransfer.files);
+        });
+    }));
 })();

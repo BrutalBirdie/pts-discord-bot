@@ -10,9 +10,12 @@
   {{template "grouppick" (dict "Groups" $d.Groups "Current" $d.DefaultGroup)}}
   {{icon "upload"}}
   <strong>Upload files</strong>
-  <span class="small muted">Sounds in any format ffmpeg reads, images, videos and other files, up to {{$d.MaxUploadMB}} MB each. Discord accepts 20 MB per file in messages, more with server boosts.</span>
-  <input type="file" name="file" multiple required aria-label="Files">
-  <button type="submit" class="ib primary with-label">{{icon "upload"}}<span class="lbl">Upload</span></button>
+  <span class="small muted">Sounds in any format ffmpeg reads, images, videos and other files, up to {{$d.MaxUploadMB}} MB each. A .zip is unpacked into the library. Discord accepts 20 MB per file in messages, more with server boosts.</span>
+  <label class="ib primary with-label pick-files">{{icon "upload"}}<span class="lbl">Choose files to upload</span><input type="file" name="file" multiple class="vh"></label>
+  <span class="small muted js-only">Or drop them here.</span>
+  <progress max="100" value="0" hidden data-upload-progress></progress>
+  <span class="small" role="status" data-upload-status></span>
+  <button type="submit" class="ib with-label no-js">{{icon "upload"}}<span class="lbl">Upload</span></button>
 </form>
 
 <form method="post" action="/media/url" class="card form">
@@ -27,8 +30,28 @@
 </form>
 
 {{$p := $d.Paging}}
+{{if $d.Batch}}
+{{if $d.Ask}}
+<section class="card form review-batch" aria-labelledby="batch-title" data-upload-fallback>
+  <div class="sec-head"><h2 class="with-icon" id="batch-title">{{icon "upload"}}Uploaded {{plural (len $d.Uploaded) "file" "files"}}</h2>{{with $d.UploadedKinds}}<span class="hint">{{.}}</span>{{end}}</div>
+  {{template "batchactions" (dict "D" $d "CSRF" $csrf "Where" "page")}}
+</section>
+{{else}}
+<p class="batch-line">{{icon "upload"}}<span>{{with len $d.Uploaded}}Showing the {{plural . "file" "files"}} of this upload.{{else}}Nothing left of this upload.{{end}}</span><a href="/media">Show all media</a></p>
+{{end}}
+{{if $d.Ask}}
+<div popover id="sheet-upload" class="sheet" aria-labelledby="sheet-upload-title" data-open-now>
+  {{template "sheethead" (dict "ID" "sheet-upload" "Icon" "upload" "Title" (print "Uploaded " (plural (len $d.Uploaded) "file" "files")))}}
+  <div class="sheet-body">
+    {{with $d.UploadedKinds}}<p class="hint">{{.}}</p>{{end}}
+    {{template "batchactions" (dict "D" $d "CSRF" $csrf "Where" "sheet")}}
+  </div>
+</div>
+{{end}}
+{{end}}
 {{template "search" (dict "P" $p "Label" "Search media" "Placeholder" "Name or tag")}}
 <div class="contents" data-live="list" data-live-list>
+{{if not $d.Batch}}
 <div class="pills">
   <a href="{{$p.With "" ""}}"{{if not (or $d.Kind $d.Tag)}} aria-current="page"{{end}}>All {{index $d.Counts ""}}</a>
   <a href="{{$p.With "kind" "sound"}}"{{if eq $d.Kind "sound"}} aria-current="page"{{end}}>Sounds {{index $d.Counts "sound"}}</a>
@@ -38,6 +61,7 @@
   {{range $d.Tags}}<a href="{{$p.With "tag" .}}"{{if eq . $d.Tag}} aria-current="page"{{end}}>{{icon "hash"}}{{.}}</a>{{end}}
 </div>
 {{template "groupfilter" (dict "P" $p "Groups" $d.Groups "Group" $d.Group)}}
+{{end}}
 
 <section class="card">
   {{if $d.Items}}
@@ -47,10 +71,12 @@
     <select name="guild" aria-label="Server group for the selected files"><option value="">No server</option>{{range $d.Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
     <label class="inline small"><input type="checkbox" name="group_only">not suggested to other servers</label>
     <button type="submit" class="ib with-label">{{icon "server"}}<span class="lbl">Set server group of selected</span></button>
+    <span class="bulk-tags"><input type="text" name="tags" placeholder="Tags, comma separated" aria-label="Tags to add to the selected files" spellcheck="false" autocomplete="off">
+    <button type="submit" class="ib with-label" formaction="/media/tags" data-done="Tags added.">{{icon "hash"}}<span class="lbl">Add tags to selected</span></button></span>
   </form>
   {{end}}
   <ul class="list">
-    {{with $d.Edit}}{{template "soundsheet" (dict "M" . "Next" $d.Self "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf)}}{{end}}
+    {{with $d.Edit}}{{if eq .Kind "sound"}}{{template "soundsheet" (dict "M" . "Next" $d.EditNext "Emojis" $d.Emojis "Images" $d.Images "CSRF" $csrf "Review" $d.Review)}}{{end}}{{end}}
 {{range $d.Items}}
     <li>
       <div class="person">
@@ -82,21 +108,8 @@
 </section>
 <p class="hint">Files in use by a task or message can only be deleted after they are removed there.{{if $.TrashDays}} Deleted files stay in the <a href="/trash?kind=media">Trash</a> for {{plural $.TrashDays "day" "days"}}.{{end}}</p>
 
-{{range $d.Items}}
-<div popover id="sheet-edit-{{.ID}}" class="sheet" aria-labelledby="sheet-edit-{{.ID}}-title">
-  {{template "sheethead" (dict "ID" (print "sheet-edit-" .ID) "Icon" "pencil" "Title" "Edit" "Name" .Name)}}
-  <div class="sheet-body">
-    <form method="post" action="/media/{{.ID}}" class="form" data-fetch data-done="Saved {{.Label}}.">
-      <input type="hidden" name="csrf" value="{{$csrf}}">
-      <label class="field"><span>Display name</span><input type="text" name="display_name" value="{{.DisplayName}}" maxlength="80" placeholder="{{.Name}}"><span class="help">Optional. Shown on the soundboard, in pickers and in /play instead of the file name.</span></label>
-      <label class="field"><span>File name</span><input type="text" name="name" value="{{.Name}}" maxlength="200" required><span class="help">Also the file name in Discord messages.</span></label>
-      {{template "tokens" (tagTokens .)}}
-      {{template "grouppick" (dict "Groups" ($d.GroupsWith .GuildID) "Current" .GuildID "Only" .GroupOnly)}}
-      <div class="btns"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>
-    </form>
-  </div>
-</div>
-{{end}}
+{{range $d.Items}}{{if not (and $d.Edit (eq $d.Edit.ID .ID) (ne .Kind "sound"))}}{{template "filesheet" (dict "M" . "Groups" ($d.GroupsWith .GuildID) "Next" $d.Self "CSRF" $csrf)}}{{end}}{{end}}
+{{with $d.Edit}}{{if ne .Kind "sound"}}{{template "filesheet" (dict "M" . "Groups" ($d.GroupsWith .GuildID) "Next" $d.EditNext "CSRF" $csrf "Review" $d.Review "Open" true)}}{{end}}{{end}}
 {{range $d.Items}}{{if or (eq .Kind "sound") (eq .Kind "video")}}
 <div popover id="sheet-play-{{.ID}}" class="sheet" aria-labelledby="sheet-play-{{.ID}}-title">
   {{template "sheethead" (dict "ID" (print "sheet-play-" .ID) "Icon" "volume-2" "Title" "Play" "Name" .Name)}}
@@ -117,5 +130,45 @@
   </div>
 </div>
 {{end}}{{end}}
+</div>
+{{end}}
+
+{{define "filesheet"}}{{$m := .M}}{{$id := print "sheet-edit-" $m.ID}}
+<div popover id="{{$id}}" class="sheet" aria-labelledby="{{$id}}-title"{{if .Open}} data-edit-sheet{{end}}>
+  {{template "sheethead" (dict "ID" $id "Icon" "pencil" "Title" "Edit" "Name" $m.Name)}}
+  <div class="sheet-body">
+    {{with .Review}}{{template "reviewpos" .}}{{end}}
+    {{if or (eq $m.Kind "image") (eq $m.Kind "video")}}<div class="sheet-media">{{if eq $m.Kind "image"}}<img src="/media/{{$m.ID}}/file" alt="" loading="lazy">{{else}}<video src="/media/{{$m.ID}}/file" controls preload="none"></video>{{end}}</div>{{end}}
+    <form method="post" action="/media/{{$m.ID}}" class="form"{{if not .Review}} data-fetch data-done="Saved {{$m.Label}}."{{end}}>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="next" value="{{.Next}}">
+      <label class="field"><span>Display name</span><input type="text" name="display_name" value="{{$m.DisplayName}}" maxlength="80" placeholder="{{$m.Name}}"><span class="help">Optional. Shown on the soundboard, in pickers and in /play instead of the file name.</span></label>
+      <label class="field"><span>File name</span><input type="text" name="name" value="{{$m.Name}}" maxlength="200" required><span class="help">Also the file name in Discord messages.</span></label>
+      {{template "tokens" (tagTokens $m)}}
+      {{template "grouppick" (dict "Groups" .Groups "Current" $m.GuildID "Only" $m.GroupOnly)}}
+      {{if .Review}}{{template "reviewbtns" (dict "R" .Review "Sheet" $id)}}{{else}}<div class="btns"><button type="submit" class="ib primary with-label">{{icon "save"}}<span class="lbl">Save</span></button></div>{{end}}
+    </form>
+  </div>
+</div>
+{{end}}
+
+{{define "batchactions"}}{{$d := .D}}{{$n := len $d.Uploaded}}
+{{with $d.Problems}}<div class="callout warn">{{icon "triangle-alert"}}<div><strong>Not added:</strong><ul class="problems">{{range .}}<li>{{.}}</li>{{end}}</ul></div></div>{{end}}
+{{if gt $n 1}}
+<form method="post" action="/media/tags" class="form batch-step">
+  <span class="eyebrow">{{if $d.Tagged}}Done: tags added{{else}}Step 1, optional{{end}}</span>
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="batch" value="{{$d.Batch}}">
+  <input type="hidden" name="next" value="/media?batch={{$d.Batch}}">
+  {{template "tokens" ($d.BatchTags .Where)}}
+  <div class="btns"><button type="submit" class="ib{{if not $d.Tagged}} primary{{end}} with-label">{{icon "hash"}}<span class="lbl">{{if $d.Tagged}}Add more tags to all {{$n}}{{else}}Add tags to all {{$n}}{{end}}</span></button></div>
+</form>
+{{end}}
+<div class="form batch-step">
+  {{if gt $n 1}}<span class="eyebrow">{{if $d.Tagged}}Next{{else}}Step 2, optional{{end}}</span><p class="small muted">Display name, tags and, for sounds, emoji, volume and the part to play, file by file.</p>{{end}}
+  <div class="btns">
+    {{with $d.Uploaded}}<a class="ib with-label{{if or (eq $n 1) $d.Tagged}} primary{{end}}" href="/media?batch={{$d.Batch}}&amp;edit={{(index . 0).ID}}">{{icon "pencil"}}<span class="lbl">{{if eq $n 1}}Edit {{(index . 0).Label}}{{else}}Review one by one{{end}}</span></a>{{end}}
+    {{if eq .Where "sheet"}}<button type="button" class="ib with-label" popovertarget="sheet-upload" popovertargetaction="hide"><span class="lbl">Later</span></button>{{else}}<a class="ib with-label" href="/media">{{icon "x"}}<span class="lbl">Done, show all media</span></a>{{end}}
+  </div>
 </div>
 {{end}}
