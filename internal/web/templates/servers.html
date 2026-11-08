@@ -30,7 +30,7 @@
     <li class="link-row sort-row" data-sort-id="{{.ID}}">
       {{if not $d.Paging.Query}}<span class="sort-handle js-only" aria-hidden="true">{{icon "grip-vertical"}}</span>{{end}}
       <a class="rowlink with-lead" href="/room/{{.ID}}">
-        <span class="guild">{{.Initials}}</span>
+        <span class="guild">{{if .Icon}}<img src="{{.Icon}}" alt="" width="48" height="48" loading="lazy" referrerpolicy="no-referrer">{{else}}{{.Initials}}{{end}}</span>
         <span class="row-main">
           <span class="row-title">{{.Name}}
             {{if .Playing}}<span class="chip accent">{{icon "music"}}playing in {{.Playing.Channel}}</span>{{else if .BotVoice}}<span class="chip accent">{{icon "volume-2"}}in {{.BotVoice}}</span>{{end}}

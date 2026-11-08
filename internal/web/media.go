@@ -801,6 +801,11 @@ func (s *Server) mediaFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := os.Open(s.cfg.MediaDir.Path(m.ID))
+	if errors.Is(err, os.ErrNotExist) {
+		s.log.Error("media file missing", "id", m.ID, "err", err)
+		s.notFound(w, r)
+		return
+	}
 	if err != nil {
 		s.internalError(w, r, err)
 		return

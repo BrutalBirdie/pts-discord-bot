@@ -171,10 +171,6 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 				s.internalError(w, r, err)
 				return
 			}
-			d.Author, d.Names = s.author(g.ID), map[string]string{}
-			for _, m := range members[:min(len(members), maxPreviewNames)] {
-				d.Names[m.ID] = m.Name
-			}
 		}
 	case "member":
 		for _, t := range all {
@@ -197,6 +193,12 @@ func (s *Server) room(w http.ResponseWriter, r *http.Request) {
 	if d.Except, err = s.taskRows(r, left, false); err != nil {
 		s.internalError(w, r, err)
 		return
+	}
+	if d.View == "text" || d.View == "member" {
+		d.Author, d.Names = s.author(g.ID), map[string]string{}
+		for _, m := range members[:min(len(members), maxPreviewNames)] {
+			d.Names[m.ID] = m.Name
+		}
 	}
 	s.render(w, r, http.StatusOK, "room", d)
 }

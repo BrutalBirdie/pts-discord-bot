@@ -1412,16 +1412,6 @@
         });
     });
 
-    // the soundboard's Upload new tile uploads right after the files are picked
-    onPage((root) => root.querySelectorAll('form[data-upload-tile]').forEach(function (form) {
-        const input = form.querySelector('input[type=file]');
-        input.addEventListener('change', function () {
-            if (!input.files.length) return;
-            form.querySelector('.nm').textContent = 'Uploading ' + (input.files.length === 1 ? input.files[0].name : input.files.length + ' files') + '…';
-            form.classList.add('busy');
-            form.requestSubmit();
-        });
-    }));
 
     // searches and the filters and pages of lists show their results in place, without a reload
     function goLive(url, push) {

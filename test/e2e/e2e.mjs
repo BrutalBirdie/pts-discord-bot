@@ -28,7 +28,7 @@ async function session(user) {
 
 async function login(page, user, groups) {
     await page.goto(BASE + '/');
-    if (await page.locator('#sheet-account').count()) return;
+    if (await page.locator('#app').count()) return;
     await page.getByRole('link', { name: 'Log in with Cloudron' }).click();
     await page.fill('input[name=username]', user);
     await page.fill('textarea[name=claims]', JSON.stringify({ groups, name: user }));
@@ -98,13 +98,16 @@ const steps = {
         await login(page, 'ann', ['bot-admins']);
         await save();
         let t = await text(page);
-        check('dashboard renders', t.includes('Dashboard') && t.includes('Next 24 hours'));
+        check('Home overview renders', t.includes('Overview') && t.includes('Next 24 hours'));
         check('offline notice', t.includes('The bot is not connected to Discord') && t.includes('DISCORD_TOKEN is not set'), t.slice(0, 300));
-        check('admin link for admin group', await page.locator('.nav a[href="/admin"]').count() === 1);
+        check('frame with rail, Home list and user panel', await page.locator('.rail a[href="/"][aria-current=page]').count() === 1
+            && await page.locator('.side-body a[href="/trash"]').count() === 1 && await page.locator('.side-foot a[href="/settings"]').count() === 1);
+        await page.goto(BASE + '/settings');
+        check('admin link for admin group in the settings', await page.locator('.set-nav a[href="/admin"]').count() === 1);
 
         await page.goto(BASE + '/room');
         check('Control Room without servers', (await text(page)).includes('The bot is in no server you may manage yet.')
-            && await page.locator('.nav a[href="/room"][aria-current=page]').count() === 1);
+            && (await page.locator('.side-body').innerText()).includes('offline, or in none yet'));
 
         await page.goto(BASE + '/admin');
         check('admin page shows group', (await text(page)).includes('bot-admins'));
@@ -120,10 +123,15 @@ const steps = {
         await page.reload();
         check('a reload does not bring the notice back', await page.locator('.notice').count() === 0);
         await page.evaluate(() => { window.stayed = true; });
-        await page.click('.nav a[href="/tasks"]');
+        await page.click('.set-nav a[href="/admin/audit"]');
         await settle(page);
-        check('navigation shows the page in place', page.url() === BASE + '/tasks' && await page.evaluate(() => window.stayed === true)
-            && await page.locator('.nav a[href="/tasks"][aria-current=page]').count() === 1 && (await page.title()).length > 0);
+        check('navigation shows the page in place', page.url() === BASE + '/admin/audit' && await page.evaluate(() => window.stayed === true)
+            && await page.locator('.set-nav a[href="/admin/audit"][aria-current=page]').count() === 1 && (await page.title()).length > 0);
+        await page.click('.set-close');
+        await settle(page);
+        check('closing the settings goes Home in place', page.url() === BASE + '/' && await page.evaluate(() => window.stayed === true) && await page.locator('.rail').count() === 1);
+        await page.goBack();
+        await settle(page);
         await page.goBack();
         await settle(page);
         check('Back shows the page before in place', page.url().endsWith('/admin/settings') && await page.evaluate(() => window.stayed === true)
@@ -180,8 +188,9 @@ const steps = {
 
         await page.goto(BASE + '/media');
         check('media shows usage', (await text(page)).includes('used by message Friday reminder'));
-        await page.locator('[popovertarget^="sheet-edit-"]').first().click();
-        const editSheet = page.locator('[id^="sheet-edit-"]:popover-open');
+        await page.locator('main .list a[href*="edit="]').first().click();
+        const editSheet = page.locator('#sheet-edit:popover-open');
+        await editSheet.waitFor();
         const tagInput = editSheet.locator('[data-tokens=tag] input[type=search]');
         await tagInput.fill('Greeting');
         await editSheet.locator('.suggestions li', { hasText: 'new tag' }).waitFor();
@@ -195,10 +204,11 @@ const steps = {
         check('tags saved without a reload', await until(async () => await page.locator('.list a.chip', { hasText: 'greeting' }).count() === 1)
             && await page.evaluate(() => window.scrollY) === scrolled && !(await editSheet.isVisible()));
         await page.goto(BASE + '/media');
-        await page.locator('[popovertarget^="sheet-edit-"]').nth(1).click();
-        const tagInput2 = page.locator('[id^="sheet-edit-"]:popover-open [data-tokens=tag] input[type=search]');
+        await page.locator('main .list a[href*="edit="]').nth(1).click();
+        await page.locator('#sheet-edit:popover-open').waitFor();
+        const tagInput2 = page.locator('#sheet-edit:popover-open [data-tokens=tag] input[type=search]');
         await tagInput2.fill('gre');
-        check('the tag picker suggests tags in use', await until(async () => (await page.locator('[id^="sheet-edit-"]:popover-open .suggestions li').first().innerText()).startsWith('greeting')));
+        check('the tag picker suggests tags in use', await until(async () => (await page.locator('#sheet-edit:popover-open .suggestions li').first().innerText()).startsWith('greeting')));
         await page.keyboard.press('Escape');
         await page.goto(BASE + '/media');
         await page.click('.pills a:has-text("greeting")');
@@ -210,6 +220,7 @@ const steps = {
         check('media search', await page.locator('main .list > li').count() === 1 && t.includes('beep.ogg') && await page.inputValue('main input[name=q]') === 'BEEP', t.slice(0, 300));
         check('filter pills keep the search', await page.locator('.pills a', { hasText: 'Sounds' }).getAttribute('href') === '/media?kind=sound&q=BEEP');
         await page.goto(BASE + '/media');
+        await page.click('button[popovertarget=sheet-link]');
         await page.fill('input[name=url]', 'http://127.0.0.1:8000/healthz');
         await page.click('form[action="/media/url"] button[type=submit]');
         check('link to the app itself refused', (await text(page)).includes('is not a public address'), (await text(page)).slice(0, 300));
@@ -303,16 +314,18 @@ const steps = {
         check('second click deletes', !(await text(page)).includes('Throwaway one'));
 
         const toggleConfirm = async () => {
-            await page.click('.topbar .avatar');
+            await page.click('.side-foot a[href="/settings"]');
+            await settle(page);
             const saved = page.waitForResponse((r) => r.url().endsWith('/account'));
-            await page.locator('#sheet-account input[name=confirm_actions]').click();
+            await page.locator('main input[name=confirm_actions]').click();
             check('account preference saved', (await saved).status() === 204);
             await page.keyboard.press('Escape');
+            await settle(page);
         };
         await toggleConfirm();
         await page.reload();
         check('confirm actions off is kept', await page.evaluate(() => document.body.dataset.confirm) === 'off'
-            && !(await page.locator('#sheet-account input[name=confirm_actions]').isChecked()));
+            && (await (await page.request.get(BASE + '/settings')).text()).includes('name="confirm_actions">'));
         del = await throwaway('Throwaway two');
         await del.click();
         await page.waitForURL(/\/messages\?.*done=trashed/);
@@ -329,7 +342,8 @@ const steps = {
     async user() {
         const { page, save } = await session('bob');
         await login(page, 'bob', []);
-        check('no admin link', await page.locator('.nav a[href="/admin"]').count() === 0);
+        await page.goto(BASE + '/settings');
+        check('no admin link', await page.locator('a[href="/admin"]').count() === 0);
         await page.goto(BASE + '/admin');
         check('admin page refused', (await text(page)).includes('Only admins'));
         await page.goto(BASE + '/messages');
@@ -382,7 +396,7 @@ const steps = {
         };
         const taskRow = () => page.locator('main .list > li', { has: page.getByRole('link', { name: 'Every minute', exact: true }) });
 
-        const trashCount = async () => Number(await page.locator('.nav a[href="/trash"] .badge').textContent({ timeout: 1000 }).catch(() => '0'));
+        const trashCount = async () => Number(await page.locator('.side-body a[href="/trash"] .badge').textContent({ timeout: 1000 }).catch(() => '0'));
         await page.goto(BASE + '/tasks');
         const before = await trashCount();
         await page.getByRole('link', { name: 'Every minute', exact: true }).click();
@@ -411,13 +425,13 @@ const steps = {
         };
         const chimes = () => page.locator('main .list > li', { hasText: 'chime' });
         check('sound uploaded', await upload());
-        check('a new sound opens Edit sound', /edit=\d+/.test(page.url()) && await page.locator('#sheet-sound').isVisible()
-            && await page.locator('#sheet-sound input[name=trim_end]').inputValue() === '0.50', page.url());
-        await page.locator('#sheet-sound .emoji-btn').click();
-        await page.fill('#sheet-sound .emoji-panel input[type=search]', 'fire');
-        await page.locator('#sheet-sound .emoji-grid button[title="fire"]').click();
-        await page.fill('#sheet-sound input[name=trim_start]', '0.1');
-        await page.click('#sheet-sound button[type=submit]');
+        check('a new sound opens Edit sound', /edit=\d+/.test(page.url()) && await page.locator('#sheet-edit').isVisible()
+            && await page.locator('#sheet-edit input[name=trim_end]').inputValue() === '0.50', page.url());
+        await page.locator('#sheet-edit .emoji-btn').click();
+        await page.fill('#sheet-edit .emoji-panel input[type=search]', 'fire');
+        await page.locator('#sheet-edit .emoji-grid button[title="fire"]').click();
+        await page.fill('#sheet-edit input[name=trim_start]', '0.1');
+        await page.click('#sheet-edit button[type=submit]');
         check('Edit sound saves emoji and start', await until(async () => await chimes().locator('.face', { hasText: '🔥' }).count() === 1));
         const action = await chimes().locator('form[action$="/delete"]').getAttribute('action');
         const mediaID = action.split('/')[2];
@@ -448,7 +462,7 @@ const steps = {
         await page.goto(BASE + '/trash');
         await post('form[action="/trash/empty"]');
         t = await text(page);
-        check('trash emptied', t.includes('The trash is empty.') && await page.locator('.nav a[href="/trash"] .badge').count() === 0, t.slice(0, 300));
+        check('trash emptied', t.includes('The trash is empty.') && await page.locator('.side-body a[href="/trash"] .badge').count() === 0, t.slice(0, 300));
         const csrf = await page.locator('input[name=csrf]').first().inputValue();
         const tile = await page.request.post(BASE + '/media', { multipart: { csrf, next: '/servers?x=1', file: { name: 'tile.wav', mimeType: 'audio/wav', buffer: wav } } });
         check('an upload from the soundboard returns there with Edit sound', tile.ok() && /\/servers\?x=1&edit=\d+&done=uploaded/.test(tile.url()), tile.url());
@@ -492,7 +506,7 @@ const steps = {
         await sheet.getByRole('button', { name: 'Save and next' }).click();
         await page.waitForURL(/done=saved/);
         await settle(page);
-        sheet = page.locator('#sheet-sound');
+        sheet = page.locator('#sheet-edit');
         check('Save and next opens Edit sound of the next file', await sheet.isVisible() && (await sheet.textContent()).includes('File 2 of 3'));
         await sheet.getByRole('link', { name: 'Skip' }).click();
         await settle(page);
@@ -548,7 +562,7 @@ const steps = {
         const { page } = await session('ann');
         await page.goto(BASE + '/admin/access');
         let t = await text(page);
-        check('pending badge on the admin nav', await page.locator('.nav a[href="/admin"] .badge').innerText() === '1');
+        check('pending badge in the settings menu', await page.locator('.set-nav a[href="/admin/access"] .badge').innerText() === '1');
         check('access tab lists the request', t.includes('Mira') && t.includes('@mira.k') && t.includes('I run the raid nights.') && t.includes('denied tomorrow')
             && t.includes('Pending 1') && t.includes('Approved 1') && t.includes('Blocked 1') && t.includes('Denied 1'), t.slice(0, 600));
         const submit = async (user, action) => {
@@ -579,9 +593,9 @@ const steps = {
         lastPage = d;
         await d.goto(BASE + '/');
         t = await d.locator('main').innerText();
-        check('Discord user sees the dashboard', t.includes('Dashboard') && t.includes('Next 24 hours'), t.slice(0, 300));
+        check('Discord user sees the Home overview', t.includes('Overview') && t.includes('Next 24 hours'), t.slice(0, 300));
         check('Discord user named like an admin is no admin', await d.locator('a[href="/admin"]').count() === 0
-            && await d.locator('.nav a[href="/tasks"], .nav a[href="/messages"], .nav a[href="/media"], .nav a[href="/trash"], .nav a[href="/servers"], .nav a[href="/room"]').count() === 6);
+            && await d.locator('.side-body a[href="/tasks"], .side-body a[href="/messages"], .side-body a[href="/media"], .side-body a[href="/trash"], .rail a[href="/servers"]').count() === 5);
         for (const path of ['/admin', '/admin/access']) {
             const res = await d.goto(BASE + path);
             check(`Discord session blocked from ${path}`, res.status() === 403);
@@ -610,9 +624,9 @@ const steps = {
         check('Discord user saves a task with a sound without server group', (await text(d)).includes('Saved.'));
 
         await page.goto(BASE + '/media?q=shared-horn');
-        const sheetID = await page.locator('main .list button[popovertarget^="sheet-edit-"]').first().getAttribute('popovertarget');
-        await page.locator(`button[popovertarget="${sheetID}"]`).first().click();
-        const sheet = page.locator('#' + sheetID);
+        await page.locator('main .list a[href*="edit="]').first().click();
+        const sheet = page.locator('#sheet-edit:popover-open');
+        await sheet.waitFor();
         await sheet.locator('select[name=guild]').selectOption('2');
         await sheet.locator('input[name=group_only]').check();
         await sheet.locator('.btns button[type=submit]').click();
@@ -660,7 +674,7 @@ const steps = {
         const { page } = await session('ann');
         await page.goto(BASE + '/media');
         const t = await text(page);
-        check('session survives restart', await page.locator('#sheet-account').count() === 1);
+        check('session survives restart', await page.locator('#app').count() === 1);
         check('media survive restart', t.includes('friday_card.png') && t.includes('beep.ogg'));
         await page.goto(BASE + '/tasks');
         await page.getByRole('link', { name: 'Every minute', exact: true }).click();
@@ -713,7 +727,7 @@ const steps = {
         let ids = await soundToks();
         check('sound picked twice', ids.length === 2 && ids[0] === ids[1] && await sounds.locator('xpath=..').locator('[data-count]').innerText() === '2 of 25', ids.join());
         check('total of a sequence', /^Total 0:0[34] \/ 10:00$/.test(await total()), await total());
-        await page.check('input[name="s1.order"][value=random]', { force: true });
+        await page.locator('label:has(> input[name="s1.order"][value=random])').click();
         check('total of a random pick', /^Total 0:0[12] \/ 10:00$/.test(await total()), await total());
         const pv = sounds.locator('.tok .pv').first();
         await pv.click();

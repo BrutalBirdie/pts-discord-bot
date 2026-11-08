@@ -85,17 +85,7 @@
     <h2 id="qm-title">Quick message</h2>
     <form method="post" action="/room/{{$g.ID}}/send" class="form" data-preview-form>
       <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="channel" value="{{$ch.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
-      <label class="field"><span>Text <span class="counter" data-count="qm" data-max="2000">0 / 2000</span></span><textarea name="text" rows="5" maxlength="2000" class="prose" required data-preview="qm"></textarea></label>
-      <div class="sec-head"><span class="eyebrow">Preview</span>{{template "mdhelp"}}</div>
-      <div class="dpv" data-names="{{json $d.Names}}">
-        <div class="dmsg">
-          {{template "dava" $d.Author}}
-          <div class="minw0">
-            <div class="dhead"><strong>{{$d.Author.Name}}</strong><span class="dtag">APP</span><span class="dtime">{{when nowTime}}</span></div>
-            <div class="dtext" data-preview-target="qm" data-md=""></div>
-          </div>
-        </div>
-      </div>
+      {{template "composer" (dict "Key" "qm" "Rows" 5 "D" $d)}}
       <div class="btns"><button type="submit" class="ib primary with-label">{{icon "send"}}<span class="lbl">Send to #{{$ch.Name}}</span></button></div>
     </form>
     {{if $d.Messages}}
@@ -127,9 +117,9 @@
 </div>
 <section class="card stack" id="dm" aria-labelledby="dm-title">
   <h2 id="dm-title">Direct message to {{$m.Name}}</h2>
-  <form method="post" action="/room/{{$g.ID}}/send" class="form">
+  <form method="post" action="/room/{{$g.ID}}/send" class="form" data-preview-form>
     <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="member" value="{{$m.ID}}"><input type="hidden" name="next" value="{{$d.Self}}">
-    <label class="field"><span>Text</span><textarea name="text" rows="3" maxlength="2000" class="prose" required></textarea></label>
+    {{template "composer" (dict "Key" "dm" "Rows" 3 "D" $d)}}
     <div class="btns"><button type="submit" class="ib primary with-label">{{icon "mail"}}<span class="lbl">Send</span></button></div>
   </form>
 </section>
@@ -191,13 +181,33 @@
 
 {{define "uploadtile"}}{{$d := .D}}
 <li class="snd snd-upload">
-  <form method="post" action="/media" enctype="multipart/form-data" data-upload-tile>
+  <form method="post" action="/media" enctype="multipart/form-data" data-upload data-drop-page>
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <input type="hidden" name="next" value="{{$d.URL "c" $d.Channel.ID}}">
     <input type="hidden" name="guild" value="{{$d.Guild.ID}}">
     {{range $d.Tags}}<input type="hidden" name="tag" value="{{.}}">{{end}}
     <label class="snd-play">{{icon "plus"}}<span class="nm">Upload new</span><input type="file" name="file" accept="audio/*,video/*,.ogg,.opus,.mp3,.wav,.flac,.m4a,.webm,.zip" multiple class="vh"></label>
     <button type="submit" class="ib sm no-js">{{icon "upload"}}<span class="lbl">Upload</span></button>
+    <progress max="100" value="0" hidden data-upload-progress></progress>
+    <span class="small" role="status" data-upload-status></span>
   </form>
 </li>
+{{end}}
+
+{{/* composer: the text of a quick or direct message with counter, mention picker and Discord preview. Key names the preview, D the room */}}
+{{define "composer"}}{{$d := .D}}
+<label class="field"><span>Text <span class="counter" data-count="{{.Key}}" data-max="2000">0 / 2000</span></span><textarea name="text" rows="{{.Rows}}" maxlength="2000" class="prose" required data-preview="{{.Key}}"></textarea></label>
+<div class="field js-only"><span>Mention a member</span>
+  <span class="picker"><input type="search" placeholder="Search members to mention in the text" aria-label="Mention a member" autocomplete="off" spellcheck="false" data-bwignore data-1p-ignore data-lpignore="true" data-form-type="other" data-members="{{$d.Guild.ID}}" data-insert="text"></span>
+</div>
+<div class="sec-head"><span class="eyebrow">Preview</span>{{template "mdhelp"}}</div>
+<div class="dpv" data-names="{{json $d.Names}}">
+  <div class="dmsg">
+    {{template "dava" $d.Author}}
+    <div class="minw0">
+      <div class="dhead"><strong>{{$d.Author.Name}}</strong><span class="dtag">APP</span><span class="dtime">{{when nowTime}}</span></div>
+      <div class="dtext" data-preview-target="{{.Key}}" data-md=""></div>
+    </div>
+  </div>
+</div>
 {{end}}
