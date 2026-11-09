@@ -39,6 +39,7 @@ trap cleanup EXIT
 
 pass() { echo "PASS [shell] $1"; }
 fail() { echo "FAIL [shell] $1 :: $2"; failures=$((failures + 1)); }
+psql() { docker exec "${db}" psql -U bot -d bot -XAtc "$1"; }
 expect() { # expect <name> <regex> <output>
     if [[ "$3" =~ $2 ]]; then pass "$1"; else fail "$1" "${3:0:300}"; fi
 }
@@ -96,17 +97,28 @@ wait_healthy
 
 browser admin
 browser user
-browser layout
 
 if [[ -n "${SCREENSHOTS:-}" ]]; then
+    # the bot has no Discord connection here: guild and channel IDs are names, which the UI shows as is for unknown IDs
+    psql "INSERT INTO tasks (name, guild_id, trigger, steps, created_by, updated_by) VALUES
+  ('Morning chime', 'Community', '{\"kind\":\"daily\",\"times\":[\"08:00\",\"12:00\",\"18:00\"],\"timezone\":\"Europe/Berlin\"}', '[{\"type\":\"join\",\"channel_id\":\"Lounge\"},{\"type\":\"play\",\"media_ids\":[1],\"volume\":80},{\"type\":\"leave\"}]', 'shots', 'shots'),
+  ('Friday reminder', 'Community', '{\"kind\":\"weekly\",\"times\":[\"12:30\"],\"weekdays\":[5],\"timezone\":\"Europe/Berlin\"}', '[{\"type\":\"message\",\"channel_id\":\"announcements\",\"message_id\":1}]', 'shots', 'shots'),
+  ('Raid night call', 'Gaming', '{\"kind\":\"weekly\",\"times\":[\"19:45\"],\"weekdays\":[1,2,3,4,5,6,0],\"timezone\":\"Europe/Berlin\"}', '[{\"type\":\"message\",\"channel_id\":\"raids\",\"text\":\"Raid starts in 15 minutes\"},{\"type\":\"wait\",\"seconds\":900},{\"type\":\"join\",\"channel_id\":\"Raid voice\"},{\"type\":\"play\",\"media_ids\":[1],\"volume\":100},{\"type\":\"leave\"}]', 'shots', 'shots')" >/dev/null
+    psql "INSERT INTO runs (task_id, title, guild_id, source, actor, status, started_at, finished_at)
+  SELECT t.id, t.name, t.guild_id, r.source, r.actor, r.status, now() - r.ago, now() - r.ago + interval '20 seconds'
+  FROM tasks t JOIN (VALUES ('Morning chime', 'schedule', '', 'done', interval '2 hours'), ('Raid night call', 'manual', 'ann', 'done', interval '5 hours'),
+    ('Morning chime', 'schedule', '', 'done', interval '6 hours'), ('Friday reminder', 'schedule', '', 'done', interval '1 day')) r(name, source, actor, status, ago) ON r.name = t.name
+  WHERE t.created_by = 'shots' ORDER BY r.ago DESC" >/dev/null
+    docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache -e SCREENSHOT_DIR=/work -v "${work}:/work" "${build_img}" go test -count=1 -run TestScreenshotRoom ./internal/web/ >/dev/null
     browser shots
+    psql "DELETE FROM tasks WHERE created_by = 'shots'" >/dev/null
     mkdir -p "${root}/screenshots"
     cp "${work}/shots/"*.png "${root}/screenshots/"
 fi
+browser layout
 
 echo "==> Restart keeps data, runs missed while stopped are recorded"
 docker stop "${app}" >/dev/null
-psql() { docker exec "${db}" psql -U bot -d bot -XAtc "$1"; }
 psql "INSERT INTO tasks (name, guild_id, trigger, steps, created_by, updated_by) VALUES
   ('Every minute', '1', '{\"kind\":\"cron\",\"cron\":[\"* * * * *\"],\"timezone\":\"UTC\"}', '[{\"type\":\"leave\"}]', 'e2e', 'e2e'),
   ('Greeting', '1', '{\"kind\":\"event\",\"event\":\"voice_join\",\"cooldown\":45,\"user_ids\":[\"333333333333333333\"],\"timezone\":\"UTC\"}', '[{\"type\":\"dm\",\"to_trigger\":true,\"text\":\"Hi {member}\"}]', 'e2e', 'e2e')" >/dev/null

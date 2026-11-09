@@ -7,7 +7,7 @@ import (
 )
 
 func TestProblems(t *testing.T) {
-	ok := Message{Name: "Friday", Content: "Jumu’ah", Embeds: []Embed{{Title: "Friday prayer", Color: "#4752c4", Fields: []Field{{Name: "Khutbah", Value: "13:15"}}}}}
+	ok := Message{Name: "Friday", Content: "Game night", Embeds: []Embed{{Title: "Game night", Color: "#4752c4", Fields: []Field{{Name: "Start", Value: "20:00"}}}}}
 	if p := ok.Problems(); len(p) != 0 {
 		t.Errorf("valid message: %v", p)
 	}

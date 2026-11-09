@@ -40,6 +40,12 @@
   ],
   "packageUrl": "https://github.com/BrutalBirdie/pts-discord-bot",
   "mediaLinks": [
-    "https://example.com/screenshot.png"
+    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/dashboard.png",
+    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/room.png",
+    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/tasks.png",
+    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/task.png",
+    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/message.png",
+    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/media.png",
+    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/media-edit.png"
   ]
 }

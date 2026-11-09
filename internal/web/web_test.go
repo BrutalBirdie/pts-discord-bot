@@ -32,7 +32,7 @@ func testServer(t *testing.T) *Server {
 func room(view string, ch bot.Channel, more func(*roomData)) roomData {
 	d := roomData{Guild: bot.Guild{ID: "1", Name: "PTS Server", BotVoice: "Lounge", Self: bot.Member{Name: "PTS Bot"}},
 		View: view, Channel: ch, Self: "/room/1?c=" + ch.ID, Paging: paging{Page: 1},
-		Tasks: []taskRow{{Task: tasks.Task{ID: 3, Name: "Adhan", Trigger: tasks.Trigger{Kind: tasks.Daily, Times: []string{"05:00"}}}}}}
+		Tasks: []taskRow{{Task: tasks.Task{ID: 3, Name: "Morning chime", Trigger: tasks.Trigger{Kind: tasks.Daily, Times: []string{"05:00"}}}}}}
 	more(&d)
 	return d
 }
@@ -53,17 +53,17 @@ func TestPagesRender(t *testing.T) {
 	taskID := int64(3)
 	step := 2
 	runs := []store.Run{
-		{ID: 1, TaskID: &taskID, Title: "Adhan", Source: store.SourceSchedule, Status: store.RunDone, StartedAt: now.Add(-time.Hour), FinishedAt: &now},
+		{ID: 1, TaskID: &taskID, Title: "Morning chime", Source: store.SourceSchedule, Status: store.RunDone, StartedAt: now.Add(-time.Hour), FinishedAt: &now},
 		{ID: 2, Title: "Play x.ogg", Source: store.SourceManual, Actor: "ann", Status: store.RunFailed, FailedStep: &step, Error: "Discord error 50001: Missing Access", StartedAt: now},
 	}
-	adhan := tasks.Task{ID: 3, Name: "Adhan", GuildID: "1", Enabled: true, Busy: tasks.BusyWait,
+	chime := tasks.Task{ID: 3, Name: "Morning chime", GuildID: "1", Enabled: true, Busy: tasks.BusyWait,
 		Trigger: tasks.Trigger{Kind: tasks.Daily, Times: []string{"05:00", "16:35"}, Timezone: "Europe/Berlin"},
-		Steps: []tasks.Step{{Type: tasks.Join, ChannelID: "2"}, {Type: tasks.Play, MediaIDs: []int64{5}, Volume: 80}, {Type: tasks.Message, ChannelID: "4", Text: "Adhan at {time}"},
+		Steps: []tasks.Step{{Type: tasks.Join, ChannelID: "2"}, {Type: tasks.Play, MediaIDs: []int64{5}, Volume: 80}, {Type: tasks.Message, ChannelID: "4", Text: "Chime at {time}"},
 			{Type: tasks.DM, UserID: "9"}, {Type: tasks.Wait, Seconds: 5}, {Type: tasks.Leave}}}
-	sound := store.Media{ID: 5, Name: "muezzin.ogg", Kind: store.KindSound, SizeBytes: 2 << 20, DurationMS: 225000, UsedBy: []string{"task Adhan"}}
+	sound := store.Media{ID: 5, Name: "chime.ogg", Kind: store.KindSound, SizeBytes: 2 << 20, DurationMS: 225000, UsedBy: []string{"task Morning chime"}}
 	img := store.Media{ID: 6, Name: "friday.jpg", Kind: store.KindImage, SizeBytes: 1 << 20, Width: 1600, Height: 900}
 	msg := messages.Message{ID: 7, Name: "Friday", Content: "Hi <@123456789012345678> {date}", Files: []int64{6},
-		Embeds: []messages.Embed{{Title: "Prayer", Color: "#112233", ImageMediaID: 6, Fields: []messages.Field{{Name: "Khutbah", Value: "13:15", Inline: true}}}}}
+		Embeds: []messages.Embed{{Title: "Game night", Color: "#112233", ImageMediaID: 6, Fields: []messages.Field{{Name: "Start", Value: "20:00", Inline: true}}}}}
 
 	type page struct {
 		name string
@@ -73,30 +73,30 @@ func TestPagesRender(t *testing.T) {
 	pages := []page{
 		{"login", nil, []string{"Log in with Cloudron"}},
 		{"error", nil, []string{"Something went wrong"}},
-		{"dashboard", dashboardData{Upcoming: []upcoming{{At: now.Add(time.Hour), Task: adhan, Guild: "PTS", What: "Join prayer"}}, Runs: runs, Runs24h: 2, Failed24h: 1,
-			Playing: []playingView{{P: bot.Playing{GuildID: "1", Name: "muezzin.ogg", Channel: "prayer", Started: now, Duration: time.Minute}, CSRF: "tok", Next: "/"}}},
-			[]string{"Adhan", "Missing Access", `action="/servers/1/stop"`, "muezzin.ogg", "of 2 runs"}},
+		{"dashboard", dashboardData{Upcoming: []upcoming{{At: now.Add(time.Hour), Task: chime, Guild: "PTS", What: "Join lounge"}}, Runs: runs, Runs24h: 2, Failed24h: 1,
+			Playing: []playingView{{P: bot.Playing{GuildID: "1", Name: "chime.ogg", Channel: "lounge", Started: now, Duration: time.Minute}, CSRF: "tok", Next: "/"}}},
+			[]string{"Morning chime", "Missing Access", `action="/servers/1/stop"`, "chime.ogg", "of 2 runs"}},
 		{"servers", serversData{Guilds: []bot.Guild{{ID: "1", Name: "PTS Server", MemberCount: 12, Voice: 2, Text: 3, Problems: 1, Missing: []string{"Change Nickname"}}}, InviteURL: "https://discord.com/oauth2/authorize?client_id=1"},
 			[]string{`href="/room/1"`, ">PS<", `data-sortable="/servers/order"`, `data-sort-id="1"`, `name="move" value="1"`, "1 channel without access", "client_id=1", "lacks Change Nickname"}},
 		{"server", serverData{Guild: bot.Guild{ID: "1", Name: "PTS", Missing: []string{"Speak", "Change Nickname"}}, Invite: "https://discord.com/oauth2/authorize?client_id=1",
 			Locked: []bot.Channel{{ID: "4", Name: "rules", Problem: "The bot needs View Channel and Send Messages here."}}},
 			[]string{"rules", "The bot needs View Channel and Send Messages here.", "The bot lacks these server permissions: Speak, Change Nickname.", "client_id=1", `id="invite"`}},
-		{"tasks", tasksData{Guild: bot.Guild{ID: "1", Name: "PTS"}, Rows: []taskRow{{Task: adhan, Guild: "PTS", What: "Join prayer", Next: &now, Last: &runs[0]}}, Counts: map[string]int{"": 1, "active": 1}},
+		{"tasks", tasksData{Guild: bot.Guild{ID: "1", Name: "PTS"}, Rows: []taskRow{{Task: chime, Guild: "PTS", What: "Join lounge", Next: &now, Last: &runs[0]}}, Counts: map[string]int{"": 1, "active": 1}},
 			[]string{"Daily 05:00, 16:35", `action="/tasks/3/pause"`, "Active 1"}},
-		{"task", taskEditor{Task: adhan, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, TimesText: "05:00 16:35",
-			Voice: []bot.Channel{{ID: "2", Name: "prayer", Voice: true}}, Text: []bot.Channel{{ID: "44", Name: "general"}}, Labels: map[string]string{"9": "Amira (@amira)"},
-			Sounds: []store.Media{sound}, Messages: []messages.Message{msg}, Next: adhan.Trigger.Next(now, 3), Runs: runs, RunCount: 2},
+		{"task", taskEditor{Task: chime, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, TimesText: "05:00 16:35",
+			Voice: []bot.Channel{{ID: "2", Name: "lounge", Voice: true}}, Text: []bot.Channel{{ID: "44", Name: "general"}}, Labels: map[string]string{"9": "Amira (@amira)"},
+			Sounds: []store.Media{sound}, Messages: []messages.Message{msg}, Next: chime.Trigger.Next(now, 3), Runs: runs, RunCount: 2},
 			[]string{`name="s0.target"`, `value="2" selected`, `name="s0.follow" value=""`, `data-members="1"`, `<input type="hidden" name="s1.media" value="5">`, `data-preview-media="5"`, "Total 3:45 / 10:00", `name="s1.volume" value="80"`, `value="add:wait"`, `value="daily" checked`, "Unknown channel 4", `name="s3.user" value="Amira (@amira)"`, `name="s4.wait" value="5s"`, `action="/tasks/3/delete"`, "As cron"}},
 		{"task", taskEditor{Task: tasks.Task{Trigger: tasks.Trigger{Kind: tasks.Manual}}, New: true, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames, Problems: []string{"Give the task a name."}},
 			[]string{"Create task", "Give the task a name.", `action="/tasks/new"`}},
-		{"messages", messagesData{Rows: []messageRow{{Message: msg, UsedBy: []string{"Adhan"}}}}, []string{`href="/messages/7"`, "1 embed", "1 file"}},
+		{"messages", messagesData{Rows: []messageRow{{Message: msg, UsedBy: []string{"Morning chime"}}}}, []string{`href="/messages/7"`, "1 embed", "1 file"}},
 		{"message", messageEditor{Message: msg, Media: []store.Media{sound, img}, ByID: map[int64]store.Media{5: sound, 6: img}, Embeddable: map[int64]bool{6: true},
 			Names: map[string]string{"123456789012345678": "Amira"}, Limits: map[string]int{"content": 2000, "embeds": 10, "embedTotal": 6000},
 			Channels: []guildChannels{{Guild: bot.Guild{Name: "PTS"}, Text: []bot.Channel{{ID: "4", Name: "general"}}}}},
 			[]string{`<span class="dmention">@Amira</span>`, "Formatting help", `id="sheet-md"`, `data-md="Hi &lt;@123456789012345678&gt; `, `fill="#112233"`, `name="e0.f0.inline" checked`, `src="/media/6/file"`, `action="/messages/7/send"`, `name="file" value="6"`}},
 		{"media", mediaData{Items: []store.Media{sound, img, {ID: 8, Name: "big.mp4", Kind: store.KindVideo, SizeBytes: 30 << 20}}, Counts: map[string]int{"": 3, "sound": 1}, MaxUploadMB: 100,
-			Voice: []voiceGroup{{Guild: bot.Guild{Name: "PTS"}, Voice: []bot.Channel{{ID: "2", Name: "prayer"}}}}},
-			[]string{`id="sheet-play-5"`, `data-preview-media="5" data-name="muezzin.ogg"`, "over 20 MB", "used by task Adhan", "3:45", `enctype="multipart/form-data"`}},
+			Voice: []voiceGroup{{Guild: bot.Guild{Name: "PTS"}, Voice: []bot.Channel{{ID: "2", Name: "lounge"}}}}},
+			[]string{`id="sheet-play-5"`, `data-preview-media="5" data-name="chime.ogg"`, "over 20 MB", "used by task Morning chime", "3:45", `enctype="multipart/form-data"`}},
 		{"room", roomData{}, []string{"The bot is in no server you may manage yet."}},
 		{"room", room("voice", bot.Channel{ID: "2", Name: "Lounge", Voice: true, Usable: true, HasBot: true}, func(d *roomData) {
 			horn := sound
@@ -118,13 +118,13 @@ func TestPagesRender(t *testing.T) {
 		}), []string{`action="/room/1/send"`, `name="channel" value="4"`, `<option value="7">Friday</option>`, "Tasks that use #general", `href="/tasks/new?guild=1&amp;post=4"`}},
 		{"room", room("member", bot.Channel{}, func(d *roomData) {
 			d.Member = bot.Member{ID: "9", Name: "Mira", Username: "mira", VoiceID: "2", Voice: "Lounge"}
-			d.Greets = []tasks.Task{adhan, adhan}
+			d.Greets = []tasks.Task{chime, chime}
 			d.Tasks[0].Run = 77
 		}), []string{"@mira · in Lounge", "2 tasks start when Mira joins", `name="member" value="9"`, `href="/tasks/new?guild=1&amp;member=9"`, `action="/runs/77/stop"`, `<span class="chip accent">running</span>`, "Tasks that leave Mira out"}},
 		{"settings", nil, []string{`name="confirm_actions" checked`, `action="/account"`, "data-autosave"}},
 		{"admin", adminData{Tab: "overview", Admins: []string{"ann"}, Groups: []string{"bot-admins"}}, []string{"BOT_ADMIN_GROUP", "bot-admins"}},
 		{"admin", adminData{Tab: "settings", Settings: store.DefaultSettings, Timezones: commonTimezones}, []string{`name="max_play_minutes" value="10"`, `value="Europe/Berlin"`}},
-		{"admin", adminData{Tab: "audit", Paging: paging{Page: 1, path: "/admin/audit"}, Audit: []store.AuditEntry{{At: now, Actor: "ann", Action: "task.run", Target: "Adhan"}}}, []string{"task.run"}},
+		{"admin", adminData{Tab: "audit", Paging: paging{Page: 1, path: "/admin/audit"}, Audit: []store.AuditEntry{{At: now, Actor: "ann", Action: "task.run", Target: "Morning chime"}}}, []string{"task.run"}},
 	}
 	for _, p := range pages {
 		req := httptest.NewRequest("GET", "/?done=saved", nil)
@@ -153,7 +153,7 @@ func TestPagesRender(t *testing.T) {
 
 func TestParseTask(t *testing.T) {
 	form := url.Values{
-		"name": {" Adhan "}, "guild": {"1"}, "enabled": {"on"}, "busy": {"skip"}, "kind": {"weekly"}, "times": {"16:35, 5:00"}, "weekday": {"5", "1", "5"},
+		"name": {" Morning chime "}, "guild": {"1"}, "enabled": {"on"}, "busy": {"skip"}, "kind": {"weekly"}, "times": {"16:35, 5:00"}, "weekday": {"5", "1", "5"},
 		"timezone": {"Europe/Berlin"}, "cron": {"0 1 * * *"}, "steps": {"5"},
 		"s0.type": {"join"}, "s0.target": {"member"}, "s0.follow": {" Amira (@amira) "},
 		"s1.type": {"play"}, "s1.media": {"3", "5"}, "s1.order": {"random"}, "s1.volume": {"80"},
@@ -168,7 +168,7 @@ func TestParseTask(t *testing.T) {
 	if len(bad) != 0 {
 		t.Fatalf("problems: %v", bad)
 	}
-	if task.Name != "Adhan" || task.Busy != tasks.BusySkip || task.Trigger.Kind != tasks.Weekly {
+	if task.Name != "Morning chime" || task.Busy != tasks.BusySkip || task.Trigger.Kind != tasks.Weekly {
 		t.Errorf("basics: %+v", task)
 	}
 	if len(task.Trigger.Cron) != 0 || len(task.Trigger.Weekdays) != 2 || task.Trigger.Times[0] != "05:00" {
@@ -240,7 +240,7 @@ func TestWhen(t *testing.T) {
 
 func TestParseEventTask(t *testing.T) {
 	form := url.Values{
-		"name": {"Greeting"}, "guild": {"1"}, "slash": {"on"}, "kind": {"event"}, "event": {"message"}, "event_channel": {"5"}, "keyword": {" adhan "},
+		"name": {"Greeting"}, "guild": {"1"}, "slash": {"on"}, "kind": {"event"}, "event": {"message"}, "event_channel": {"5"}, "keyword": {" chime "},
 		"cooldown": {"1m"}, "ev_except": {"on"}, "times": {"05:00"}, "steps": {"3"}, "ev_member": {" Amira (@amira) ", "", "Amira (@amira)", "Bilal"},
 		"s0.type": {"join"}, "s0.target": {"trigger"},
 		"s1.type": {"play"}, "s1.media": {"tag:greeting"}, "s1.volume": {"100"},
@@ -254,7 +254,7 @@ func TestParseEventTask(t *testing.T) {
 		t.Fatalf("problems: %v", bad)
 	}
 	tr := task.Trigger
-	if !task.Slash || tr.Kind != tasks.Event || tr.Event != tasks.MessageIn || tr.ChannelID != "5" || tr.Keyword != "adhan" || tr.Cooldown != 60 || !tr.Except || len(tr.Times) != 0 || strings.Join(tr.UserIDs, "|") != "Amira (@amira)|Bilal" {
+	if !task.Slash || tr.Kind != tasks.Event || tr.Event != tasks.MessageIn || tr.ChannelID != "5" || tr.Keyword != "chime" || tr.Cooldown != 60 || !tr.Except || len(tr.Times) != 0 || strings.Join(tr.UserIDs, "|") != "Amira (@amira)|Bilal" {
 		t.Errorf("trigger: %+v slash=%v", tr, task.Slash)
 	}
 	if !task.Steps[0].ToTrigger || task.Steps[1].Tag != "greeting" || len(task.Steps[1].MediaIDs) != 0 || !task.Steps[2].ToTrigger || task.Steps[2].UserID != "" {
@@ -491,7 +491,7 @@ func TestConfirmAndPreviewMarkup(t *testing.T) {
 		}
 		return b.String()
 	}
-	task := tasks.Task{ID: 3, Name: "Adhan", GuildID: "1", Trigger: tasks.Trigger{Kind: tasks.Manual}}
+	task := tasks.Task{ID: 3, Name: "Morning chime", GuildID: "1", Trigger: tasks.Trigger{Kind: tasks.Manual}}
 	editor := taskEditor{Task: task, StepTypes: tasks.StepTypes, Kinds: tasks.TriggerKinds, Weekdays: tasks.WeekdayNames}
 
 	body := render("task", editor, store.DefaultPrefs)
@@ -521,11 +521,11 @@ func TestConfirmAndPreviewMarkup(t *testing.T) {
 		t.Error("message: delete button without data-confirm-desc or with a name field")
 	}
 
-	sound := store.Media{ID: 5, Name: "muezzin.ogg", Kind: store.KindSound, DurationMS: 225000}
+	sound := store.Media{ID: 5, Name: "chime.ogg", Kind: store.KindSound, DurationMS: 225000}
 	video := store.Media{ID: 8, Name: "clip.mp4", Kind: store.KindVideo}
 	body = render("media", mediaData{Items: []store.Media{sound, video}, Counts: map[string]int{}}, store.DefaultPrefs)
-	for _, want := range []string{`<button type="button" class="preview-tile js-only" data-preview-media="5" data-name="muezzin.ogg" aria-label="Preview muezzin.ogg" data-tip="Preview muezzin.ogg" aria-pressed="false">`,
-		`<span class="row-sub" data-preview-detail>3:45`, `data-confirm-desc="Moves muezzin.ogg to the Trash."`} {
+	for _, want := range []string{`<button type="button" class="preview-tile js-only" data-preview-media="5" data-name="chime.ogg" aria-label="Preview chime.ogg" data-tip="Preview chime.ogg" aria-pressed="false">`,
+		`<span class="row-sub" data-preview-detail>3:45`, `data-confirm-desc="Moves chime.ogg to the Trash."`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("media: missing %q", want)
 		}
@@ -538,11 +538,11 @@ func TestConfirmAndPreviewMarkup(t *testing.T) {
 func TestTrashRender(t *testing.T) {
 	s := testServer(t)
 	now := time.Now()
-	daily := tasks.Task{ID: 3, Name: "Adhan", Trigger: tasks.Trigger{Kind: tasks.Daily, Times: []string{"05:00"}, Timezone: "UTC"}, Steps: []tasks.Step{{Type: tasks.Leave}}}
+	daily := tasks.Task{ID: 3, Name: "Morning chime", Trigger: tasks.Trigger{Kind: tasks.Daily, Times: []string{"05:00"}, Timezone: "UTC"}, Steps: []tasks.Step{{Type: tasks.Leave}}}
 	msg := messages.Message{ID: 7, Name: "Friday", Files: []int64{6}}
 	sound := store.Media{ID: 5, Name: "intro.ogg", Kind: store.KindSound, SizeBytes: 2048, DurationMS: 3000}
 	d := trashData{Days: 30, Paging: paging{Page: 1, path: "/trash"}, Counts: map[string]int{"": 3, "task": 1, "message": 1, "media": 1}, Rows: []trashRow{
-		{TrashItem: store.TrashItem{Kind: store.TrashTask, ID: 3, Name: "Adhan", DeletedAt: now, DeletedBy: "ann", Task: &daily}, DaysLeft: 30},
+		{TrashItem: store.TrashItem{Kind: store.TrashTask, ID: 3, Name: "Morning chime", DeletedAt: now, DeletedBy: "ann", Task: &daily}, DaysLeft: 30},
 		{TrashItem: store.TrashItem{Kind: store.TrashMessage, ID: 7, Name: "Friday", DeletedAt: now.Add(-3 * time.Hour), DeletedBy: "bob", Message: &msg}, DaysLeft: 1},
 		{TrashItem: store.TrashItem{Kind: store.TrashMedia, ID: 5, Name: "intro.ogg", DeletedAt: now.Add(-30 * 24 * time.Hour), DeletedBy: "ann", Media: &sound}, RestoreAs: "intro (restored).ogg"},
 	}}
@@ -665,7 +665,7 @@ func TestListSearchAndPager(t *testing.T) {
 		return p
 	}
 	sound := store.Media{ID: 5, Name: "beep.ogg", Kind: store.KindSound, Tags: []string{"fun"}}
-	task := tasks.Task{ID: 3, Name: "Adhan", GuildID: "1", Trigger: tasks.Trigger{Kind: tasks.Manual}}
+	task := tasks.Task{ID: 3, Name: "Morning chime", GuildID: "1", Trigger: tasks.Trigger{Kind: tasks.Manual}}
 	more := func(p paging) paging { p.More = true; return p }
 	cases := []struct {
 		name, target string

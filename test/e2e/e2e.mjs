@@ -164,11 +164,11 @@ const steps = {
 
         await page.goto(BASE + '/messages/new');
         await page.fill('input[name=name]', 'Friday reminder');
-        await page.fill('textarea[name=content]', 'Jumu’ah Mubarak {date}');
+        await page.fill('textarea[name=content]', 'Game night on {date}');
         await page.click('button[value=add-embed]');
         check('editor op keeps unsaved state', (await text(page)).includes('Changes are not saved yet') && await page.inputValue('input[name=name]') === 'Friday reminder');
-        await page.fill('input[name="e0.title"]', 'Friday prayer');
-        check('live preview', (await page.locator('[data-preview-target="title-0"]').innerText()) === 'Friday prayer');
+        await page.fill('input[name="e0.title"]', 'Game night');
+        check('live preview', (await page.locator('[data-preview-target="title-0"]').innerText()) === 'Game night');
         check('mention picker shown with JS', await page.locator('input[data-insert=content]').isVisible());
         await page.route('**/members?*', (route) => route.fulfill({ json: [{ id: '111111111111111111', label: 'Jane (@jane.doe)', name: 'Jane', username: 'jane.doe' }] }));
         await page.locator('textarea[name=content]').evaluate((a) => a.setSelectionRange(a.value.length, a.value.length));
@@ -179,13 +179,13 @@ const steps = {
         await page.locator('.imgopt:has(input[name="e0.image"])', { hasText: 'friday_card.png' }).click();
         check('the image picker shows thumbnails and marks the pick', await page.locator('.imgopt:has(input[name="e0.image"]:checked) img[src^="/media/"]').count() === 1);
         await page.click('button[value="add-field:0"]');
-        await page.fill('input[name="e0.f0.name"]', 'Khutbah');
-        await page.fill('input[name="e0.f0.value"]', '13:15');
+        await page.fill('input[name="e0.f0.name"]', 'Start');
+        await page.fill('input[name="e0.f0.value"]', '20:00');
         await page.click('main .btns button[value=save]');
         t = await text(page);
-        check('message saved', t.includes('Saved.') && t.includes('Khutbah'), t.slice(0, 400));
+        check('message saved', t.includes('Saved.') && t.includes('Start'), t.slice(0, 400));
         check('embed image in preview', await page.locator('.dembed img.dimg').count() === 1);
-        check('placeholder expanded', /Mubarak \d{4}-\d\d-\d\d/.test(await page.locator('[data-preview-target=content]').innerText()));
+        check('placeholder expanded', /on \d{4}-\d\d-\d\d/.test(await page.locator('[data-preview-target=content]').innerText()));
 
         await page.goto(BASE + '/media');
         check('media shows usage', (await text(page)).includes('used by message Friday reminder'));
@@ -227,7 +227,7 @@ const steps = {
         check('link to the app itself refused', (await text(page)).includes('is not a public address'), (await text(page)).slice(0, 300));
 
         await page.goto(BASE + '/tasks/new');
-        await page.fill('input[name=name]', 'Adhan');
+        await page.fill('input[name=name]', 'Morning chime');
         await page.check('input[name=kind][value=daily]', { force: true });
         await page.fill('input[name=times]', '18:15, 5:00');
         await page.click('button[value="add:play"]');
@@ -352,10 +352,10 @@ const steps = {
         await save();
     },
 
-    // long names without spaces, like a server called openpgp4fpr:3EFABCB7..., must not widen the page
+    // long names without spaces, like a server called after a key fingerprint, must not widen the page
     async layout() {
         const { page } = await session('ann');
-        const long = 'openpgp4fpr_3EFABCB708412AEE165EDC6C7B17D5A1B2C3D4E5F60718293A4B5C6D7E8F90A1B2C3D4E5F6';
+        const long = 'a_very_long_name_without_spaces_0123456789abcdef0123456789abcdef0123456789abcdef';
         await page.goto(BASE + '/media');
         await pickFiles(page, { name: long + '.png', mimeType: 'image/png', buffer: png });
         await page.goto(BASE + '/messages/new');
@@ -647,27 +647,56 @@ const steps = {
         check('revoke logs the Discord user out', await d.getByRole('link', { name: 'Log in with Cloudron' }).count() === 1);
     },
 
-    // store and README screenshots, run with SCREENSHOTS=1
+    // store and README screenshots, run with SCREENSHOTS=1 after run.sh seeds the tasks and runs
     async shots() {
         const { ctx, page } = await session('ann');
-        const shot = async (path, name, opts = {}) => {
-            await page.goto(BASE + path);
-            await page.evaluate(() => document.fonts.ready);
-            await page.screenshot({ path: `/work/shots/${name}.png`, fullPage: true, ...opts });
-        };
         fs.mkdirSync('/work/shots', { recursive: true });
-        await page.setViewportSize({ width: 1280, height: 900 });
-        await shot('/', 'dashboard');
-        await shot('/media', 'media');
-        await shot('/messages/1', 'message');
+        // the bot is offline in this test: show it connected to two servers
+        const connected = () => page.evaluate(() => {
+            document.querySelectorAll('[data-live=botstatus] .callout.warn, .side-body > .hint').forEach((e) => e.remove());
+            const tiles = document.querySelectorAll('[data-live=tiles] .tile');
+            if (tiles.length) {
+                tiles[0].querySelector('.v').textContent = 'Connected';
+                tiles[0].querySelector('.s').textContent = '38 ms latency · up 3 d';
+                tiles[1].querySelector('.v').textContent = '2';
+                tiles[1].querySelector('.s').textContent = '164 members cached';
+            }
+        });
+        // the app scrolls inside #main, so a full page screenshot needs a viewport as tall as the content
+        const shot = async (name, width, height) => {
+            await page.setViewportSize({ width, height });
+            await settle(page);
+            await page.evaluate(() => document.fonts.ready);
+            await connected();
+            for (let i = 0; i < 2; i++) {
+                const h = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, ...[...document.querySelectorAll('#main, .side-body, .sheet:popover-open .sheet-body')].map((e) => e.getBoundingClientRect().top + e.scrollHeight)));
+                await page.setViewportSize({ width, height: Math.max(height, Math.ceil(h)) });
+            }
+            await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished)));
+            await page.screenshot({ path: `/work/shots/${name}.png` });
+        };
+        const desk = async (path, name) => { await page.goto(BASE + path); await shot(name, 1280, 800); };
+        await desk('/', 'dashboard');
+        await desk('/tasks', 'tasks');
+        await desk('/media', 'media');
+        await desk('/messages/1', 'message');
+        await page.setViewportSize({ width: 1280, height: 800 });
         await page.goto(BASE + '/tasks/new');
-        await page.fill('input[name=name]', 'Adhan');
-        await page.fill('input[name=times]', '05:00 11:50 14:00 16:35 18:15');
+        await page.fill('input[name=name]', 'Morning chime');
+        await page.fill('input[name=times]', '08:00 12:00 18:00');
         for (const t of ['join', 'play', 'message', 'wait', 'leave']) await page.click(`button[value="add:${t}"]`);
-        await page.screenshot({ path: '/work/shots/task.png', fullPage: true });
-        await page.setViewportSize({ width: 390, height: 844 });
-        await shot('/', 'dashboard-phone', { fullPage: false });
-        await shot('/messages/1', 'message-phone');
+        await shot('task', 1280, 800);
+        await page.goto(BASE + '/media');
+        await page.locator('main .list li', { hasText: 'beep.ogg' }).first().locator('a[href*="edit="]').click();
+        await page.locator('#sheet-edit:popover-open').waitFor();
+        await shot('media-edit', 1280, 800);
+        // room.html is the made up server of TestScreenshotRoom, its styles and scripts come from the app
+        await page.route((url) => url.pathname === '/room/1', (route) => route.fulfill({ contentType: 'text/html', body: fs.readFileSync('/work/room.html') }));
+        await desk('/room/1?c=20', 'room');
+        await page.goto(BASE + '/');
+        await shot('dashboard-phone', 390, 844);
+        await page.goto(BASE + '/messages/1');
+        await shot('message-phone', 390, 844);
         await ctx.close();
     },
 

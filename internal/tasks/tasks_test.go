@@ -85,7 +85,7 @@ func TestManualHasNoSchedule(t *testing.T) {
 }
 
 func TestProblems(t *testing.T) {
-	task := Task{Name: "Adhan", GuildID: "1", Trigger: Trigger{Kind: Daily, Times: []string{"05:00"}, Timezone: "Europe/Berlin"},
+	task := Task{Name: "Morning chime", GuildID: "1", Trigger: Trigger{Kind: Daily, Times: []string{"05:00"}, Timezone: "Europe/Berlin"},
 		Steps: []Step{{Type: Join, ChannelID: "2"}, {Type: Play, MediaIDs: []int64{1}, Volume: 100}, {Type: Leave}}}
 	if p := task.Problems(); len(p) != 0 {
 		t.Errorf("valid task: %v", p)
@@ -100,11 +100,11 @@ func TestProblems(t *testing.T) {
 }
 
 func TestEventTrigger(t *testing.T) {
-	tr := Trigger{Kind: Event, Event: MessageIn, Keyword: " Adhan ", ChannelID: "5"}
+	tr := Trigger{Kind: Event, Event: MessageIn, Keyword: " Chime ", ChannelID: "5"}
 	if err := tr.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if !tr.Matches(MessageIn, "5", "7", "when is ADHAN today?") || tr.Matches(MessageIn, "6", "7", "adhan") || tr.Matches(MessageIn, "5", "7", "hello") || tr.Matches(VoiceJoin, "5", "7", "adhan") {
+	if !tr.Matches(MessageIn, "5", "7", "when is CHIME today?") || tr.Matches(MessageIn, "6", "7", "chime") || tr.Matches(MessageIn, "5", "7", "hello") || tr.Matches(VoiceJoin, "5", "7", "chime") {
 		t.Error("message matching")
 	}
 	if (Trigger{Kind: Event, Event: VoiceJoin}).Matches(VoiceJoin, "9", "7", "") != true {

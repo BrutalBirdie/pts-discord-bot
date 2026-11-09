@@ -13,7 +13,15 @@ Cloudron app with a Discord bot and a web UI to control it. Sign in with your Cl
 * Member search when picking who gets a direct message, whose voice channel to join, or whom to mention
 * Run history, failure posts to a channel, audit log
 
-![Dashboard](screenshots/dashboard.png)
+![Overview](screenshots/dashboard.png)
+
+| Tasks | Task editor |
+| --- | --- |
+| ![Tasks](screenshots/tasks.png) | ![Task editor](screenshots/task.png) |
+| **Saved message** | **Media library** |
+| ![Saved message](screenshots/message.png) | ![Media library](screenshots/media.png) |
+| **Server with soundboard** | **Edit a sound** |
+| ![Server with soundboard](screenshots/room.png) | ![Edit a sound](screenshots/media-edit.png) |
 
 ## Install
 
@@ -36,7 +44,7 @@ Changes per version are in the [releases](https://github.com/BrutalBirdie/pts-di
 
 ## Upgrading from 0.2
 
-Sound files in `/app/data/sounds` move into the media library on the first start. The HTTP API (`POST /play`) and the n8n workflow are gone: recreate the schedule as a task. The old Adhan workflow is a daily task with the times `05:00 11:50 14:00 16:35 18:15`, timezone `Europe/Berlin`, and the steps Join voice channel, Play sound, Leave voice channel.
+Sound files in `/app/data/sounds` move into the media library on the first start. The HTTP API (`POST /play`) and the n8n workflow are gone: recreate the schedule as a task: a daily task with the same times and the steps Join voice channel, Play sound, Leave voice channel.
 
 ## Discord permissions
 
