@@ -1,3 +1,6 @@
+[0.5.1]
+* Update module golang.org/x/oauth2 to v0.38.0
+
 [0.5.0]
 * Every page sits in the Control Room: server rail, channel list and members, no top navigation; on phones the servers and channels open from the side
 * Home shows the overview with the tasks that need attention, and the Trash; Tasks, Messages and Media open per server, its own items first
