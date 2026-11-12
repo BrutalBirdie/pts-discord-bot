@@ -1,3 +1,6 @@
+[0.5.4]
+* Update module github.com/jackc/pgx/v5 to v5.13.0
+
 [0.5.3]
 * Update golang Docker tag to v1.27.4
 

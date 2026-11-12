@@ -1,6 +1,6 @@
 {
   "id": "io.github.brutalbirdie.ptsdiscordvoicebot",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "title": "PTS Discord Bot",
   "author": "BrutalBirdie",
   "tagline": "Discord bot with a web UI to schedule voice and message tasks",
