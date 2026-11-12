@@ -9,7 +9,7 @@ require (
 	github.com/disgoorg/omit v1.0.0
 	github.com/disgoorg/snowflake/v2 v2.0.3
 	github.com/gorilla/websocket v1.5.3
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/oauth2 v0.38.0
 )
