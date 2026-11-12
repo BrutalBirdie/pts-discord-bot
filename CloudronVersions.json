@@ -312,6 +312,63 @@
             "creationDate": "Mon, 09 Nov 2026 22:11:56 GMT",
             "ts": "Mon, 09 Nov 2026 22:11:56 GMT",
             "publishState": "published"
+        },
+        "0.5.3": {
+            "manifest": {
+                "id": "io.github.brutalbirdie.ptsdiscordvoicebot",
+                "version": "0.5.3",
+                "title": "PTS Discord Bot",
+                "author": "BrutalBirdie",
+                "tagline": "Discord bot with a web UI to schedule voice and message tasks",
+                "icon": "file://logo.png",
+                "healthCheckPath": "/healthz",
+                "configurePath": "/admin",
+                "httpPort": 8000,
+                "memoryLimit": 536870912,
+                "minBoxVersion": "10.0.1",
+                "checklist": {
+                    "set-discord-token": {
+                        "message": "Set DISCORD_TOKEN in /app/data/env.sh and switch on the Presence, Server Members and Message Content intents of the bot in the Discord Developer Portal. Restart the app after editing env.sh."
+                    },
+                    "set-admins": {
+                        "message": "Set admins: add Cloudron usernames to BOT_ADMINS or Cloudron groups to BOT_ADMIN_GROUP in /app/data/env.sh."
+                    }
+                },
+                "addons": {
+                    "localstorage": {},
+                    "postgresql": {},
+                    "oidc": {
+                        "loginRedirectUri": "/auth/callback",
+                        "logoutRedirectUri": "/",
+                        "tokenSignatureAlgorithm": "RS256"
+                    }
+                },
+                "manifestVersion": 2,
+                "description": "## About\n\nA Discord bot with a web UI to control it. Sign in with your Cloudron account.\n\n* Tasks on a schedule (daily, weekly, once or cron, in any timezone), on Discord events (voice joins and leaves, new members, keywords in messages) or started by hand\n* Task steps: join a voice channel or the channel a member is in, play a sound or a random one with a tag, send a message, send a direct message, wait, leave\n* Slash commands in Discord: /play, /task, /stop and /leave\n* Saved messages with text, up to 10 embeds, images and files, with a preview of how Discord shows them\n* Media library for sounds, images, videos and files, uploaded one by one or as a zip, or added from a link, with tags. Sounds can be played in a voice channel right away\n* Servers and channels the bot is in, with the permissions it is missing\n* Run history per task. Tasks pause themselves on errors retrying cannot fix, and failures can be posted to a channel\n* Admins change settings and see an audit log of all changes\n",
+                "changelog": "* Update golang Docker tag to v1.27.4\n",
+                "postInstallMessage": "The bot needs a Discord bot token before it connects.\n\n1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications). Under **Bot**, click **Reset Token** and copy the token. On the same page, switch on **Server Members Intent**, **Presence Intent** for who is online in the Control Room, and **Message Content Intent** if tasks should react to keywords in messages.\n2. Set `DISCORD_TOKEN` in `/app/data/env.sh`. Add your Cloudron username to `BOT_ADMINS` there, or a group to `BOT_ADMIN_GROUP`. Restart the app.\n3. Open the app, go to **Servers** and add the bot to your Discord server with the invite link.\n4. Upload sounds under **Media** and create a task under **Tasks**.\n",
+                "website": "https://github.com/BrutalBirdie/pts-discord-bot",
+                "packagerName": "James Smith",
+                "packagerUrl": "https://github.com/BrutalBirdie/pts-discord-bot",
+                "iconUrl": "https://github.com/BrutalBirdie/pts-discord-bot/blob/master/logo.png?raw=true",
+                "tags": [
+                    "chat"
+                ],
+                "packageUrl": "https://github.com/BrutalBirdie/pts-discord-bot",
+                "mediaLinks": [
+                    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/dashboard.png",
+                    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/room.png",
+                    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/tasks.png",
+                    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/task.png",
+                    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/message.png",
+                    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/media.png",
+                    "https://raw.githubusercontent.com/BrutalBirdie/pts-discord-bot/master/screenshots/media-edit.png"
+                ],
+                "dockerImage": "ghcr.io/brutalbirdie/pts-discord-bot:0.5.3"
+            },
+            "creationDate": "Thu, 12 Nov 2026 10:40:57 GMT",
+            "ts": "Thu, 12 Nov 2026 10:40:57 GMT",
+            "publishState": "published"
         }
     }
 }
